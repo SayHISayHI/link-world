@@ -1,0 +1,54 @@
+{
+  "url_article": {
+    "sourceType": "url",
+    "sourcePlatform": "web",
+    "sourceUrl": "https://example.com/articles/local-first-knowledge",
+    "canonicalUrl": "https://example.com/articles/local-first-knowledge",
+    "title": "Local-first Knowledge Systems",
+    "rawHtml": "<html><head><title>Local-first Knowledge Systems</title></head><body><article><h1>Local-first Knowledge Systems</h1><p>Local-first tools keep user data available offline and sync when possible.</p></article></body></html>",
+    "metadata": {
+      "fixture": true
+    },
+    "privacyLevel": "public",
+    "permissionContext": {
+      "acquisitionMode": "user_action",
+      "userConfirmed": true,
+      "allowedForCloudProcessing": true,
+      "allowedForThirdPartyAI": true
+    }
+  },
+  "selection_prompt": {
+    "sourceType": "selection",
+    "sourcePlatform": "web",
+    "sourceUrl": "https://example.com/prompts",
+    "title": "Prompt snippet",
+    "rawText": "You are a careful code reviewer. Find correctness bugs first, then summarize risks.",
+    "metadata": {
+      "fixture": true
+    },
+    "privacyLevel": "personal",
+    "permissionContext": {
+      "acquisitionMode": "user_action",
+      "userConfirmed": true,
+      "allowedForCloudProcessing": false,
+      "allowedForThirdPartyAI": true
+    }
+  },
+  "blocked_page": {
+    "sourceType": "url",
+    "sourcePlatform": "web",
+    "sourceUrl": "https://example.com/blocked",
+    "title": "Blocked page",
+    "rawHtml": "<html><body>Please enable JavaScript to continue.</body></html>",
+    "metadata": {
+      "fixture": true
+    },
+    "privacyLevel": "public",
+    "permissionContext": {
+      "acquisitionMode": "user_action",
+      "userConfirmed": true,
+      "allowedForCloudProcessing": true,
+      "allowedForThirdPartyAI": true
+    }
+  }
+}

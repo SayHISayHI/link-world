@@ -1,0 +1,78 @@
+# Link World 文档索引
+
+本目录是 Link World 的产品、架构和工程规范源。后续实现代码前，必须先确认对应文档没有冲突。
+
+## Reading Order
+
+1. [architecture.md](./architecture.md)
+   - 总体架构、核心原则、部署形态、插件系统、事件模型、任务模型、SLO、数据治理。
+2. [product_requirements.md](./product_requirements.md)
+   - MVP 用户故事、界面约束、目标用户、功能优先级、产品指标、端到端验收。
+3. [backend_architecture.md](./backend_architecture.md)
+   - Rust/Tauri 后端分层、AppState、错误处理、事务、异步隔离、后台任务和测试要求。
+4. [frontend_architecture.md](./frontend_architecture.md)
+   - React 前端状态分层、组件边界、Tauri command hooks、三栏布局、错误状态和测试要求。
+5. [api_contracts.ts](./api_contracts.ts)
+   - Tauri IPC、核心类型、后台任务、插件权限、错误码和维护命令的契约。
+6. [database_schema.sql](./database_schema.sql)
+   - SQLite schema 蓝图，包括 knowledge objects、parsed documents、AI trace、evaluation、jobs、events、plugins。
+7. [state_machines.md](./state_machines.md)
+   - Knowledge Object、Job、AI、Evaluation、Deletion、Sync 状态流转和禁止状态。
+8. [database_migrations.md](./database_migrations.md)
+   - SQLite migration 命名、备份、事务、测试、回滚和兼容策略。
+9. [tech_stack.md](./tech_stack.md)
+   - 技术栈、目录结构、测试策略、质量门槛、发布和依赖治理。
+10. [security_privacy_compliance.md](./security_privacy_compliance.md)
+   - 威胁模型、隐私分级、凭据、插件权限、AI trace、删除和平台合规边界。
+11. [security_and_privacy_policies.md](./security_and_privacy_policies.md)
+   - 安全与脱敏红线、AI policy gate、插件 policy gate、诊断和删除策略。
+12. [ui_components_inventory.md](./ui_components_inventory.md)
+   - UI 组件清单、组件职责、状态要求、设置页、搜索、AI/Evaluation 面板规范。
+13. [external_api_resilience.md](./external_api_resilience.md)
+   - 第三方调用 timeout、retry、fallback、rate limit、错误映射和韧性测试。
+14. [sync_architecture.md](./sync_architecture.md)
+   - 多端同步、可同步字段、冲突解决、tombstone 同步、隐私同步边界。
+15. [operational_readiness.md](./operational_readiness.md)
+   - 发布就绪、环境矩阵、诊断、备份恢复、迁移策略和事故处理。
+16. [devops_and_ci.md](./devops_and_ci.md)
+   - CI、构建矩阵、测试门槛、打包、签名、发布、回滚和诊断包。
+17. [plugins/plugin_development_guide.md](./plugins/plugin_development_guide.md)
+   - Connector、Parser、Evaluator、Prompt 资源和 Registry 规范。
+18. [../tests/docs/testing_strategy.md](../tests/docs/testing_strategy.md)
+   - 测试分层、fixtures、AI evals、回归测试和发布测试清单。
+19. [adr/README.md](./adr/README.md)
+   - 架构决策记录，解释关键技术和产品架构取舍。
+
+## Source of Truth
+
+- 架构原则以 `architecture.md` 为准。
+- 用户体验和 MVP 范围以 `product_requirements.md` 为准。
+- 前后端通信以 `api_contracts.ts` 为准。
+- 数据存储以 `database_schema.sql` 为准。
+- 状态流转以 `state_machines.md` 为准。
+- 数据库升级以 `database_migrations.md` 为准。
+- 后端实现模式以 `backend_architecture.md` 为准。
+- 前端实现模式以 `frontend_architecture.md` 为准。
+- 安全和隐私争议以 `security_privacy_compliance.md` 和 `security_and_privacy_policies.md` 为准。
+- UI 组件职责以 `ui_components_inventory.md` 为准。
+- 第三方调用韧性以 `external_api_resilience.md` 为准。
+- 多端同步争议以 `sync_architecture.md` 为准。
+- 测试策略以 `tests/docs/testing_strategy.md` 为准。
+- 发布和运维争议以 `operational_readiness.md` 为准。
+- 架构取舍的历史原因以 `adr/` 为准。
+
+## Change Policy
+
+- 修改 API contract 时，必须同步检查 PRD、schema、实现计划和安全文档。
+- 修改 schema 时，必须同步检查 API contract、migration plan 和删除策略。
+- 修改状态流转时，必须更新 `state_machines.md`、API contract 和相关测试。
+- 修改插件能力时，必须同步检查权限模型、安全文档和 audit 需求。
+- 修改模型调用方式时，必须同步检查 AI trace、privacy policy 和成本记录。
+- 新增高风险功能时，必须增加 feature flag、用户授权、日志脱敏和回滚策略。
+- 修改后端分层、状态机、任务或错误模型时，必须更新 `backend_architecture.md` 和相关 ADR。
+- 修改前端状态、路由、command 调用方式时，必须更新 `frontend_architecture.md`。
+- 修改 UI 组件职责、状态或交互模式时，必须更新 `ui_components_inventory.md`。
+- 修改同步字段、删除语义或冲突策略时，必须更新 `sync_architecture.md`。
+- 修改第三方 API 调用、模型供应商或重试策略时，必须更新 `external_api_resilience.md`。
+- 修改发布、打包、签名或 CI 门槛时，必须更新 `devops_and_ci.md`。
+- 修改测试约束、fixtures 或 eval 基准时，必须更新 `tests/docs/testing_strategy.md`。

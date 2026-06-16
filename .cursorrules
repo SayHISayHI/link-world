@@ -1,0 +1,62 @@
+# Link World AI 编程全局规范 (AI Behavior Guidelines)
+
+## 1. 项目定位与核心原则
+- **项目名称**: Link World
+- **项目定位**: 面向个人和团队的信息资产处理系统（知识的验证与结构化工具，而非简单的收藏夹）。
+- **设计标准**: 顶尖的商业级开源项目。必须具备极高的界面美感（Premium 现代风）和极其稳定的底层工程结构。
+- **架构第一法则**: **Local-first (本地优先)**。核心数据、索引、插件调度和已配置的本地能力必须能在 Local 环境运行；依赖外部网络或云端模型的能力必须可降级，不得阻塞保存、解析、浏览和 FTS 检索。
+
+## 2. 技术栈强制约束 (Tech Stack)
+**禁止 AI 自行引入未经本配置允许的核心依赖或替代品。**
+
+* **前端 (Frontend)**:
+  - 框架: `React 18+` (结合 Vite 构建或 Next.js Static Export，禁止使用 SSR 相关功能以适配 Tauri)
+  - 语言: `TypeScript` (严格模式，禁止使用 `any`)
+  - 状态管理: `Zustand` (负责全局状态)
+  - 样式: `Tailwind CSS` + `shadcn/ui` (所有组件必须基于 shadcn/ui，禁用其他重型 UI 库如 MUI/AntD)
+  - 图标: `lucide-react`
+* **后端 / 宿主 (Backend / Host)**:
+  - 框架: `Tauri`
+  - 语言: `Rust`
+  - 数据库: `SQLite` (本地库)，结合 `FTS5` 提供全文搜索，并在可稳定分发时结合 `sqlite-vec` 提供向量搜索。
+  - ORM/SQL执行器: `sqlx`。优先使用类型安全查询；编译期 SQL 检查需在配置 offline metadata 后启用，避免早期开发被环境变量阻塞。
+* **大模型协议 (LLM)**:
+  - 默认通过 `ModelProvider` adapter 接入 OpenAI-compatible Chat 与 Embeddings API。
+  - 业务层禁止直接写供应商专用逻辑；Chat、Embedding、Rerank、Vision 等能力必须通过 capability 声明。
+  - API Key 只能保存到系统安全凭据存储或本地加密 secret store，禁止明文写入普通 SQLite 配置表、日志或前端状态。
+
+## 3. 代码与架构红线 (Red Lines)
+* **前后端分离**: 
+  - 前端绝不能直接使用 `better-sqlite3` 等 Node.js 原生包访问数据库。
+  - 所有的本地磁盘读写、数据库 CRUD、本地环境沙盒运行必须写在 Rust 端，并通过严格的类型契约（`docs/api_contracts.ts`）以 Tauri Commands 的形式暴露给前端。
+* **隐私分级 (Privacy)**: 
+  - 如果对象的 `privacyLevel` 是 `secret` 或 `sensitive`，禁止将其内容直接通过 HTTP 发送给第三方云端 API，除非获取了用户对该对象或 collection 的 explicit 授权参数。
+  - 日志中严禁打印用户的正文数据及 Token。
+* **安全性**:
+  - `unsafe` 代码块在 Rust 中应尽量避免。
+  - 在 Tauri 配置中，精确控制前端允许访问的系统 API（FS 等）。
+* **依赖管理**:
+  - 不要随意在 `package.json` 或 `Cargo.toml` 引入未经声明的第三方库，需要复杂的文本解析时应优先采用项目内统一插件。
+
+## 4. 防御性编程指导 (Defensive UI & Logic)
+- **UI 修改原则**：处理复杂的 CSS 时（特别是 z-index、绝对定位等），必须有系统级思维，禁止“头痛医头”。如果连续出现两次“修复一个 Bug 引入另一个 Bug”，必须推翻重写，回到最简 HTML/CSS 结构。
+- **接口对接原则**：
+  - 调用外部平台 API 或者解析网页时，不要基于旧代码臆想参数。
+  - 必须对拿到的数据做严格验证（例如校验数组：`Array.isArray(x) && x.length > 0`，而非简单的 `if(x)`）。
+  - 后端状态机必须覆盖 `failed`，并记录用户可读的 `failure_reason`。
+  - TypeScript 类型定义必须严谨，并优先处理异常状态。
+
+## 5. 开发工作流 (Workflow)
+1. 在编写任意模块前，务必查阅 `docs/` 与 `tests/docs/` 目录下的相关规范（Architecture、PRD、Backend Architecture、Frontend Architecture、DB Schema、API 契约、状态机、UI 组件、安全隐私、数据库迁移、外部 API 韧性、同步架构、测试策略、运营就绪、DevOps/CI、ADR）。
+   - 写 Rust/Tauri 后端前，必须查阅 `docs/backend_architecture.md`。
+   - 写 React 前端前，必须查阅 `docs/frontend_architecture.md`。
+   - 涉及同步、删除合并或多设备字段前，必须查阅 `docs/sync_architecture.md`。
+   - 涉及打包、CI、发布或迁移测试前，必须查阅 `docs/devops_and_ci.md`。
+   - 涉及状态流转前，必须查阅 `docs/state_machines.md`。
+   - 涉及 UI 组件职责或交互状态前，必须查阅 `docs/ui_components_inventory.md`。
+   - 涉及第三方 API、模型供应商、重试和 fallback 前，必须查阅 `docs/external_api_resilience.md`。
+   - 涉及数据库升级前，必须查阅 `docs/database_migrations.md`。
+   - 涉及测试、fixtures 或 evals 前，必须查阅 `tests/docs/testing_strategy.md`。
+   - 修改基础架构取舍前，必须新增或更新 `docs/adr/`。
+2. 在遇到文档未定义、且涉及基础架构修改的需求时，必须暂停执行并向 User 请示，绝不随意猜测。
+3. 如果修改代码后出现构建失败或验证不通过，必须自行完整读取报错日志（使用 `grep_search` 等），不允许在未解决的情况下虚假报告已完成。

@@ -1,0 +1,66 @@
+{
+  "article_analysis_success": {
+    "summary": "Local-first tools keep knowledge available offline while allowing optional sync.",
+    "category": "Productivity",
+    "tags": ["local-first", "knowledge-management"],
+    "key_points": [
+      "Local availability improves resilience.",
+      "Sync should be optional and privacy-aware."
+    ],
+    "claims": [
+      {
+        "text": "Local-first tools remain usable without cloud connectivity.",
+        "confidence": 0.9
+      }
+    ],
+    "action_items": [
+      {
+        "title": "Compare local-first storage options",
+        "estimatedMinutes": 30
+      }
+    ],
+    "risks": [],
+    "quality_score": 8.2,
+    "confidence": 0.88,
+    "recommendedNextAction": "schedule_review"
+  },
+  "repo_evaluation_success": {
+    "summary": "A developer tool for running local workflow automations.",
+    "category": "DevTools",
+    "key_points": ["Clear README", "Recent maintenance"],
+    "action_items": [
+      {
+        "title": "Run quickstart locally",
+        "required_tools": ["node", "git"]
+      }
+    ],
+    "quality_score": 8.1,
+    "confidence": 0.82,
+    "verdict": "useful",
+    "dimensions": {
+      "novelty": 6,
+      "utility": 8,
+      "actionability": 8,
+      "credibility": 7,
+      "cost": 5,
+      "risk": 3,
+      "fit": 8,
+      "test_result": 0
+    },
+    "evidence": [
+      {
+        "source": "original_content",
+        "text": "README includes installation and quickstart sections.",
+        "reference": "README"
+      }
+    ],
+    "limitations": ["No sandbox install was executed in this fixture."],
+    "risks": [],
+    "next_actions": [
+      {
+        "title": "Execute sandbox dry-run",
+        "description": "Try the README quickstart in an isolated environment."
+      }
+    ]
+  }
+}

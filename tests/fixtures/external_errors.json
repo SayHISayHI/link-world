@@ -1,0 +1,33 @@
+{
+  "model_auth_error": {
+    "status": 401,
+    "body": {
+      "error": {
+        "message": "Invalid API key",
+        "type": "authentication_error"
+      }
+    },
+    "expectedIpcErrorCode": "ERR_MODEL_AUTH",
+    "retryable": false
+  },
+  "model_rate_limit": {
+    "status": 429,
+    "headers": {
+      "retry-after": "30"
+    },
+    "body": {
+      "error": {
+        "message": "Rate limit exceeded",
+        "type": "rate_limit_error"
+      }
+    },
+    "expectedIpcErrorCode": "ERR_MODEL_RATE_LIMIT",
+    "retryable": true
+  },
+  "url_timeout": {
+    "status": null,
+    "error": "connect timeout",
+    "expectedIpcErrorCode": "ERR_NETWORK_TIMEOUT",
+    "retryable": true
+  }
+}
