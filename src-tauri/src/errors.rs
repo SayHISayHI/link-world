@@ -8,6 +8,12 @@ pub enum AppError {
     ObjectNotFound,
     #[error("database constraint failed")]
     DbConstraint,
+    #[error("database migration failed: {0}")]
+    DbMigration(String),
+    #[error("database operation failed: {0}")]
+    Database(String),
+    #[error("filesystem error: {0}")]
+    Filesystem(String),
     #[error("network timeout")]
     NetworkTimeout,
     #[error("parse failed: {0}")]
@@ -84,6 +90,9 @@ impl From<AppError> for IpcError {
         let code = match error {
             AppError::ObjectNotFound => IpcErrorCode::ErrObjectNotFound,
             AppError::DbConstraint => IpcErrorCode::ErrDbConstraint,
+            AppError::DbMigration(_) => IpcErrorCode::ErrDbMigration,
+            AppError::Database(_) => IpcErrorCode::ErrUnknown,
+            AppError::Filesystem(_) => IpcErrorCode::ErrUnknown,
             AppError::NetworkTimeout => IpcErrorCode::ErrNetworkTimeout,
             AppError::ParseFailed(_) => IpcErrorCode::ErrParseFailed,
             AppError::ModelAuth => IpcErrorCode::ErrModelAuth,
@@ -103,3 +112,19 @@ impl From<AppError> for IpcError {
     }
 }
 
+impl From<sqlx::Error> for AppError {
+    fn from(error: sqlx::Error) -> Self {
+        match error {
+            sqlx::Error::Database(database_error) if database_error.is_unique_violation() => {
+                AppError::DbConstraint
+            }
+            other => AppError::Database(other.to_string()),
+        }
+    }
+}
+
+impl From<std::io::Error> for AppError {
+    fn from(error: std::io::Error) -> Self {
+        AppError::Filesystem(error.to_string())
+    }
+}

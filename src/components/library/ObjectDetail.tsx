@@ -1,17 +1,29 @@
 import { Activity, RefreshCw } from "lucide-react";
 import { Button } from "../ui/button";
-import type { KnowledgeObjectSummary, PingResponse } from "../../types/api";
+import type { KnowledgeObject, KnowledgeObjectDetail, PingResponse } from "../../types/api";
 import type { AppUiError } from "../../lib/errors";
 
 interface ObjectDetailProps {
-  object?: KnowledgeObjectSummary;
+  object?: KnowledgeObject;
+  detail?: KnowledgeObjectDetail;
+  detailLoading: boolean;
+  detailError?: AppUiError;
   pingData?: PingResponse;
   pingError?: AppUiError;
   pingLoading: boolean;
   onPing: () => void;
 }
 
-export function ObjectDetail({ object, pingData, pingError, pingLoading, onPing }: ObjectDetailProps) {
+export function ObjectDetail({
+  object,
+  detail,
+  detailLoading,
+  detailError,
+  pingData,
+  pingError,
+  pingLoading,
+  onPing,
+}: ObjectDetailProps) {
   if (!object) {
     return (
       <div className="flex h-screen items-center justify-center text-sm text-muted-foreground">
@@ -20,12 +32,19 @@ export function ObjectDetail({ object, pingData, pingError, pingLoading, onPing 
     );
   }
 
+  const title = object.title ?? object.canonicalUrl ?? object.id;
+  const parsedDocument = detail?.parsedDocument;
+  const latestAnalysis = detail?.aiAnalyses[0];
+  const latestEvaluation = detail?.evaluations[0];
+
   return (
     <div className="flex h-screen min-w-0 flex-col">
       <header className="flex h-14 items-center justify-between border-b border-border px-5">
         <div className="min-w-0">
-          <h2 className="truncate text-sm font-semibold">{object.title}</h2>
-          <p className="text-xs text-muted-foreground">{object.type}</p>
+          <h2 className="truncate text-sm font-semibold">{title}</h2>
+          <p className="text-xs text-muted-foreground">
+            {object.type} / {object.lifecycleStatus}
+          </p>
         </div>
         <Button onClick={onPing} disabled={pingLoading} title="Ping backend">
           <RefreshCw className="h-4 w-4" aria-hidden="true" />
@@ -37,17 +56,56 @@ export function ObjectDetail({ object, pingData, pingError, pingLoading, onPing 
           <div className="max-w-3xl">
             <div className="mb-4 flex items-center gap-2 text-xs text-muted-foreground">
               <Activity className="h-4 w-4" aria-hidden="true" />
-              Phase 1 scaffold
+              Local database object
             </div>
-            <h3 className="text-lg font-semibold">Parsed document preview</h3>
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">
-              This scaffold keeps the frontend separated from Tauri commands. The right panel calls the
-              backend through a typed hook and displays the structured IPC response.
-            </p>
+            {detailLoading ? (
+              <p className="text-sm text-muted-foreground">Loading object detail...</p>
+            ) : null}
+            {!detailLoading && detailError ? (
+              <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-800">
+                <p className="font-medium">{detailError.title}</p>
+                <p className="mt-1">{detailError.message}</p>
+              </div>
+            ) : null}
+            {!detailLoading && !detailError ? (
+              <>
+                <h3 className="text-lg font-semibold">{parsedDocument?.title ?? "Parsed document preview"}</h3>
+                {parsedDocument ? (
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-foreground">{parsedDocument.text}</p>
+                ) : (
+                  <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                    No parsed document has been produced for this object yet.
+                  </p>
+                )}
+              </>
+            ) : null}
           </div>
         </article>
         <aside className="border-l border-border bg-background p-4">
-          <h3 className="text-sm font-semibold">Backend IPC</h3>
+          <h3 className="text-sm font-semibold">Object Signals</h3>
+          <div className="mt-3 rounded-md border border-border bg-surface p-3 text-xs leading-5">
+            <p className="font-medium">Analysis</p>
+            {latestAnalysis ? (
+              <div className="mt-1 text-muted-foreground">
+                <p>{latestAnalysis.summary ?? "Analysis exists without summary."}</p>
+                {latestAnalysis.qualityScore !== undefined ? <p>Quality {latestAnalysis.qualityScore}</p> : null}
+              </div>
+            ) : (
+              <p className="mt-1 text-muted-foreground">No AI analysis yet.</p>
+            )}
+          </div>
+          <div className="mt-3 rounded-md border border-border bg-surface p-3 text-xs leading-5">
+            <p className="font-medium">Evaluation</p>
+            {latestEvaluation ? (
+              <div className="mt-1 text-muted-foreground">
+                <p>{latestEvaluation.verdict}</p>
+                {latestEvaluation.score !== undefined ? <p>Score {latestEvaluation.score}</p> : null}
+              </div>
+            ) : (
+              <p className="mt-1 text-muted-foreground">No evaluation run yet.</p>
+            )}
+          </div>
+          <h3 className="mt-4 text-sm font-semibold">Backend IPC</h3>
           <div className="mt-3 rounded-md border border-border bg-surface p-3 text-xs leading-5">
             {pingLoading ? <p className="text-muted-foreground">Pinging backend...</p> : null}
             {pingData ? (
@@ -71,4 +129,3 @@ export function ObjectDetail({ object, pingData, pingError, pingLoading, onPing 
     </div>
   );
 }
-
