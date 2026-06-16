@@ -61,6 +61,15 @@
 - 发布和运维争议以 `operational_readiness.md` 为准。
 - 架构取舍的历史原因以 `adr/` 为准。
 
+## Documentation Versioning Policy
+
+- 主文档始终保持最新状态。
+- 普通迭代直接修改对应 source-of-truth 文档。
+- 不创建零散的 `v2`、`v3`、`new`、`final`、`updated` 等副本文档。
+- 重大架构决策必须更新主文档，并新增或更新 `docs/adr/` 下的 ADR。
+- ADR 记录为什么做出决策；主文档记录当前应该如何实现。
+- 如果代码和文档不一致，必须先解决不一致，再继续实现。
+
 ## Change Policy
 
 - 修改 API contract 时，必须同步检查 PRD、schema、实现计划和安全文档。
@@ -76,3 +85,4 @@
 - 修改第三方 API 调用、模型供应商或重试策略时，必须更新 `external_api_resilience.md`。
 - 修改发布、打包、签名或 CI 门槛时，必须更新 `devops_and_ci.md`。
 - 修改测试约束、fixtures 或 eval 基准时，必须更新 `tests/docs/testing_strategy.md`。
+- 任何代码变更如果影响架构、数据模型、API 契约、状态机、安全策略、同步语义、持久化、AI 行为、插件权限、发布流程或测试策略，必须同步修改相关文档。
