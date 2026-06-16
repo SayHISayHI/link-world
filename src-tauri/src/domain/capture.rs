@@ -53,6 +53,27 @@ pub struct SubmitCaptureResponse {
 }
 
 #[derive(Debug, Clone)]
+pub struct CaptureFetchJobRecord {
+    pub id: String,
+    pub object_id: String,
+    pub user_id: String,
+    pub canonical_url: Option<String>,
+    pub attempt_count: i64,
+    pub max_attempts: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptureFetchJobRunResult {
+    pub job_id: String,
+    pub object_id: String,
+    pub status: String,
+    pub lifecycle_status: String,
+    pub parsed_document_id: Option<String>,
+    pub failure_reason: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct CaptureSubmission {
     pub object_id: String,
     pub object_type: String,

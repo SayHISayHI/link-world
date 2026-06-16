@@ -1,24 +1,34 @@
 use crate::domain::capture::{
-    CaptureBackgroundJobSubmission, CaptureDomainEventSubmission, CaptureParsedDocumentSubmission,
-    CaptureSnapshotSubmission, CaptureSubmission, RawCaptureItem, SubmitCaptureResponse,
+    CaptureBackgroundJobSubmission, CaptureDomainEventSubmission, CaptureFetchJobRecord,
+    CaptureFetchJobRunResult, CaptureParsedDocumentSubmission, CaptureSnapshotSubmission,
+    CaptureSubmission, RawCaptureItem, SubmitCaptureResponse,
 };
 use crate::errors::{AppError, AppResult};
 use crate::repositories::capture::CaptureRepository;
 use crate::state::AppState;
 use crate::storage::object_store::{sha256_hex, ObjectStore};
 use chrono::Utc;
+use reqwest::Url;
+use scraper::{Html, Selector};
 use serde_json::json;
 use sqlx::SqlitePool;
+use std::time::Duration;
 use uuid::Uuid;
 
 const LOCAL_USER_ID: &str = "local";
 const INLINE_CAPTURE_PARSER_ID: &str = "builtin.inline_capture_parser";
 const INLINE_CAPTURE_PARSER_VERSION: &str = "0.1.0";
+const HTML_FETCH_PARSER_ID: &str = "builtin.html_fetch_parser";
+const HTML_FETCH_PARSER_VERSION: &str = "0.1.0";
 const MAX_RAW_CAPTURE_BYTES: usize = 5 * 1024 * 1024;
+const MAX_FETCH_BYTES: usize = 5 * 1024 * 1024;
+const FETCH_TIMEOUT_SECONDS: u64 = 20;
 
+#[derive(Clone)]
 pub struct CaptureService {
     pool: SqlitePool,
     object_store: ObjectStore,
+    http_client: reqwest::Client,
 }
 
 impl CaptureService {
@@ -26,12 +36,17 @@ impl CaptureService {
         Ok(Self {
             pool: state.database()?.pool().clone(),
             object_store: state.object_store()?.clone(),
+            http_client: build_http_client()?,
         })
     }
 
     #[cfg(test)]
     pub fn new(pool: SqlitePool, object_store: ObjectStore) -> Self {
-        Self { pool, object_store }
+        Self {
+            pool,
+            object_store,
+            http_client: build_http_client().expect("test HTTP client should build"),
+        }
     }
 
     pub async fn submit(&self, item: RawCaptureItem) -> AppResult<SubmitCaptureResponse> {
@@ -40,7 +55,10 @@ impl CaptureService {
         let object_id = Uuid::new_v4().to_string();
         let snapshot_id = Uuid::new_v4().to_string();
         let job_id = Uuid::new_v4().to_string();
-        let now = item.captured_at.clone().unwrap_or_else(|| Utc::now().to_rfc3339());
+        let now = item
+            .captured_at
+            .clone()
+            .unwrap_or_else(|| Utc::now().to_rfc3339());
         let snapshot_bytes = serde_json::to_vec_pretty(&item)
             .map_err(|error| AppError::Unknown(error.to_string()))?;
 
@@ -57,7 +75,12 @@ impl CaptureService {
             .await?;
 
         let parsed = build_inline_parsed_document(&item, &now)?;
-        let lifecycle_status = if parsed.is_some() { "parsed" } else { "captured" }.to_string();
+        let lifecycle_status = if parsed.is_some() {
+            "parsed"
+        } else {
+            "captured"
+        }
+        .to_string();
         let job_type = if parsed.is_some() {
             "search.reindex_object"
         } else {
@@ -69,7 +92,9 @@ impl CaptureService {
             snapshot_type: infer_snapshot_type(&item).to_string(),
             storage_uri: stored_snapshot.storage_uri,
             content_hash: stored_snapshot.content_hash,
-            parser_id: parsed.as_ref().map(|_| INLINE_CAPTURE_PARSER_ID.to_string()),
+            parser_id: parsed
+                .as_ref()
+                .map(|_| INLINE_CAPTURE_PARSER_ID.to_string()),
             parser_version: parsed
                 .as_ref()
                 .map(|_| INLINE_CAPTURE_PARSER_VERSION.to_string()),
@@ -79,9 +104,15 @@ impl CaptureService {
         let submission = CaptureSubmission {
             object_id: object_id.clone(),
             object_type: infer_object_type(&item),
-            user_id: item.user_id.clone().unwrap_or_else(|| LOCAL_USER_ID.to_string()),
+            user_id: item
+                .user_id
+                .clone()
+                .unwrap_or_else(|| LOCAL_USER_ID.to_string()),
             title: normalized_title(&item),
-            canonical_url: item.canonical_url.clone().or_else(|| item.source_url.clone()),
+            canonical_url: item
+                .canonical_url
+                .clone()
+                .or_else(|| item.source_url.clone()),
             source_platform: item.source_platform.clone(),
             author: item.author.clone(),
             privacy_level: item.privacy_level.clone(),
@@ -118,6 +149,306 @@ impl CaptureService {
 
         Ok(response)
     }
+
+    pub async fn run_fetch_job(&self, job_id: &str) -> AppResult<Option<CaptureFetchJobRunResult>> {
+        let now = Utc::now().to_rfc3339();
+        let locked_by = format!("link-world-{}", Uuid::new_v4());
+        let mut tx = self.pool.begin().await?;
+        let job =
+            CaptureRepository::claim_fetch_job_by_id(&mut tx, job_id, &locked_by, &now).await?;
+        tx.commit().await?;
+
+        let Some(job) = job else {
+            return Ok(None);
+        };
+
+        let outcome = self.fetch_and_parse_job(&job).await;
+
+        match outcome {
+            Ok(parsed) => self.complete_fetch_job(job, parsed).await.map(Some),
+            Err(error) => self.fail_fetch_job(job, error.to_string()).await.map(Some),
+        }
+    }
+
+    async fn fetch_and_parse_job(
+        &self,
+        job: &CaptureFetchJobRecord,
+    ) -> AppResult<FetchedHtmlDocument> {
+        if job.attempt_count >= job.max_attempts {
+            return Err(AppError::PolicyDenied(
+                "capture fetch job exceeded max attempts".to_string(),
+            ));
+        }
+
+        let url = job
+            .canonical_url
+            .as_deref()
+            .ok_or_else(|| AppError::ParseFailed("capture has no canonical URL".to_string()))?;
+        let url = Url::parse(url).map_err(|error| AppError::ParseFailed(error.to_string()))?;
+
+        if !matches!(url.scheme(), "http" | "https") {
+            return Err(AppError::PolicyDenied(format!(
+                "unsupported URL scheme: {}",
+                url.scheme()
+            )));
+        }
+
+        let response = self
+            .http_client
+            .get(url)
+            .send()
+            .await
+            .map_err(map_reqwest_error)?;
+        let status = response.status();
+
+        if !status.is_success() {
+            return Err(AppError::ParseFailed(format!("URL returned HTTP {status}")));
+        }
+
+        let bytes = response.bytes().await.map_err(map_reqwest_error)?;
+        if bytes.len() > MAX_FETCH_BYTES {
+            return Err(AppError::PolicyDenied(format!(
+                "fetched HTML exceeds {} bytes",
+                MAX_FETCH_BYTES
+            )));
+        }
+
+        let html = String::from_utf8_lossy(&bytes).to_string();
+        parse_fetched_html(html).await
+    }
+
+    async fn complete_fetch_job(
+        &self,
+        job: CaptureFetchJobRecord,
+        parsed: FetchedHtmlDocument,
+    ) -> AppResult<CaptureFetchJobRunResult> {
+        let now = Utc::now().to_rfc3339();
+        let snapshot_id = Uuid::new_v4().to_string();
+        let parsed_document_id = Uuid::new_v4().to_string();
+        let stored_snapshot = self
+            .object_store
+            .write_capture_artifact(
+                &job.object_id,
+                &snapshot_id,
+                "html",
+                parsed.raw_html.as_bytes().to_vec(),
+            )
+            .await?;
+
+        let text_content = parsed.text_content.trim().to_string();
+        if text_content.is_empty() {
+            return self
+                .fail_fetch_job(
+                    job,
+                    "fetched HTML did not contain readable text".to_string(),
+                )
+                .await;
+        }
+
+        let snapshot = CaptureSnapshotSubmission {
+            id: snapshot_id.clone(),
+            snapshot_type: "html".to_string(),
+            storage_uri: stored_snapshot.storage_uri,
+            content_hash: stored_snapshot.content_hash,
+            parser_id: Some(HTML_FETCH_PARSER_ID.to_string()),
+            parser_version: Some(HTML_FETCH_PARSER_VERSION.to_string()),
+            captured_at: now.clone(),
+        };
+        let parsed_document = CaptureParsedDocumentSubmission {
+            id: parsed_document_id.clone(),
+            title: parsed.title.clone(),
+            text_content,
+            markdown_content: Some(parsed.markdown_content),
+            language: parsed.language,
+            word_count: parsed.word_count,
+            content_hash: parsed.content_hash,
+            parser_id: HTML_FETCH_PARSER_ID.to_string(),
+            parser_version: HTML_FETCH_PARSER_VERSION.to_string(),
+            created_at: now.clone(),
+        };
+        let events = build_fetch_success_events(&job, &snapshot_id, &parsed_document_id, &now);
+
+        let mut tx = self.pool.begin().await?;
+        CaptureRepository::complete_fetch_job(
+            &mut tx,
+            &job.id,
+            &job.object_id,
+            &job.user_id,
+            parsed.title.as_deref(),
+            &snapshot,
+            &parsed_document,
+            &events,
+            &now,
+        )
+        .await?;
+        tx.commit().await?;
+
+        Ok(CaptureFetchJobRunResult {
+            job_id: job.id,
+            object_id: job.object_id,
+            status: "succeeded".to_string(),
+            lifecycle_status: "parsed".to_string(),
+            parsed_document_id: Some(parsed_document_id),
+            failure_reason: None,
+        })
+    }
+
+    async fn fail_fetch_job(
+        &self,
+        job: CaptureFetchJobRecord,
+        failure_reason: String,
+    ) -> AppResult<CaptureFetchJobRunResult> {
+        let now = Utc::now().to_rfc3339();
+        let event = build_fetch_failed_event(&job, &failure_reason, &now);
+        let mut tx = self.pool.begin().await?;
+
+        CaptureRepository::fail_fetch_job(
+            &mut tx,
+            &job.id,
+            &job.object_id,
+            &job.user_id,
+            &failure_reason,
+            &event,
+            &now,
+        )
+        .await?;
+        tx.commit().await?;
+
+        Ok(CaptureFetchJobRunResult {
+            job_id: job.id,
+            object_id: job.object_id,
+            status: "failed".to_string(),
+            lifecycle_status: "failed".to_string(),
+            parsed_document_id: None,
+            failure_reason: Some(failure_reason),
+        })
+    }
+}
+
+#[derive(Debug)]
+struct FetchedHtmlDocument {
+    raw_html: String,
+    title: Option<String>,
+    text_content: String,
+    markdown_content: String,
+    language: Option<String>,
+    word_count: i64,
+    content_hash: String,
+}
+
+fn build_http_client() -> AppResult<reqwest::Client> {
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(FETCH_TIMEOUT_SECONDS))
+        .redirect(reqwest::redirect::Policy::limited(5))
+        .user_agent(format!(
+            "LinkWorld/{} local-first capture",
+            env!("CARGO_PKG_VERSION")
+        ))
+        .build()
+        .map_err(|error| AppError::Unknown(error.to_string()))
+}
+
+fn map_reqwest_error(error: reqwest::Error) -> AppError {
+    if error.is_timeout() {
+        AppError::NetworkTimeout
+    } else {
+        AppError::ParseFailed(error.to_string())
+    }
+}
+
+async fn parse_fetched_html(html: String) -> AppResult<FetchedHtmlDocument> {
+    tokio::task::spawn_blocking(move || parse_fetched_html_sync(html))
+        .await
+        .map_err(|error| AppError::ParseFailed(error.to_string()))?
+}
+
+fn parse_fetched_html_sync(html: String) -> AppResult<FetchedHtmlDocument> {
+    let document = Html::parse_document(&html);
+    let title = select_first_text(&document, "title");
+    let description = select_first_attr(&document, r#"meta[name="description"]"#, "content");
+    let language = select_first_attr(&document, "html", "lang");
+    let text_content = select_body_text(&document)
+        .or_else(|| description.clone())
+        .unwrap_or_else(|| strip_html_tags(&html));
+    let text_content = normalize_whitespace(&text_content);
+
+    if text_content.is_empty() {
+        return Err(AppError::ParseFailed(
+            "HTML document did not contain readable text".to_string(),
+        ));
+    }
+
+    let markdown_content =
+        build_markdown_preview(title.as_deref(), description.as_deref(), &text_content);
+    let word_count = text_content.split_whitespace().count() as i64;
+    let content_hash = sha256_hex(text_content.as_bytes());
+
+    Ok(FetchedHtmlDocument {
+        raw_html: html,
+        title,
+        text_content,
+        markdown_content,
+        language,
+        word_count,
+        content_hash,
+    })
+}
+
+fn select_first_text(document: &Html, selector: &str) -> Option<String> {
+    let selector = Selector::parse(selector).ok()?;
+    document
+        .select(&selector)
+        .next()
+        .map(|element| element.text().collect::<Vec<_>>().join(" "))
+        .map(|text| normalize_whitespace(&text))
+        .filter(|text| !text.is_empty())
+}
+
+fn select_first_attr(document: &Html, selector: &str, attr: &str) -> Option<String> {
+    let selector = Selector::parse(selector).ok()?;
+    document
+        .select(&selector)
+        .next()
+        .and_then(|element| element.value().attr(attr))
+        .map(normalize_whitespace)
+        .filter(|text| !text.is_empty())
+}
+
+fn select_body_text(document: &Html) -> Option<String> {
+    let selector = Selector::parse("body").ok()?;
+    document
+        .select(&selector)
+        .next()
+        .map(|element| element.text().collect::<Vec<_>>().join(" "))
+        .map(|text| normalize_whitespace(&text))
+        .filter(|text| !text.is_empty())
+}
+
+fn build_markdown_preview(
+    title: Option<&str>,
+    description: Option<&str>,
+    text_content: &str,
+) -> String {
+    let mut markdown = String::new();
+
+    if let Some(title) = title {
+        markdown.push_str("# ");
+        markdown.push_str(title);
+        markdown.push_str("\n\n");
+    }
+
+    if let Some(description) = description {
+        markdown.push_str("> ");
+        markdown.push_str(description);
+        markdown.push_str("\n\n");
+    }
+
+    markdown.push_str(text_content);
+    markdown
+}
+
+fn normalize_whitespace(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn validate_capture_item(item: &RawCaptureItem) -> AppResult<()> {
@@ -330,7 +661,10 @@ fn build_domain_events(
     snapshot_id: &str,
     occurred_at: &str,
 ) -> Vec<CaptureDomainEventSubmission> {
-    let user_id = item.user_id.clone().unwrap_or_else(|| LOCAL_USER_ID.to_string());
+    let user_id = item
+        .user_id
+        .clone()
+        .unwrap_or_else(|| LOCAL_USER_ID.to_string());
     let mut events = Vec::with_capacity(3);
 
     events.push(CaptureDomainEventSubmission {
@@ -379,6 +713,61 @@ fn build_domain_events(
     events
 }
 
+fn build_fetch_success_events(
+    job: &CaptureFetchJobRecord,
+    snapshot_id: &str,
+    parsed_document_id: &str,
+    occurred_at: &str,
+) -> Vec<CaptureDomainEventSubmission> {
+    vec![
+        CaptureDomainEventSubmission {
+            id: Uuid::new_v4().to_string(),
+            event_type: "snapshot.created".to_string(),
+            event_version: 1,
+            user_id: job.user_id.clone(),
+            payload_json: json!({
+                "snapshotId": snapshot_id,
+                "source": "capture.fetch_url",
+            })
+            .to_string(),
+            occurred_at: occurred_at.to_string(),
+        },
+        CaptureDomainEventSubmission {
+            id: Uuid::new_v4().to_string(),
+            event_type: "object.parsed".to_string(),
+            event_version: 1,
+            user_id: job.user_id.clone(),
+            payload_json: json!({
+                "objectId": job.object_id,
+                "parsedDocumentId": parsed_document_id,
+                "parserId": HTML_FETCH_PARSER_ID,
+            })
+            .to_string(),
+            occurred_at: occurred_at.to_string(),
+        },
+    ]
+}
+
+fn build_fetch_failed_event(
+    job: &CaptureFetchJobRecord,
+    failure_reason: &str,
+    occurred_at: &str,
+) -> CaptureDomainEventSubmission {
+    CaptureDomainEventSubmission {
+        id: Uuid::new_v4().to_string(),
+        event_type: "object.failed".to_string(),
+        event_version: 1,
+        user_id: job.user_id.clone(),
+        payload_json: json!({
+            "objectId": job.object_id,
+            "jobId": job.id,
+            "reason": failure_reason,
+        })
+        .to_string(),
+        occurred_at: occurred_at.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::CaptureService;
@@ -386,6 +775,8 @@ mod tests {
     use crate::storage::database::Database;
     use crate::storage::object_store::ObjectStore;
     use serde_json::json;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
 
     #[tokio::test]
     async fn submit_text_capture_writes_object_snapshot_document_event_and_job() {
@@ -483,6 +874,147 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[tokio::test]
+    async fn run_fetch_job_fetches_html_and_marks_object_parsed() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        let object_store = test_object_store();
+        let service = CaptureService::new(database.pool().clone(), object_store);
+        let url = start_test_html_server(
+            r#"<!doctype html>
+            <html lang="en">
+              <head><title>Fetched Article</title><meta name="description" content="A useful article."></head>
+              <body><main><h1>Fetched Article</h1><p>This page was fetched by the local job runner.</p></main></body>
+            </html>"#,
+        )
+        .await;
+
+        let response = service
+            .submit(RawCaptureItem {
+                id: None,
+                user_id: None,
+                source_type: "url".to_string(),
+                source_platform: Some("web".to_string()),
+                source_url: Some(url.clone()),
+                canonical_url: Some(url),
+                title: None,
+                author: None,
+                captured_at: Some("2026-06-16T00:00:00Z".to_string()),
+                raw_html: None,
+                raw_text: None,
+                assets: Vec::new(),
+                metadata: json!({}),
+                privacy_level: "personal".to_string(),
+                permission_context: confirmed_permission(),
+            })
+            .await
+            .expect("capture should be submitted");
+
+        assert!(response.parsed_document_id.is_none());
+
+        let run_result = service
+            .run_fetch_job(&response.job_id)
+            .await
+            .expect("job runner should not error")
+            .expect("job should be claimed");
+
+        assert_eq!(run_result.status, "succeeded");
+        assert_eq!(run_result.lifecycle_status, "parsed");
+        assert!(run_result.parsed_document_id.is_some());
+
+        let lifecycle_status: String =
+            sqlx::query_scalar("SELECT lifecycle_status FROM knowledge_objects WHERE id = ?1")
+                .bind(&response.object_id)
+                .fetch_one(database.pool())
+                .await
+                .expect("object status should be readable");
+        let title: String = sqlx::query_scalar("SELECT title FROM knowledge_objects WHERE id = ?1")
+            .bind(&response.object_id)
+            .fetch_one(database.pool())
+            .await
+            .expect("object title should be readable");
+        let job_status: String =
+            sqlx::query_scalar("SELECT status FROM background_jobs WHERE id = ?1")
+                .bind(&response.job_id)
+                .fetch_one(database.pool())
+                .await
+                .expect("job status should be readable");
+        let snapshot_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM source_snapshots WHERE object_id = ?1")
+                .bind(&response.object_id)
+                .fetch_one(database.pool())
+                .await
+                .expect("snapshot count should be readable");
+        let parsed_text: String =
+            sqlx::query_scalar("SELECT text_content FROM parsed_documents WHERE object_id = ?1")
+                .bind(&response.object_id)
+                .fetch_one(database.pool())
+                .await
+                .expect("parsed text should be readable");
+
+        assert_eq!(lifecycle_status, "parsed");
+        assert_eq!(title, "Fetched Article");
+        assert_eq!(job_status, "succeeded");
+        assert_eq!(snapshot_count, 2);
+        assert!(parsed_text.contains("local job runner"));
+    }
+
+    #[tokio::test]
+    async fn run_fetch_job_marks_object_failed_for_unsupported_scheme() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        let object_store = test_object_store();
+        let service = CaptureService::new(database.pool().clone(), object_store);
+
+        let response = service
+            .submit(RawCaptureItem {
+                id: None,
+                user_id: None,
+                source_type: "url".to_string(),
+                source_platform: None,
+                source_url: Some("ftp://example.com/archive".to_string()),
+                canonical_url: Some("ftp://example.com/archive".to_string()),
+                title: None,
+                author: None,
+                captured_at: None,
+                raw_html: None,
+                raw_text: None,
+                assets: Vec::new(),
+                metadata: json!({}),
+                privacy_level: "personal".to_string(),
+                permission_context: confirmed_permission(),
+            })
+            .await
+            .expect("capture should be submitted");
+
+        let run_result = service
+            .run_fetch_job(&response.job_id)
+            .await
+            .expect("job runner should record failure")
+            .expect("job should be claimed");
+
+        assert_eq!(run_result.status, "failed");
+        assert_eq!(run_result.lifecycle_status, "failed");
+
+        let lifecycle_status: String =
+            sqlx::query_scalar("SELECT lifecycle_status FROM knowledge_objects WHERE id = ?1")
+                .bind(&response.object_id)
+                .fetch_one(database.pool())
+                .await
+                .expect("object status should be readable");
+        let job_status: String =
+            sqlx::query_scalar("SELECT status FROM background_jobs WHERE id = ?1")
+                .bind(&response.job_id)
+                .fetch_one(database.pool())
+                .await
+                .expect("job status should be readable");
+
+        assert_eq!(lifecycle_status, "failed");
+        assert_eq!(job_status, "failed");
+    }
+
     fn confirmed_permission() -> PermissionContext {
         PermissionContext {
             acquisition_mode: "user_action".to_string(),
@@ -496,5 +1028,34 @@ mod tests {
     fn test_object_store() -> ObjectStore {
         let root = std::env::temp_dir().join(format!("link-world-test-{}", uuid::Uuid::new_v4()));
         ObjectStore::initialize(root).expect("object store should initialize")
+    }
+
+    async fn start_test_html_server(body: &'static str) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("test server should bind");
+        let addr = listener
+            .local_addr()
+            .expect("test server address should be readable");
+
+        tokio::spawn(async move {
+            let (mut socket, _) = listener
+                .accept()
+                .await
+                .expect("test server should accept one request");
+            let mut buffer = [0_u8; 1024];
+            let _ = socket.read(&mut buffer).await;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            socket
+                .write_all(response.as_bytes())
+                .await
+                .expect("test server should write response");
+        });
+
+        format!("http://{addr}/article")
     }
 }

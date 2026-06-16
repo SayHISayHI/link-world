@@ -29,10 +29,22 @@ impl ObjectStore {
         snapshot_id: &str,
         bytes: Vec<u8>,
     ) -> AppResult<StoredObject> {
+        self.write_capture_artifact(object_id, snapshot_id, "json", bytes)
+            .await
+    }
+
+    pub async fn write_capture_artifact(
+        &self,
+        object_id: &str,
+        snapshot_id: &str,
+        extension: &str,
+        bytes: Vec<u8>,
+    ) -> AppResult<StoredObject> {
+        let extension = normalize_extension(extension)?;
         let content_hash = sha256_hex(&bytes);
         let object_dir = self.root.join(object_id);
-        let path = object_dir.join(format!("{snapshot_id}.json"));
-        let storage_uri = format!("local://objects/{object_id}/{snapshot_id}.json");
+        let path = object_dir.join(format!("{snapshot_id}.{extension}"));
+        let storage_uri = format!("local://objects/{object_id}/{snapshot_id}.{extension}");
 
         tokio::task::spawn_blocking(move || -> AppResult<()> {
             std::fs::create_dir_all(&object_dir)?;
@@ -47,6 +59,23 @@ impl ObjectStore {
             content_hash,
         })
     }
+}
+
+fn normalize_extension(extension: &str) -> AppResult<String> {
+    let trimmed = extension.trim().trim_start_matches('.');
+
+    if trimmed.is_empty()
+        || trimmed.len() > 16
+        || !trimmed
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric())
+    {
+        return Err(AppError::Filesystem(format!(
+            "invalid object store extension: {extension}"
+        )));
+    }
+
+    Ok(trimmed.to_ascii_lowercase())
 }
 
 pub fn sha256_hex(bytes: &[u8]) -> String {
@@ -74,7 +103,10 @@ mod tests {
             .await
             .expect("snapshot should be written");
 
-        assert_eq!(stored.storage_uri, "local://objects/object-1/snapshot-1.json");
+        assert_eq!(
+            stored.storage_uri,
+            "local://objects/object-1/snapshot-1.json"
+        );
         assert_eq!(stored.content_hash, sha256_hex(b"{\"ok\":true}"));
     }
 }

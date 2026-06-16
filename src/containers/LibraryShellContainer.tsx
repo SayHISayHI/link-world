@@ -43,6 +43,32 @@ export function LibraryShellContainer() {
   }, [refreshRecentObjects]);
 
   useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
+
+    void import("@tauri-apps/api/event")
+      .then(({ listen }) => listen("library://objects-updated", () => {
+        void refreshRecentObjects();
+      }))
+      .then((unsubscribe) => {
+        if (disposed) {
+          unsubscribe();
+          return;
+        }
+
+        unlisten = unsubscribe;
+      })
+      .catch(() => {
+        unlisten = undefined;
+      });
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [refreshRecentObjects]);
+
+  useEffect(() => {
     setObjects(recentObjects);
   }, [recentObjects, setObjects]);
 

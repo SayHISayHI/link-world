@@ -1,9 +1,10 @@
 use crate::domain::capture::{
-    CaptureBackgroundJobSubmission, CaptureDomainEventSubmission, CaptureParsedDocumentSubmission,
-    CaptureSnapshotSubmission, CaptureSubmission,
+    CaptureBackgroundJobSubmission, CaptureDomainEventSubmission, CaptureFetchJobRecord,
+    CaptureParsedDocumentSubmission, CaptureSnapshotSubmission, CaptureSubmission,
 };
 use crate::errors::AppResult;
-use sqlx::{Sqlite, Transaction};
+use sqlx::sqlite::SqliteRow;
+use sqlx::{Row, Sqlite, Transaction};
 
 pub struct CaptureRepository;
 
@@ -32,6 +33,179 @@ impl CaptureRepository {
         }
 
         Ok(())
+    }
+
+    pub async fn claim_fetch_job_by_id(
+        tx: &mut Transaction<'_, Sqlite>,
+        job_id: &str,
+        locked_by: &str,
+        now: &str,
+    ) -> AppResult<Option<CaptureFetchJobRecord>> {
+        let row = sqlx::query(
+            r#"
+            SELECT
+                jobs.id,
+                jobs.object_id,
+                jobs.attempt_count,
+                jobs.max_attempts,
+                objects.user_id,
+                objects.canonical_url
+            FROM background_jobs AS jobs
+            INNER JOIN knowledge_objects AS objects ON objects.id = jobs.object_id
+            WHERE jobs.id = ?1
+              AND jobs.job_type = 'capture.fetch_url'
+              AND jobs.status = 'queued'
+            LIMIT 1
+            "#,
+        )
+        .bind(job_id)
+        .fetch_optional(&mut **tx)
+        .await?;
+
+        let Some(row) = row else {
+            return Ok(None);
+        };
+
+        let record = fetch_job_from_row(row);
+
+        sqlx::query(
+            r#"
+            UPDATE background_jobs
+            SET
+                status = 'running',
+                attempt_count = attempt_count + 1,
+                locked_at = ?2,
+                locked_by = ?3,
+                updated_at = ?2
+            WHERE id = ?1
+            "#,
+        )
+        .bind(job_id)
+        .bind(now)
+        .bind(locked_by)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(Some(record))
+    }
+
+    pub async fn complete_fetch_job(
+        tx: &mut Transaction<'_, Sqlite>,
+        job_id: &str,
+        object_id: &str,
+        user_id: &str,
+        title: Option<&str>,
+        snapshot: &CaptureSnapshotSubmission,
+        parsed_document: &CaptureParsedDocumentSubmission,
+        events: &[CaptureDomainEventSubmission],
+        now: &str,
+    ) -> AppResult<()> {
+        insert_source_snapshot(tx, object_id, snapshot).await?;
+        insert_parsed_document(tx, object_id, &snapshot.id, parsed_document).await?;
+
+        sqlx::query(
+            r#"
+            UPDATE knowledge_objects
+            SET
+                title = COALESCE(NULLIF(title, ''), ?1),
+                lifecycle_status = 'parsed',
+                failure_reason = NULL,
+                updated_at = ?2
+            WHERE id = ?3
+            "#,
+        )
+        .bind(title)
+        .bind(now)
+        .bind(object_id)
+        .execute(&mut **tx)
+        .await?;
+
+        sqlx::query(
+            r#"
+            UPDATE background_jobs
+            SET
+                status = 'succeeded',
+                locked_at = NULL,
+                locked_by = NULL,
+                last_error = NULL,
+                updated_at = ?2
+            WHERE id = ?1
+            "#,
+        )
+        .bind(job_id)
+        .bind(now)
+        .execute(&mut **tx)
+        .await?;
+
+        for event in events {
+            insert_domain_event(tx, object_id, event).await?;
+        }
+
+        insert_audit_log(tx, user_id, "capture.fetch_url.succeeded", object_id, now).await?;
+
+        Ok(())
+    }
+
+    pub async fn fail_fetch_job(
+        tx: &mut Transaction<'_, Sqlite>,
+        job_id: &str,
+        object_id: &str,
+        user_id: &str,
+        failure_reason: &str,
+        event: &CaptureDomainEventSubmission,
+        now: &str,
+    ) -> AppResult<()> {
+        let failure_reason = truncate_failure_reason(failure_reason);
+
+        sqlx::query(
+            r#"
+            UPDATE knowledge_objects
+            SET
+                lifecycle_status = 'failed',
+                failure_reason = ?1,
+                updated_at = ?2
+            WHERE id = ?3
+            "#,
+        )
+        .bind(&failure_reason)
+        .bind(now)
+        .bind(object_id)
+        .execute(&mut **tx)
+        .await?;
+
+        sqlx::query(
+            r#"
+            UPDATE background_jobs
+            SET
+                status = 'failed',
+                locked_at = NULL,
+                locked_by = NULL,
+                last_error = ?1,
+                updated_at = ?2
+            WHERE id = ?3
+            "#,
+        )
+        .bind(&failure_reason)
+        .bind(now)
+        .bind(job_id)
+        .execute(&mut **tx)
+        .await?;
+
+        insert_domain_event(tx, object_id, event).await?;
+        insert_audit_log(tx, user_id, "capture.fetch_url.failed", object_id, now).await?;
+
+        Ok(())
+    }
+}
+
+fn fetch_job_from_row(row: SqliteRow) -> CaptureFetchJobRecord {
+    CaptureFetchJobRecord {
+        id: row.get("id"),
+        object_id: row.get("object_id"),
+        user_id: row.get("user_id"),
+        canonical_url: row.get("canonical_url"),
+        attempt_count: row.get("attempt_count"),
+        max_attempts: row.get("max_attempts"),
     }
 }
 
@@ -212,4 +386,49 @@ async fn insert_domain_event(
     .await?;
 
     Ok(())
+}
+
+async fn insert_audit_log(
+    tx: &mut Transaction<'_, Sqlite>,
+    user_id: &str,
+    action: &str,
+    object_id: &str,
+    created_at: &str,
+) -> AppResult<()> {
+    sqlx::query(
+        r#"
+        INSERT INTO audit_logs (
+            id,
+            user_id,
+            actor_type,
+            actor_id,
+            action,
+            object_id,
+            metadata_json,
+            created_at
+        ) VALUES (?1, ?2, 'system', 'capture.fetch_url', ?3, ?4, '{}', ?5)
+        "#,
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(user_id)
+    .bind(action)
+    .bind(object_id)
+    .bind(created_at)
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(())
+}
+
+fn truncate_failure_reason(reason: &str) -> String {
+    const MAX_FAILURE_REASON_CHARS: usize = 500;
+
+    if reason.chars().count() <= MAX_FAILURE_REASON_CHARS {
+        return reason.to_string();
+    }
+
+    reason
+        .chars()
+        .take(MAX_FAILURE_REASON_CHARS)
+        .collect::<String>()
 }
