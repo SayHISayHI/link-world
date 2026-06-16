@@ -12,6 +12,11 @@ interface ObjectListProps {
   captureValue: string;
   captureLoading: boolean;
   captureError?: AppUiError;
+  captureJob?: {
+    status: string;
+    lifecycleStatus?: string;
+    failureReason?: string;
+  };
   onCaptureValueChange: (value: string) => void;
   onCaptureSubmit: () => void;
   onSelectObject: (objectId: string) => void;
@@ -25,6 +30,7 @@ export function ObjectList({
   captureValue,
   captureLoading,
   captureError,
+  captureJob,
   onCaptureValueChange,
   onCaptureSubmit,
   onSelectObject,
@@ -38,6 +44,7 @@ export function ObjectList({
 
       <CaptureBar
         error={captureError}
+        job={captureJob}
         loading={captureLoading}
         onChange={onCaptureValueChange}
         onSubmit={onCaptureSubmit}

@@ -2,6 +2,7 @@ import { Activity, RefreshCw } from "lucide-react";
 import { Button } from "../ui/button";
 import type { KnowledgeObject, KnowledgeObjectDetail, PingResponse } from "../../types/api";
 import type { AppUiError } from "../../lib/errors";
+import { formatRelativeStatus } from "../../lib/formatting";
 
 interface ObjectDetailProps {
   object?: KnowledgeObject;
@@ -36,6 +37,7 @@ export function ObjectDetail({
   const parsedDocument = detail?.parsedDocument;
   const latestAnalysis = detail?.aiAnalyses[0];
   const latestEvaluation = detail?.evaluations[0];
+  const statusText = formatRelativeStatus(object.lifecycleStatus);
 
   return (
     <div className="flex h-screen min-w-0 flex-col">
@@ -43,7 +45,7 @@ export function ObjectDetail({
         <div className="min-w-0">
           <h2 className="truncate text-sm font-semibold">{title}</h2>
           <p className="text-xs text-muted-foreground">
-            {object.type} / {object.lifecycleStatus}
+            {object.type} / {statusText}
           </p>
         </div>
         <Button onClick={onPing} disabled={pingLoading} title="Ping backend">
@@ -56,8 +58,14 @@ export function ObjectDetail({
           <div className="max-w-3xl">
             <div className="mb-4 flex items-center gap-2 text-xs text-muted-foreground">
               <Activity className="h-4 w-4" aria-hidden="true" />
-              Local database object
+              {statusText}
             </div>
+            {object.failureReason ? (
+              <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-800">
+                <p className="font-medium">Capture failed</p>
+                <p className="mt-1">{object.failureReason}</p>
+              </div>
+            ) : null}
             {detailLoading ? (
               <p className="text-sm text-muted-foreground">Loading object detail...</p>
             ) : null}
@@ -82,7 +90,18 @@ export function ObjectDetail({
           </div>
         </article>
         <aside className="border-l border-border bg-background p-4">
-          <h3 className="text-sm font-semibold">Object Signals</h3>
+          <h3 className="text-sm font-semibold">Capture</h3>
+          <div className="mt-3 rounded-md border border-border bg-surface p-3 text-xs leading-5">
+            <div className="flex items-center justify-between gap-3">
+              <p className="font-medium">Lifecycle</p>
+              <span className="rounded-sm bg-muted px-2 py-1 text-[11px] text-muted-foreground">{statusText}</span>
+            </div>
+            <div className="mt-2 text-muted-foreground">
+              <p>Snapshots {detail?.snapshots.length ?? 0}</p>
+              <p>Parsed document {parsedDocument ? "available" : "pending"}</p>
+            </div>
+          </div>
+          <h3 className="mt-4 text-sm font-semibold">Object Signals</h3>
           <div className="mt-3 rounded-md border border-border bg-surface p-3 text-xs leading-5">
             <p className="font-medium">Analysis</p>
             {latestAnalysis ? (

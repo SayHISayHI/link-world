@@ -10,8 +10,18 @@ import { useRecentObjects } from "../hooks/commands/useRecentObjects";
 import { useSubmitCapture } from "../hooks/commands/useSubmitCapture";
 import { useLibraryStore } from "../store/libraryStore";
 
+interface CaptureJobCompletedPayload {
+  jobId: string;
+  status: "succeeded" | "failed" | "skipped" | string;
+  objectId?: string;
+  lifecycleStatus?: string;
+  parsedDocumentId?: string;
+  failureReason?: string;
+}
+
 export function LibraryShellContainer() {
   const [captureUrl, setCaptureUrl] = useState("");
+  const [lastCaptureJob, setLastCaptureJob] = useState<CaptureJobCompletedPayload>();
   const { objects, selectedObjectId, selectedDetail, selectObject, setObjects, setSelectedDetail } = useLibraryStore();
   const selectedObject = objects.find((object) => object.id === selectedObjectId);
   const { data, error, loading, ping } = usePing();
@@ -44,29 +54,47 @@ export function LibraryShellContainer() {
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    let unlistenCapture: (() => void) | undefined;
     let disposed = false;
 
     void import("@tauri-apps/api/event")
-      .then(({ listen }) => listen("library://objects-updated", () => {
-        void refreshRecentObjects();
-      }))
-      .then((unsubscribe) => {
+      .then(async ({ listen }) => {
+        const unsubscribeLibrary = await listen("library://objects-updated", () => {
+          void refreshRecentObjects();
+        });
+        const unsubscribeCapture = await listen<CaptureJobCompletedPayload>("capture://job-completed", (event) => {
+          setLastCaptureJob(event.payload);
+          void refreshRecentObjects();
+
+          const objectId = event.payload.objectId;
+          if (objectId && objectId === selectedObjectId) {
+            void loadObjectDetail(objectId);
+          }
+        });
+
+        return { unsubscribeCapture, unsubscribeLibrary };
+      })
+      .then(({ unsubscribeCapture, unsubscribeLibrary }) => {
         if (disposed) {
-          unsubscribe();
+          unsubscribeLibrary();
+          unsubscribeCapture();
           return;
         }
 
-        unlisten = unsubscribe;
+        unlisten = unsubscribeLibrary;
+        unlistenCapture = unsubscribeCapture;
       })
       .catch(() => {
         unlisten = undefined;
+        unlistenCapture = undefined;
       });
 
     return () => {
       disposed = true;
       unlisten?.();
+      unlistenCapture?.();
     };
-  }, [refreshRecentObjects]);
+  }, [loadObjectDetail, refreshRecentObjects, selectedObjectId]);
 
   useEffect(() => {
     setObjects(recentObjects);
@@ -128,6 +156,7 @@ export function LibraryShellContainer() {
             captureValue={captureUrl}
             captureLoading={submitCaptureLoading}
             captureError={submitCaptureError}
+            captureJob={lastCaptureJob}
             onCaptureValueChange={setCaptureUrl}
             onCaptureSubmit={handleCaptureSubmit}
             onSelectObject={selectObject}
