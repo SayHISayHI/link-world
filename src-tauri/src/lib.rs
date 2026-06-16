@@ -25,6 +25,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::system::ping,
+            commands::capture::submit_capture,
             commands::library::get_recent_objects,
             commands::library::get_object_detail
         ])

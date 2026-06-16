@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "../components/layout/AppShell";
 import { ThreePaneLayout } from "../components/layout/ThreePaneLayout";
 import { ObjectDetail } from "../components/library/ObjectDetail";
@@ -7,9 +7,11 @@ import { Sidebar } from "../components/library/Sidebar";
 import { useObjectDetail } from "../hooks/commands/useObjectDetail";
 import { usePing } from "../hooks/commands/usePing";
 import { useRecentObjects } from "../hooks/commands/useRecentObjects";
+import { useSubmitCapture } from "../hooks/commands/useSubmitCapture";
 import { useLibraryStore } from "../store/libraryStore";
 
 export function LibraryShellContainer() {
+  const [captureUrl, setCaptureUrl] = useState("");
   const { objects, selectedObjectId, selectedDetail, selectObject, setObjects, setSelectedDetail } = useLibraryStore();
   const selectedObject = objects.find((object) => object.id === selectedObjectId);
   const { data, error, loading, ping } = usePing();
@@ -26,10 +28,19 @@ export function LibraryShellContainer() {
     loadObjectDetail,
     resetObjectDetail,
   } = useObjectDetail();
+  const {
+    error: submitCaptureError,
+    loading: submitCaptureLoading,
+    submitCapture,
+  } = useSubmitCapture();
+
+  const refreshRecentObjects = useCallback(() => {
+    return loadRecentObjects({ limit: 50, offset: 0 });
+  }, [loadRecentObjects]);
 
   useEffect(() => {
-    void loadRecentObjects({ limit: 50, offset: 0 });
-  }, [loadRecentObjects]);
+    void refreshRecentObjects();
+  }, [refreshRecentObjects]);
 
   useEffect(() => {
     setObjects(recentObjects);
@@ -49,6 +60,35 @@ export function LibraryShellContainer() {
     setSelectedDetail(objectDetail);
   }, [objectDetail, setSelectedDetail]);
 
+  const handleCaptureSubmit = useCallback(async () => {
+    const url = captureUrl.trim();
+    if (!url) {
+      return;
+    }
+
+    const response = await submitCapture({
+      sourceType: "url",
+      sourceUrl: url,
+      canonicalUrl: url,
+      metadata: {},
+      privacyLevel: "personal",
+      permissionContext: {
+        acquisitionMode: "user_action",
+        userConfirmed: true,
+        allowedForCloudProcessing: false,
+        allowedForThirdPartyAI: false,
+      },
+    });
+
+    if (!response) {
+      return;
+    }
+
+    setCaptureUrl("");
+    selectObject(response.objectId);
+    await refreshRecentObjects();
+  }, [captureUrl, refreshRecentObjects, selectObject, submitCapture]);
+
   return (
     <AppShell>
       <ThreePaneLayout
@@ -59,6 +99,11 @@ export function LibraryShellContainer() {
             selectedObjectId={selectedObjectId}
             loading={recentObjectsLoading}
             error={recentObjectsError}
+            captureValue={captureUrl}
+            captureLoading={submitCaptureLoading}
+            captureError={submitCaptureError}
+            onCaptureValueChange={setCaptureUrl}
+            onCaptureSubmit={handleCaptureSubmit}
             onSelectObject={selectObject}
           />
         }

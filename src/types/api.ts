@@ -32,6 +32,57 @@ export interface PingResponse {
 
 export type PrivacyLevel = "public" | "personal" | "sensitive" | "secret";
 
+export type CaptureSource =
+  | "url"
+  | "dom"
+  | "selection"
+  | "screenshot"
+  | "file"
+  | "api"
+  | "import"
+  | "local_automation";
+
+export interface PermissionContext {
+  acquisitionMode: "user_action" | "official_api" | "import" | "local_automation";
+  userConfirmed: boolean;
+  platformTermsHint?: string;
+  allowedForCloudProcessing: boolean;
+  allowedForThirdPartyAI: boolean;
+}
+
+export interface CaptureAsset {
+  id: string;
+  kind: "image" | "video" | "audio" | "file" | "snapshot";
+  mimeType: string;
+  uri: string;
+  sha256?: string;
+}
+
+export interface RawCaptureItem {
+  id?: string;
+  userId?: string;
+  sourceType: CaptureSource;
+  sourcePlatform?: string;
+  sourceUrl?: string;
+  canonicalUrl?: string;
+  title?: string;
+  author?: string;
+  capturedAt?: string;
+  rawHtml?: string;
+  rawText?: string;
+  assets?: CaptureAsset[];
+  metadata: Record<string, unknown>;
+  privacyLevel: PrivacyLevel;
+  permissionContext: PermissionContext;
+}
+
+export interface SubmitCaptureResponse {
+  objectId: string;
+  snapshotId: string;
+  parsedDocumentId?: string;
+  jobId: string;
+}
+
 export type ObjectLifecycle =
   | "captured"
   | "parsed"

@@ -2,22 +2,47 @@ import type { KnowledgeObject } from "../../types/api";
 import { formatRelativeStatus } from "../../lib/formatting";
 import { cn } from "../../lib/cn";
 import type { AppUiError } from "../../lib/errors";
+import { CaptureBar } from "./CaptureBar";
 
 interface ObjectListProps {
   objects: KnowledgeObject[];
   selectedObjectId?: string;
   loading: boolean;
   error?: AppUiError;
+  captureValue: string;
+  captureLoading: boolean;
+  captureError?: AppUiError;
+  onCaptureValueChange: (value: string) => void;
+  onCaptureSubmit: () => void;
   onSelectObject: (objectId: string) => void;
 }
 
-export function ObjectList({ objects, selectedObjectId, loading, error, onSelectObject }: ObjectListProps) {
+export function ObjectList({
+  objects,
+  selectedObjectId,
+  loading,
+  error,
+  captureValue,
+  captureLoading,
+  captureError,
+  onCaptureValueChange,
+  onCaptureSubmit,
+  onSelectObject,
+}: ObjectListProps) {
   return (
     <div className="h-screen overflow-y-auto p-3">
       <div className="mb-3 px-1">
         <h1 className="text-base font-semibold">Inbox</h1>
         <p className="mt-1 text-xs text-muted-foreground">Captured items ready for processing.</p>
       </div>
+
+      <CaptureBar
+        error={captureError}
+        loading={captureLoading}
+        onChange={onCaptureValueChange}
+        onSubmit={onCaptureSubmit}
+        value={captureValue}
+      />
 
       {loading ? (
         <div className="rounded-md border border-border bg-surface p-3 text-xs text-muted-foreground">
