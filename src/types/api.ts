@@ -239,6 +239,13 @@ export interface KnowledgeObjectDetail {
   evaluations: EvaluationRun[];
 }
 
+export interface SearchResult {
+  object: KnowledgeObject;
+  matchedFields: string[];
+  snippet?: string;
+  score: number;
+}
+
 export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled" | "blocked";
 
 export interface BackgroundJob {

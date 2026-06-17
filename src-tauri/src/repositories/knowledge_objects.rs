@@ -3,6 +3,7 @@ use crate::domain::knowledge::{
     KnowledgeObject, KnowledgeObjectDetail, NewKnowledgeObject, ParsedDocument, SourceSnapshot,
 };
 use crate::errors::{AppError, AppResult};
+use crate::repositories::search::SearchRepository;
 use chrono::Utc;
 use serde_json::json;
 use serde_json::Value;
@@ -200,6 +201,8 @@ impl KnowledgeObjectRepository {
             tx.rollback().await?;
             return Err(AppError::ObjectNotFound);
         }
+
+        SearchRepository::delete_object_index(&mut tx, object_id).await?;
 
         sqlx::query(
             r#"
@@ -660,6 +663,7 @@ mod tests {
     use super::KnowledgeObjectRepository;
     use crate::domain::knowledge::{DeleteObjectMode, NewKnowledgeObject};
     use crate::errors::AppError;
+    use crate::repositories::search::SearchRepository;
     use crate::storage::database::Database;
 
     #[tokio::test]
@@ -839,5 +843,76 @@ mod tests {
 
         assert_eq!(job_type, "storage.purge_deleted_object");
         assert_eq!(purge_status, "pending");
+    }
+
+    #[tokio::test]
+    async fn soft_delete_removes_object_from_search_index() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        let repository = KnowledgeObjectRepository::new(database.pool().clone());
+        let inserted = repository
+            .insert(NewKnowledgeObject {
+                user_id: "local".to_string(),
+                object_type: "article".to_string(),
+                title: Some("Search Delete".to_string()),
+                canonical_url: Some("https://example.com/search-delete".to_string()),
+                source_platform: Some("web".to_string()),
+                author: None,
+                privacy_level: "personal".to_string(),
+            })
+            .await
+            .expect("insert should succeed");
+
+        sqlx::query(
+            r#"
+            UPDATE knowledge_objects
+            SET lifecycle_status = 'parsed'
+            WHERE id = ?1
+            "#,
+        )
+        .bind(&inserted.id)
+        .execute(database.pool())
+        .await
+        .expect("object should update");
+        sqlx::query(
+            r#"
+            INSERT INTO parsed_documents (
+                id, object_id, title, text_content, word_count, content_hash, parser_id, parser_version, created_at
+            ) VALUES (
+                'parsed-delete-search', ?1, 'Search Delete',
+                'This object should disappear from the search index after deletion.',
+                9, 'hash-delete-search', 'test.parser', '0.1.0', '2026-06-17T00:00:00Z'
+            )
+            "#,
+        )
+        .bind(&inserted.id)
+        .execute(database.pool())
+        .await
+        .expect("parsed document should insert");
+
+        let mut tx = database.pool().begin().await.expect("tx should begin");
+        SearchRepository::reindex_object(&mut tx, &inserted.id)
+            .await
+            .expect("object should reindex");
+        tx.commit().await.expect("tx should commit");
+
+        let search_repository = SearchRepository::new(database.pool().clone());
+        let before_delete = search_repository
+            .search_hybrid("disappear search index", Some(10))
+            .await
+            .expect("search should work");
+        assert_eq!(before_delete.len(), 1);
+
+        repository
+            .delete_object(&inserted.id, DeleteObjectMode::SoftDelete)
+            .await
+            .expect("soft delete should succeed");
+
+        let after_delete = search_repository
+            .search_hybrid("disappear search index", Some(10))
+            .await
+            .expect("search should work");
+        assert!(after_delete.is_empty());
     }
 }

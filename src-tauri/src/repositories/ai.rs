@@ -3,6 +3,7 @@ use crate::domain::ai::{
     StoredModelProviderConfig,
 };
 use crate::errors::{AppError, AppResult};
+use crate::repositories::search::SearchRepository;
 use chrono::Utc;
 use serde_json::json;
 use sqlx::sqlite::SqliteRow;
@@ -285,6 +286,8 @@ impl AIRepository {
         .execute(&mut *tx)
         .await?;
 
+        SearchRepository::reindex_object(&mut tx, &analysis.object_id).await?;
+
         tx.commit().await?;
         Ok(())
     }
@@ -372,7 +375,8 @@ fn truncate_failure_reason(reason: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::AIRepository;
-    use crate::domain::ai::ModelProviderConfig;
+    use crate::domain::ai::{AIAnalysisSubmission, AITraceSubmission, ModelProviderConfig};
+    use crate::repositories::search::SearchRepository;
     use crate::storage::database::Database;
 
     #[tokio::test]
@@ -418,5 +422,98 @@ mod tests {
         .expect("leak query should be readable");
 
         assert_eq!(leaked_count, 0);
+    }
+
+    #[tokio::test]
+    async fn complete_enrichment_job_updates_search_index() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        let repository = AIRepository::new(database.pool().clone());
+
+        sqlx::query(
+            r#"
+            INSERT INTO knowledge_objects (
+                id, user_id, object_type, title, privacy_level, lifecycle_status, captured_at, updated_at
+            ) VALUES (
+                'obj-ai-search', 'local', 'article', 'AI Search Article', 'personal', 'parsed',
+                '2026-06-17T00:00:00Z', '2026-06-17T00:00:00Z'
+            )
+            "#,
+        )
+        .execute(database.pool())
+        .await
+        .expect("object should insert");
+        sqlx::query(
+            r#"
+            INSERT INTO parsed_documents (
+                id, object_id, title, text_content, word_count, content_hash, parser_id, parser_version, created_at
+            ) VALUES (
+                'parsed-ai-search', 'obj-ai-search', 'AI Search Article',
+                'Original text before AI summary.',
+                5, 'hash-ai-search', 'test.parser', '0.1.0', '2026-06-17T00:00:00Z'
+            )
+            "#,
+        )
+        .execute(database.pool())
+        .await
+        .expect("parsed document should insert");
+
+        let job_id = repository
+            .create_enrichment_job("obj-ai-search")
+            .await
+            .expect("job should create");
+        let analysis = AIAnalysisSubmission {
+            id: "analysis-ai-search".to_string(),
+            object_id: "obj-ai-search".to_string(),
+            parsed_document_id: "parsed-ai-search".to_string(),
+            analysis_type: "general_summary".to_string(),
+            schema_version: 1,
+            summary: "Searchable summary from AI analysis.".to_string(),
+            category: Some("engineering".to_string()),
+            tags_json: "[]".to_string(),
+            key_points_json: "[]".to_string(),
+            claims_json: "[]".to_string(),
+            action_items_json: "[]".to_string(),
+            risks_json: "[]".to_string(),
+            quality_score: Some(0.8),
+            confidence: Some(0.7),
+            created_at: "2026-06-17T00:00:01Z".to_string(),
+        };
+        let trace = AITraceSubmission {
+            id: "trace-ai-search".to_string(),
+            analysis_id: "analysis-ai-search".to_string(),
+            object_id: "obj-ai-search".to_string(),
+            provider: "test".to_string(),
+            model: "test-model".to_string(),
+            capability: "chat".to_string(),
+            prompt_template_id: None,
+            prompt_template_version: None,
+            input_snapshot_id: None,
+            input_parsed_document_id: Some("parsed-ai-search".to_string()),
+            input_hash: Some("hash-ai-search".to_string()),
+            output_hash: Some("hash-output".to_string()),
+            prompt_tokens: None,
+            completion_tokens: None,
+            estimated_cost_usd: None,
+            latency_ms: Some(10),
+            created_at: "2026-06-17T00:00:01Z".to_string(),
+        };
+
+        repository
+            .complete_enrichment_job(&job_id, &analysis, &trace)
+            .await
+            .expect("job should complete");
+
+        let search_results = SearchRepository::new(database.pool().clone())
+            .search_hybrid("Searchable summary", Some(10))
+            .await
+            .expect("AI summary should be searchable");
+        assert_eq!(search_results.len(), 1);
+        assert_eq!(search_results[0].object.id, "obj-ai-search");
+        assert!(search_results[0]
+            .matched_fields
+            .iter()
+            .any(|field| field == "aiSummary"));
     }
 }

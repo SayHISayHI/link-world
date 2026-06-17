@@ -3,6 +3,7 @@ use crate::domain::capture::{
     CaptureParsedDocumentSubmission, CaptureSnapshotSubmission, CaptureSubmission,
 };
 use crate::errors::AppResult;
+use crate::repositories::search::SearchRepository;
 use sqlx::sqlite::SqliteRow;
 use sqlx::{Row, Sqlite, Transaction};
 
@@ -24,6 +25,7 @@ impl CaptureRepository {
                 parsed_document,
             )
             .await?;
+            SearchRepository::reindex_object(tx, &submission.object_id).await?;
         }
 
         insert_background_job(tx, &submission.object_id, &submission.job).await?;
@@ -119,6 +121,8 @@ impl CaptureRepository {
         .bind(object_id)
         .execute(&mut **tx)
         .await?;
+
+        SearchRepository::reindex_object(tx, object_id).await?;
 
         sqlx::query(
             r#"

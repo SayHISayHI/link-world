@@ -1036,6 +1036,7 @@ fn build_fetch_failed_event(
 mod tests {
     use super::{parse_fetched_html_sync, CaptureService};
     use crate::domain::capture::{PermissionContext, RawCaptureItem};
+    use crate::repositories::search::SearchRepository;
     use crate::storage::database::Database;
     use crate::storage::object_store::ObjectStore;
     use serde_json::json;
@@ -1154,6 +1155,13 @@ mod tests {
         assert_eq!(parsed_count, 1);
         assert_eq!(event_count, 3);
         assert_eq!(job_type, "search.reindex_object");
+
+        let search_results = SearchRepository::new(database.pool().clone())
+            .search_hybrid("useful content", Some(10))
+            .await
+            .expect("inline parsed capture should be searchable");
+        assert_eq!(search_results.len(), 1);
+        assert_eq!(search_results[0].object.id, response.object_id);
     }
 
     #[tokio::test]
@@ -1274,6 +1282,13 @@ mod tests {
         assert_eq!(job_status, "succeeded");
         assert_eq!(snapshot_count, 2);
         assert!(parsed_text.contains("local job runner"));
+
+        let search_results = SearchRepository::new(database.pool().clone())
+            .search_hybrid("local job runner", Some(10))
+            .await
+            .expect("fetched parsed content should be searchable");
+        assert_eq!(search_results.len(), 1);
+        assert_eq!(search_results[0].object.id, response.object_id);
     }
 
     #[tokio::test]

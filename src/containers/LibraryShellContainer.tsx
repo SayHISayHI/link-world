@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AppShell } from "../components/layout/AppShell";
 import { ThreePaneLayout } from "../components/layout/ThreePaneLayout";
 import { ObjectDetail } from "../components/library/ObjectDetail";
@@ -10,12 +10,14 @@ import { useObjectJobs } from "../hooks/commands/useObjectJobs";
 import { usePing } from "../hooks/commands/usePing";
 import { useRecentObjects } from "../hooks/commands/useRecentObjects";
 import { useRetryBackgroundJob } from "../hooks/commands/useRetryBackgroundJob";
+import { useSearchHybrid } from "../hooks/commands/useSearchHybrid";
 import { useSubmitCapture } from "../hooks/commands/useSubmitCapture";
 import { useTriggerAIEnrichment } from "../hooks/commands/useTriggerAIEnrichment";
 import { useTriggerEvaluation } from "../hooks/commands/useTriggerEvaluation";
 import { useUpdateModelProviderConfig } from "../hooks/commands/useUpdateModelProviderConfig";
 import type { AppUiError } from "../lib/errors";
 import { useLibraryStore } from "../store/libraryStore";
+import { useSearchStore } from "../store/searchStore";
 import type { BackgroundJob, KnowledgeObject } from "../types/api";
 
 interface CaptureJobCompletedPayload {
@@ -43,11 +45,12 @@ interface EvaluationCompletedPayload {
 export function LibraryShellContainer() {
   const [captureUrl, setCaptureUrl] = useState("");
   const [lastCaptureJob, setLastCaptureJob] = useState<CaptureJobCompletedPayload>();
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [aiChatBaseUrl, setAIChatBaseUrl] = useState("https://api.openai.com/v1");
   const [aiChatModel, setAIChatModel] = useState("gpt-4.1-mini");
   const [aiApiKey, setAIApiKey] = useState("");
   const { objects, selectedObjectId, selectedDetail, selectObject, setObjects, setSelectedDetail } = useLibraryStore();
-  const selectedObject = objects.find((object) => object.id === selectedObjectId);
+  const { query: searchQuery, setQuery: setSearchQuery } = useSearchStore();
   const { data, error, loading, ping } = usePing();
   const {
     data: recentObjects,
@@ -85,6 +88,13 @@ export function LibraryShellContainer() {
     retryBackgroundJob,
   } = useRetryBackgroundJob();
   const {
+    data: searchResults,
+    error: searchError,
+    loading: searchLoading,
+    resetSearch,
+    searchHybrid,
+  } = useSearchHybrid();
+  const {
     error: updateModelConfigError,
     loading: updateModelConfigLoading,
     updateModelProviderConfig,
@@ -100,15 +110,60 @@ export function LibraryShellContainer() {
     loading: triggerEvaluationLoading,
     triggerEvaluation,
   } = useTriggerEvaluation();
+  const selectedSearchResult = searchResults.find((result) => result.object.id === selectedObjectId);
+  const selectedObject = objects.find((object) => object.id === selectedObjectId) ?? selectedSearchResult?.object;
   const retryableCaptureJob = findRetryableCaptureJob(objectJobs, selectedObject?.id);
 
   const refreshRecentObjects = useCallback(() => {
     return loadRecentObjects({ limit: 50, offset: 0 });
   }, [loadRecentObjects]);
 
+  const refreshSearchResults = useCallback(() => {
+    const query = searchQuery.trim();
+
+    if (!query) {
+      resetSearch();
+      return Promise.resolve([]);
+    }
+
+    return searchHybrid({ query, limit: 25 });
+  }, [resetSearch, searchHybrid, searchQuery]);
+
   useEffect(() => {
     void refreshRecentObjects();
   }, [refreshRecentObjects]);
+
+  useEffect(() => {
+    const query = searchQuery.trim();
+    if (!query) {
+      resetSearch();
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void refreshSearchResults();
+    }, 200);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [refreshSearchResults, resetSearch, searchQuery]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -121,10 +176,12 @@ export function LibraryShellContainer() {
       .then(async ({ listen }) => {
         const unsubscribeLibrary = await listen("library://objects-updated", () => {
           void refreshRecentObjects();
+          void refreshSearchResults();
         });
         const unsubscribeCapture = await listen<CaptureJobCompletedPayload>("capture://job-completed", (event) => {
           setLastCaptureJob(event.payload);
           void refreshRecentObjects();
+          void refreshSearchResults();
 
           const objectId = event.payload.objectId;
           if (objectId && objectId === selectedObjectId) {
@@ -136,6 +193,7 @@ export function LibraryShellContainer() {
           "ai://enrichment-completed",
           (event) => {
             void refreshRecentObjects();
+            void refreshSearchResults();
 
             const objectId = event.payload.objectId;
             if (objectId && objectId === selectedObjectId) {
@@ -146,6 +204,7 @@ export function LibraryShellContainer() {
         );
         const unsubscribeEvaluation = await listen<EvaluationCompletedPayload>("evaluation://completed", (event) => {
           void refreshRecentObjects();
+          void refreshSearchResults();
 
           const objectId = event.payload.objectId;
           if (objectId && objectId === selectedObjectId) {
@@ -184,7 +243,7 @@ export function LibraryShellContainer() {
       unlistenAI?.();
       unlistenEvaluation?.();
     };
-  }, [loadObjectDetail, loadObjectJobs, refreshRecentObjects, selectedObjectId]);
+  }, [loadObjectDetail, loadObjectJobs, refreshRecentObjects, refreshSearchResults, selectedObjectId]);
 
   useEffect(() => {
     setObjects(recentObjects);
@@ -265,10 +324,12 @@ export function LibraryShellContainer() {
     resetObjectJobs();
     setSelectedDetail(undefined);
     const nextObjects = await refreshRecentObjects();
+    await refreshSearchResults();
     setObjects(nextObjects);
   }, [
     deleteObject,
     refreshRecentObjects,
+    refreshSearchResults,
     resetObjectDetail,
     resetObjectJobs,
     selectedObjectId,
@@ -287,6 +348,7 @@ export function LibraryShellContainer() {
     }
 
     await refreshRecentObjects();
+    await refreshSearchResults();
     if (selectedObjectId) {
       await loadObjectDetail(selectedObjectId);
       await loadObjectJobs({ objectId: selectedObjectId, limit: 10 });
@@ -295,6 +357,7 @@ export function LibraryShellContainer() {
     loadObjectDetail,
     loadObjectJobs,
     refreshRecentObjects,
+    refreshSearchResults,
     retryBackgroundJob,
     retryableCaptureJob,
     selectedObjectId,
@@ -324,13 +387,17 @@ export function LibraryShellContainer() {
       return;
     }
 
-    await refreshRecentObjects();
-    await loadObjectDetail(selectedObjectId);
-    await loadObjectJobs({ objectId: selectedObjectId, limit: 10 });
+    await Promise.all([
+      refreshRecentObjects(),
+      refreshSearchResults(),
+      loadObjectDetail(selectedObjectId),
+      loadObjectJobs({ objectId: selectedObjectId, limit: 10 }),
+    ]);
   }, [
     loadObjectDetail,
     loadObjectJobs,
     refreshRecentObjects,
+    refreshSearchResults,
     selectedObjectId,
     triggerAIEnrichment,
   ]);
@@ -350,6 +417,7 @@ export function LibraryShellContainer() {
 
     await Promise.all([
       refreshRecentObjects(),
+      refreshSearchResults(),
       loadObjectDetail(selectedObjectId),
       loadObjectJobs({ objectId: selectedObjectId, limit: 10 }),
     ]);
@@ -357,6 +425,7 @@ export function LibraryShellContainer() {
     loadObjectDetail,
     loadObjectJobs,
     refreshRecentObjects,
+    refreshSearchResults,
     selectedObject,
     selectedObjectId,
     triggerEvaluation,
@@ -376,8 +445,18 @@ export function LibraryShellContainer() {
             captureLoading={submitCaptureLoading}
             captureError={submitCaptureError}
             captureJob={lastCaptureJob}
+            searchInputRef={searchInputRef}
+            searchValue={searchQuery}
+            searchResults={searchResults}
+            searchLoading={searchLoading}
+            searchError={searchError}
             onCaptureValueChange={setCaptureUrl}
             onCaptureSubmit={handleCaptureSubmit}
+            onSearchValueChange={setSearchQuery}
+            onClearSearch={() => {
+              setSearchQuery("");
+              resetSearch();
+            }}
             onSelectObject={selectObject}
           />
         }
