@@ -1,9 +1,7 @@
 use crate::domain::capture::{RawCaptureItem, SubmitCaptureResponse};
 use crate::errors::{map_ipc_result, AppError, IpcResponse};
-use crate::services::capture::CaptureService;
+use crate::services::capture::{spawn_fetch_job_runner, CaptureService};
 use crate::state::AppState;
-use serde_json::json;
-use tauri::Emitter;
 
 #[tauri::command]
 pub async fn submit_capture(
@@ -24,37 +22,4 @@ pub async fn submit_capture(
     .await;
 
     Ok(map_ipc_result(result))
-}
-
-pub(crate) fn spawn_fetch_job_runner(
-    app_handle: tauri::AppHandle,
-    service: CaptureService,
-    job_id: String,
-) {
-    tauri::async_runtime::spawn(async move {
-        let result = service.run_fetch_job(&job_id).await;
-
-        let payload = match result {
-            Ok(Some(result)) => json!({
-                "jobId": job_id,
-                "status": result.status,
-                "objectId": result.object_id,
-                "lifecycleStatus": result.lifecycle_status,
-                "parsedDocumentId": result.parsed_document_id,
-                "failureReason": result.failure_reason,
-            }),
-            Ok(None) => json!({
-                "jobId": job_id,
-                "status": "skipped",
-            }),
-            Err(error) => json!({
-                "jobId": job_id,
-                "status": "failed",
-                "failureReason": error.to_string(),
-            }),
-        };
-
-        let _ = app_handle.emit("capture://job-completed", payload);
-        let _ = app_handle.emit("library://objects-updated", ());
-    });
 }

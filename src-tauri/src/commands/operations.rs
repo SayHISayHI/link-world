@@ -1,8 +1,7 @@
-use crate::commands::capture::spawn_fetch_job_runner;
 use crate::domain::jobs::BackgroundJob;
 use crate::errors::{map_ipc_result, AppError, IpcResponse};
 use crate::repositories::jobs::JobsRepository;
-use crate::services::capture::CaptureService;
+use crate::services::capture::{spawn_fetch_job_runner, CaptureService};
 use crate::state::AppState;
 use tauri::Emitter;
 

@@ -19,7 +19,13 @@ pub fn run() {
         .setup(|app| {
             let state = tauri::async_runtime::block_on(state::AppState::initialize(app.handle()))
                 .map_err(|error| Box::<dyn std::error::Error>::from(error.to_string()))?;
+            let capture_service = services::capture::CaptureService::from_state(&state)
+                .map_err(|error| Box::<dyn std::error::Error>::from(error.to_string()))?;
 
+            services::browser_capture::spawn_loopback_capture_server(
+                app.handle().clone(),
+                capture_service,
+            );
             app.manage(state);
             Ok(())
         })
