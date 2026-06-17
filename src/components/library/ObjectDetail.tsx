@@ -9,6 +9,7 @@ import type {
 import type { AppUiError } from "../../lib/errors";
 import { formatRelativeStatus } from "../../lib/formatting";
 import { AIAnalysisPanel } from "../analysis/AIAnalysisPanel";
+import { EvaluationPanel } from "../evaluation/EvaluationPanel";
 
 interface ObjectDetailProps {
   object?: KnowledgeObject;
@@ -29,6 +30,8 @@ interface ObjectDetailProps {
   aiConfigLoading: boolean;
   aiRunLoading: boolean;
   aiError?: AppUiError;
+  evaluationLoading: boolean;
+  evaluationError?: AppUiError;
   onPing: () => void;
   onDeleteObject: () => void;
   onRetryCapture: () => void;
@@ -37,6 +40,7 @@ interface ObjectDetailProps {
   onAIApiKeyChange: (value: string) => void;
   onSaveAIConfig: () => void;
   onRunAIAnalysis: () => void;
+  onRunEvaluation: () => void;
 }
 
 export function ObjectDetail({
@@ -58,6 +62,8 @@ export function ObjectDetail({
   aiConfigLoading,
   aiRunLoading,
   aiError,
+  evaluationLoading,
+  evaluationError,
   onPing,
   onDeleteObject,
   onRetryCapture,
@@ -66,6 +72,7 @@ export function ObjectDetail({
   onAIApiKeyChange,
   onSaveAIConfig,
   onRunAIAnalysis,
+  onRunEvaluation,
 }: ObjectDetailProps) {
   if (!object) {
     return (
@@ -196,18 +203,12 @@ export function ObjectDetail({
             onSaveConfig={onSaveAIConfig}
             onRunAnalysis={onRunAIAnalysis}
           />
-          <h3 className="mt-4 text-sm font-semibold">Object Signals</h3>
-          <div className="mt-3 rounded-md border border-border bg-surface p-3 text-xs leading-5">
-            <p className="font-medium">Evaluation</p>
-            {latestEvaluation ? (
-              <div className="mt-1 text-muted-foreground">
-                <p>{latestEvaluation.verdict}</p>
-                {latestEvaluation.score !== undefined ? <p>Score {latestEvaluation.score}</p> : null}
-              </div>
-            ) : (
-              <p className="mt-1 text-muted-foreground">No evaluation run yet.</p>
-            )}
-          </div>
+          <EvaluationPanel
+            latestEvaluation={latestEvaluation}
+            loading={evaluationLoading}
+            error={evaluationError}
+            onRunEvaluation={onRunEvaluation}
+          />
           <h3 className="mt-4 text-sm font-semibold">Backend IPC</h3>
           <div className="mt-3 rounded-md border border-border bg-surface p-3 text-xs leading-5">
             {pingLoading ? <p className="text-muted-foreground">Pinging backend...</p> : null}

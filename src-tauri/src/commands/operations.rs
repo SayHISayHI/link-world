@@ -1,6 +1,7 @@
 use crate::domain::jobs::BackgroundJob;
 use crate::errors::{map_ipc_result, AppError, IpcResponse};
 use crate::repositories::jobs::JobsRepository;
+use crate::services::ai::AIEnrichmentService;
 use crate::services::capture::{spawn_fetch_job_runner, CaptureService};
 use crate::state::AppState;
 use tauri::Emitter;
@@ -48,7 +49,8 @@ pub async fn retry_background_job(
 
         if retried.job_type == "capture.fetch_url" {
             let service = CaptureService::from_state(state.inner())?;
-            spawn_fetch_job_runner(app_handle.clone(), service, retried.id);
+            let ai_service = AIEnrichmentService::from_state(state.inner())?;
+            spawn_fetch_job_runner(app_handle.clone(), service, ai_service, retried.id);
         } else {
             return Err(AppError::PolicyDenied(format!(
                 "retry runner is not registered for job type: {}",

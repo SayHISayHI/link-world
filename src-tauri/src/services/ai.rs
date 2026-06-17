@@ -4,7 +4,7 @@ use crate::domain::ai::{
 };
 use crate::errors::{AppError, AppResult};
 use crate::repositories::ai::AIRepository;
-use crate::state::SecretStore;
+use crate::state::{AppState, SecretStore};
 use crate::storage::object_store::sha256_hex;
 use chrono::Utc;
 use reqwest::Url;
@@ -12,6 +12,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use sqlx::SqlitePool;
 use std::time::Instant;
+use tauri::Emitter;
 use uuid::Uuid;
 
 const GENERAL_ENRICHMENT_PROMPT_ID: &str = "builtin.general_enrichment";
@@ -63,12 +64,30 @@ impl AIEnrichmentService {
         }
     }
 
+    pub fn from_state(state: &AppState) -> AppResult<Self> {
+        Ok(Self::new(
+            state.database()?.pool().clone(),
+            state.secrets().clone(),
+        ))
+    }
+
     pub async fn update_model_provider_config(&self, config: ModelProviderConfig) -> AppResult<()> {
         validate_model_provider_config(&config)?;
         let secret_ref = self.store_or_resolve_secret_ref(&config)?;
         self.repository
             .upsert_model_provider_config(&config, secret_ref.as_deref())
             .await
+    }
+
+    pub async fn run_auto_enrichment_for_object(
+        &self,
+        object_id: &str,
+    ) -> AppResult<Option<AIEnrichmentRunResult>> {
+        if self.repository.get_enabled_chat_config().await?.is_none() {
+            return Ok(None);
+        }
+
+        self.run_enrichment_for_object(object_id).await.map(Some)
     }
 
     pub async fn run_enrichment_for_object(
@@ -269,6 +288,35 @@ impl AIEnrichmentService {
     }
 }
 
+pub fn spawn_ai_enrichment_runner(
+    app_handle: tauri::AppHandle,
+    service: AIEnrichmentService,
+    object_id: String,
+) {
+    tauri::async_runtime::spawn(async move {
+        let result = service.run_auto_enrichment_for_object(&object_id).await;
+
+        let payload = match result {
+            Ok(Some(run)) => json!({
+                "jobId": run.job_id,
+                "objectId": object_id,
+                "status": run.status,
+                "analysisId": run.analysis_id,
+                "failureReason": run.failure_reason,
+            }),
+            Ok(None) => return,
+            Err(error) => json!({
+                "objectId": object_id,
+                "status": "failed",
+                "failureReason": error.to_string(),
+            }),
+        };
+
+        let _ = app_handle.emit("ai://enrichment-completed", payload);
+        let _ = app_handle.emit("library://objects-updated", ());
+    });
+}
+
 fn validate_model_provider_config(config: &ModelProviderConfig) -> AppResult<()> {
     if config.provider.trim().is_empty() {
         return Err(AppError::PolicyDenied(
@@ -434,8 +482,10 @@ fn map_model_error(error: reqwest::Error) -> AppError {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_general_enrichment_prompt, parse_analysis_output};
+    use super::{build_general_enrichment_prompt, parse_analysis_output, AIEnrichmentService};
     use crate::domain::ai::AIEnrichmentInput;
+    use crate::state::SecretStore;
+    use crate::storage::database::Database;
 
     #[test]
     fn parses_json_object_from_model_output() {
@@ -466,5 +516,28 @@ mod tests {
         assert!(prompt.contains("A title"));
         assert!(prompt.contains("https://example.com"));
         assert!(prompt.contains("A useful paragraph"));
+    }
+
+    #[tokio::test]
+    async fn auto_enrichment_skips_without_chat_config_and_does_not_create_job() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        let service = AIEnrichmentService::new(database.pool().clone(), SecretStore::default());
+
+        let run = service
+            .run_auto_enrichment_for_object("missing-object")
+            .await
+            .expect("missing config should be a clean skip");
+
+        let job_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM background_jobs WHERE job_type = 'ai.enrich_object'",
+        )
+        .fetch_one(database.pool())
+        .await
+        .expect("job count should be readable");
+
+        assert!(run.is_none());
+        assert_eq!(job_count, 0);
     }
 }

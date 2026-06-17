@@ -12,10 +12,11 @@ import { useRecentObjects } from "../hooks/commands/useRecentObjects";
 import { useRetryBackgroundJob } from "../hooks/commands/useRetryBackgroundJob";
 import { useSubmitCapture } from "../hooks/commands/useSubmitCapture";
 import { useTriggerAIEnrichment } from "../hooks/commands/useTriggerAIEnrichment";
+import { useTriggerEvaluation } from "../hooks/commands/useTriggerEvaluation";
 import { useUpdateModelProviderConfig } from "../hooks/commands/useUpdateModelProviderConfig";
 import type { AppUiError } from "../lib/errors";
 import { useLibraryStore } from "../store/libraryStore";
-import type { BackgroundJob } from "../types/api";
+import type { BackgroundJob, KnowledgeObject } from "../types/api";
 
 interface CaptureJobCompletedPayload {
   jobId: string;
@@ -24,6 +25,19 @@ interface CaptureJobCompletedPayload {
   lifecycleStatus?: string;
   parsedDocumentId?: string;
   failureReason?: string;
+}
+
+interface AIEnrichmentCompletedPayload {
+  jobId?: string;
+  status: "succeeded" | "failed" | string;
+  objectId?: string;
+  analysisId?: string;
+  failureReason?: string;
+}
+
+interface EvaluationCompletedPayload {
+  objectId?: string;
+  runId?: string;
 }
 
 export function LibraryShellContainer() {
@@ -81,6 +95,11 @@ export function LibraryShellContainer() {
     loading: triggerAILoading,
     triggerAIEnrichment,
   } = useTriggerAIEnrichment();
+  const {
+    error: triggerEvaluationError,
+    loading: triggerEvaluationLoading,
+    triggerEvaluation,
+  } = useTriggerEvaluation();
   const retryableCaptureJob = findRetryableCaptureJob(objectJobs, selectedObject?.id);
 
   const refreshRecentObjects = useCallback(() => {
@@ -94,6 +113,8 @@ export function LibraryShellContainer() {
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     let unlistenCapture: (() => void) | undefined;
+    let unlistenAI: (() => void) | undefined;
+    let unlistenEvaluation: (() => void) | undefined;
     let disposed = false;
 
     void import("@tauri-apps/api/event")
@@ -111,28 +132,57 @@ export function LibraryShellContainer() {
             void loadObjectJobs({ objectId, limit: 10 });
           }
         });
+        const unsubscribeAI = await listen<AIEnrichmentCompletedPayload>(
+          "ai://enrichment-completed",
+          (event) => {
+            void refreshRecentObjects();
 
-        return { unsubscribeCapture, unsubscribeLibrary };
+            const objectId = event.payload.objectId;
+            if (objectId && objectId === selectedObjectId) {
+              void loadObjectDetail(objectId);
+              void loadObjectJobs({ objectId, limit: 10 });
+            }
+          },
+        );
+        const unsubscribeEvaluation = await listen<EvaluationCompletedPayload>("evaluation://completed", (event) => {
+          void refreshRecentObjects();
+
+          const objectId = event.payload.objectId;
+          if (objectId && objectId === selectedObjectId) {
+            void loadObjectDetail(objectId);
+            void loadObjectJobs({ objectId, limit: 10 });
+          }
+        });
+
+        return { unsubscribeAI, unsubscribeCapture, unsubscribeEvaluation, unsubscribeLibrary };
       })
-      .then(({ unsubscribeCapture, unsubscribeLibrary }) => {
+      .then(({ unsubscribeAI, unsubscribeCapture, unsubscribeEvaluation, unsubscribeLibrary }) => {
         if (disposed) {
           unsubscribeLibrary();
           unsubscribeCapture();
+          unsubscribeAI();
+          unsubscribeEvaluation();
           return;
         }
 
         unlisten = unsubscribeLibrary;
         unlistenCapture = unsubscribeCapture;
+        unlistenAI = unsubscribeAI;
+        unlistenEvaluation = unsubscribeEvaluation;
       })
       .catch(() => {
         unlisten = undefined;
         unlistenCapture = undefined;
+        unlistenAI = undefined;
+        unlistenEvaluation = undefined;
       });
 
     return () => {
       disposed = true;
       unlisten?.();
       unlistenCapture?.();
+      unlistenAI?.();
+      unlistenEvaluation?.();
     };
   }, [loadObjectDetail, loadObjectJobs, refreshRecentObjects, selectedObjectId]);
 
@@ -285,6 +335,33 @@ export function LibraryShellContainer() {
     triggerAIEnrichment,
   ]);
 
+  const handleRunEvaluation = useCallback(async () => {
+    if (!selectedObjectId) {
+      return;
+    }
+
+    const run = await triggerEvaluation({
+      objectId: selectedObjectId,
+      evaluatorType: inferEvaluatorType(selectedObject),
+    });
+    if (!run) {
+      return;
+    }
+
+    await Promise.all([
+      refreshRecentObjects(),
+      loadObjectDetail(selectedObjectId),
+      loadObjectJobs({ objectId: selectedObjectId, limit: 10 }),
+    ]);
+  }, [
+    loadObjectDetail,
+    loadObjectJobs,
+    refreshRecentObjects,
+    selectedObject,
+    selectedObjectId,
+    triggerEvaluation,
+  ]);
+
   return (
     <AppShell>
       <ThreePaneLayout
@@ -324,6 +401,8 @@ export function LibraryShellContainer() {
             aiConfigLoading={updateModelConfigLoading}
             aiRunLoading={triggerAILoading}
             aiError={triggerAIError ?? updateModelConfigError ?? aiRunFailureToError(aiRunResult)}
+            evaluationLoading={triggerEvaluationLoading}
+            evaluationError={triggerEvaluationError}
             onPing={() => {
               void ping();
             }}
@@ -334,11 +413,36 @@ export function LibraryShellContainer() {
             onAIApiKeyChange={setAIApiKey}
             onSaveAIConfig={handleSaveAIConfig}
             onRunAIAnalysis={handleRunAIAnalysis}
+            onRunEvaluation={handleRunEvaluation}
           />
         }
       />
     </AppShell>
   );
+}
+
+function inferEvaluatorType(object?: KnowledgeObject) {
+  if (!object) {
+    return "auto";
+  }
+
+  if (object.type === "github_repo" || isGithubUrl(object.canonicalUrl)) {
+    return "github_repo_evaluator";
+  }
+
+  return "prompt_evaluator";
+}
+
+function isGithubUrl(url?: string) {
+  if (!url) {
+    return false;
+  }
+
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/^www\./, "") === "github.com";
+  } catch {
+    return false;
+  }
 }
 
 function aiRunFailureToError(run?: { status: string; failureReason?: string }): AppUiError | undefined {

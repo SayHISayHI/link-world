@@ -227,6 +227,10 @@ export interface EvaluationRun {
   completedAt?: string;
 }
 
+export interface TriggerEvaluationResponse {
+  runId: string;
+}
+
 export interface KnowledgeObjectDetail {
   object: KnowledgeObject;
   parsedDocument?: ParsedDocument;

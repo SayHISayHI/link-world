@@ -5,6 +5,7 @@ use crate::domain::capture::{
 };
 use crate::errors::{AppError, AppResult};
 use crate::repositories::capture::CaptureRepository;
+use crate::services::ai::{spawn_ai_enrichment_runner, AIEnrichmentService};
 use crate::state::AppState;
 use crate::storage::object_store::{sha256_hex, ObjectStore};
 use chrono::Utc;
@@ -351,14 +352,21 @@ impl CaptureService {
 pub fn spawn_fetch_job_runner(
     app_handle: tauri::AppHandle,
     service: CaptureService,
+    ai_service: AIEnrichmentService,
     job_id: String,
 ) {
     tauri::async_runtime::spawn(async move {
         let result = service.run_fetch_job(&job_id).await;
+        let ai_object_id = result
+            .as_ref()
+            .ok()
+            .and_then(Option::as_ref)
+            .filter(|run| run.status == "succeeded" && run.parsed_document_id.is_some())
+            .map(|run| run.object_id.clone());
 
         let payload = match result {
             Ok(Some(result)) => json!({
-                "jobId": job_id,
+                "jobId": result.job_id,
                 "status": result.status,
                 "objectId": result.object_id,
                 "lifecycleStatus": result.lifecycle_status,
@@ -378,6 +386,10 @@ pub fn spawn_fetch_job_runner(
 
         let _ = app_handle.emit("capture://job-completed", payload);
         let _ = app_handle.emit("library://objects-updated", ());
+
+        if let Some(object_id) = ai_object_id {
+            spawn_ai_enrichment_runner(app_handle, ai_service, object_id);
+        }
     });
 }
 

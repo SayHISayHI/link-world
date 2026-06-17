@@ -10,8 +10,7 @@ pub async fn update_model_provider_config(
     config: ModelProviderConfig,
 ) -> Result<IpcResponse<bool>, String> {
     let result = async {
-        let service =
-            AIEnrichmentService::new(state.database()?.pool().clone(), state.secrets().clone());
+        let service = AIEnrichmentService::from_state(state.inner())?;
 
         service.update_model_provider_config(config).await?;
         Ok(true)
@@ -28,8 +27,7 @@ pub async fn trigger_ai_enrichment(
     object_id: String,
 ) -> Result<IpcResponse<AIEnrichmentRunResult>, String> {
     let result = async {
-        let service =
-            AIEnrichmentService::new(state.database()?.pool().clone(), state.secrets().clone());
+        let service = AIEnrichmentService::from_state(state.inner())?;
 
         service.run_enrichment_for_object(&object_id).await
     }

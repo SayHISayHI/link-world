@@ -21,10 +21,13 @@ pub fn run() {
                 .map_err(|error| Box::<dyn std::error::Error>::from(error.to_string()))?;
             let capture_service = services::capture::CaptureService::from_state(&state)
                 .map_err(|error| Box::<dyn std::error::Error>::from(error.to_string()))?;
+            let ai_service = services::ai::AIEnrichmentService::from_state(&state)
+                .map_err(|error| Box::<dyn std::error::Error>::from(error.to_string()))?;
 
             services::browser_capture::spawn_loopback_capture_server(
                 app.handle().clone(),
                 capture_service,
+                ai_service,
             );
             app.manage(state);
             Ok(())
@@ -34,6 +37,8 @@ pub fn run() {
             commands::ai::update_model_provider_config,
             commands::ai::trigger_ai_enrichment,
             commands::capture::submit_capture,
+            commands::evaluation::trigger_evaluation,
+            commands::evaluation::get_evaluation_run,
             commands::library::get_recent_objects,
             commands::library::get_object_detail,
             commands::library::delete_object,

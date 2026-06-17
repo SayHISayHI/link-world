@@ -1,5 +1,6 @@
 use crate::domain::capture::{PermissionContext, RawCaptureItem, SubmitCaptureResponse};
 use crate::errors::{AppError, AppResult};
+use crate::services::ai::{spawn_ai_enrichment_runner, AIEnrichmentService};
 use crate::services::capture::{spawn_fetch_job_runner, CaptureService};
 use reqwest::Url;
 use serde::Deserialize;
@@ -48,9 +49,15 @@ struct HttpResponse {
     cors_origin: Option<String>,
 }
 
-pub fn spawn_loopback_capture_server(app_handle: tauri::AppHandle, service: CaptureService) {
+pub fn spawn_loopback_capture_server(
+    app_handle: tauri::AppHandle,
+    service: CaptureService,
+    ai_service: AIEnrichmentService,
+) {
     tauri::async_runtime::spawn(async move {
-        if let Err(error) = run_loopback_capture_server(app_handle.clone(), service).await {
+        if let Err(error) =
+            run_loopback_capture_server(app_handle.clone(), service, ai_service).await
+        {
             let _ = app_handle.emit(
                 "capture://browser-server-failed",
                 json!({
@@ -65,16 +72,24 @@ pub fn spawn_loopback_capture_server(app_handle: tauri::AppHandle, service: Capt
 async fn run_loopback_capture_server(
     app_handle: tauri::AppHandle,
     service: CaptureService,
+    ai_service: AIEnrichmentService,
 ) -> AppResult<()> {
     let listener = TcpListener::bind(LOOPBACK_CAPTURE_ADDR).await?;
 
     loop {
         let (socket, _) = listener.accept().await?;
         let connection_service = service.clone();
+        let connection_ai_service = ai_service.clone();
         let connection_app_handle = app_handle.clone();
 
         tauri::async_runtime::spawn(async move {
-            handle_connection(socket, connection_app_handle, connection_service).await;
+            handle_connection(
+                socket,
+                connection_app_handle,
+                connection_service,
+                connection_ai_service,
+            )
+            .await;
         });
     }
 }
@@ -83,6 +98,7 @@ async fn handle_connection(
     mut socket: TcpStream,
     app_handle: tauri::AppHandle,
     service: CaptureService,
+    ai_service: AIEnrichmentService,
 ) {
     let response = match timeout(
         Duration::from_secs(READ_TIMEOUT_SECONDS),
@@ -90,7 +106,7 @@ async fn handle_connection(
     )
     .await
     {
-        Ok(Ok(request)) => handle_http_request(request, app_handle, service).await,
+        Ok(Ok(request)) => handle_http_request(request, app_handle, service, ai_service).await,
         Ok(Err(error)) => json_response(
             400,
             "Bad Request",
@@ -113,6 +129,7 @@ async fn handle_http_request(
     request: HttpRequest,
     app_handle: tauri::AppHandle,
     service: CaptureService,
+    ai_service: AIEnrichmentService,
 ) -> HttpResponse {
     let cors_origin = allowed_cors_origin(&request);
     let path = request.path.split('?').next().unwrap_or_default();
@@ -147,7 +164,7 @@ async fn handle_http_request(
         );
     }
 
-    let result = submit_browser_capture(request.body, app_handle, service).await;
+    let result = submit_browser_capture(request.body, app_handle, service, ai_service).await;
     match result {
         Ok(response) => json_response(
             200,
@@ -174,6 +191,7 @@ async fn submit_browser_capture(
     body: Vec<u8>,
     app_handle: tauri::AppHandle,
     service: CaptureService,
+    ai_service: AIEnrichmentService,
 ) -> AppResult<SubmitCaptureResponse> {
     let payload: BrowserCapturePayload =
         serde_json::from_slice(&body).map_err(|error| AppError::ParseFailed(error.to_string()))?;
@@ -192,7 +210,9 @@ async fn submit_browser_capture(
     let _ = app_handle.emit("library://objects-updated", ());
 
     if response.parsed_document_id.is_none() {
-        spawn_fetch_job_runner(app_handle, service, response.job_id.clone());
+        spawn_fetch_job_runner(app_handle, service, ai_service, response.job_id.clone());
+    } else {
+        spawn_ai_enrichment_runner(app_handle, ai_service, response.object_id.clone());
     }
 
     Ok(response)
