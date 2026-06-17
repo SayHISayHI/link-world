@@ -8,6 +8,7 @@ import type {
 } from "../../types/api";
 import type { AppUiError } from "../../lib/errors";
 import { formatRelativeStatus } from "../../lib/formatting";
+import { AIAnalysisPanel } from "../analysis/AIAnalysisPanel";
 
 interface ObjectDetailProps {
   object?: KnowledgeObject;
@@ -22,9 +23,20 @@ interface ObjectDetailProps {
   retryJob?: BackgroundJob;
   retryError?: AppUiError;
   retryLoading: boolean;
+  aiChatBaseUrl: string;
+  aiChatModel: string;
+  aiApiKey: string;
+  aiConfigLoading: boolean;
+  aiRunLoading: boolean;
+  aiError?: AppUiError;
   onPing: () => void;
   onDeleteObject: () => void;
   onRetryCapture: () => void;
+  onAIChatBaseUrlChange: (value: string) => void;
+  onAIChatModelChange: (value: string) => void;
+  onAIApiKeyChange: (value: string) => void;
+  onSaveAIConfig: () => void;
+  onRunAIAnalysis: () => void;
 }
 
 export function ObjectDetail({
@@ -40,9 +52,20 @@ export function ObjectDetail({
   retryJob,
   retryError,
   retryLoading,
+  aiChatBaseUrl,
+  aiChatModel,
+  aiApiKey,
+  aiConfigLoading,
+  aiRunLoading,
+  aiError,
   onPing,
   onDeleteObject,
   onRetryCapture,
+  onAIChatBaseUrlChange,
+  onAIChatModelChange,
+  onAIApiKeyChange,
+  onSaveAIConfig,
+  onRunAIAnalysis,
 }: ObjectDetailProps) {
   if (!object) {
     return (
@@ -159,18 +182,21 @@ export function ObjectDetail({
               <p>Parsed document {parsedDocument ? "available" : "pending"}</p>
             </div>
           </div>
+          <AIAnalysisPanel
+            latestAnalysis={latestAnalysis}
+            chatBaseUrl={aiChatBaseUrl}
+            chatModel={aiChatModel}
+            apiKey={aiApiKey}
+            configLoading={aiConfigLoading}
+            runLoading={aiRunLoading}
+            error={aiError}
+            onChatBaseUrlChange={onAIChatBaseUrlChange}
+            onChatModelChange={onAIChatModelChange}
+            onApiKeyChange={onAIApiKeyChange}
+            onSaveConfig={onSaveAIConfig}
+            onRunAnalysis={onRunAIAnalysis}
+          />
           <h3 className="mt-4 text-sm font-semibold">Object Signals</h3>
-          <div className="mt-3 rounded-md border border-border bg-surface p-3 text-xs leading-5">
-            <p className="font-medium">Analysis</p>
-            {latestAnalysis ? (
-              <div className="mt-1 text-muted-foreground">
-                <p>{latestAnalysis.summary ?? "Analysis exists without summary."}</p>
-                {latestAnalysis.qualityScore !== undefined ? <p>Quality {latestAnalysis.qualityScore}</p> : null}
-              </div>
-            ) : (
-              <p className="mt-1 text-muted-foreground">No AI analysis yet.</p>
-            )}
-          </div>
           <div className="mt-3 rounded-md border border-border bg-surface p-3 text-xs leading-5">
             <p className="font-medium">Evaluation</p>
             {latestEvaluation ? (

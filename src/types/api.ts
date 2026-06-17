@@ -186,6 +186,23 @@ export interface AIAnalysis {
   createdAt: string;
 }
 
+export interface ModelProviderConfig {
+  provider: string;
+  chatBaseUrl?: string;
+  embeddingsBaseUrl?: string;
+  apiKey?: string;
+  defaultChatModel?: string;
+  defaultEmbeddingModel?: string;
+  capabilities: Array<"chat" | "embedding" | "rerank" | "vision" | string>;
+}
+
+export interface AIEnrichmentRunResult {
+  jobId: string;
+  analysisId?: string;
+  status: "succeeded" | "failed" | string;
+  failureReason?: string;
+}
+
 export interface EvaluationArtifact {
   kind: string;
   uri: string;

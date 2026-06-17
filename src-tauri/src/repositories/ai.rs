@@ -1,0 +1,422 @@
+use crate::domain::ai::{
+    AIAnalysisSubmission, AIEnrichmentInput, AITraceSubmission, ModelProviderConfig,
+    StoredModelProviderConfig,
+};
+use crate::errors::{AppError, AppResult};
+use chrono::Utc;
+use serde_json::json;
+use sqlx::sqlite::SqliteRow;
+use sqlx::{Row, SqlitePool};
+use uuid::Uuid;
+
+const AI_ENRICHMENT_JOB_TYPE: &str = "ai.enrich_object";
+
+#[derive(Debug, Clone)]
+pub struct AIRepository {
+    pool: SqlitePool,
+}
+
+impl AIRepository {
+    pub fn new(pool: SqlitePool) -> Self {
+        Self { pool }
+    }
+
+    pub async fn upsert_model_provider_config(
+        &self,
+        config: &ModelProviderConfig,
+        secret_ref: Option<&str>,
+    ) -> AppResult<()> {
+        let now = Utc::now().to_rfc3339();
+        let config_id = normalize_provider_id(&config.provider)?;
+        let capabilities_json = serde_json::to_string(&config.capabilities).map_err(|error| {
+            AppError::ModelOutputSchema(format!("invalid capabilities: {error}"))
+        })?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO model_provider_configs (
+                id,
+                provider,
+                chat_base_url,
+                embeddings_base_url,
+                default_chat_model,
+                default_embedding_model,
+                capabilities_json,
+                secret_ref,
+                enabled,
+                created_at,
+                updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, ?9, ?9)
+            ON CONFLICT(id) DO UPDATE SET
+                provider = excluded.provider,
+                chat_base_url = excluded.chat_base_url,
+                embeddings_base_url = excluded.embeddings_base_url,
+                default_chat_model = excluded.default_chat_model,
+                default_embedding_model = excluded.default_embedding_model,
+                capabilities_json = excluded.capabilities_json,
+                secret_ref = COALESCE(excluded.secret_ref, model_provider_configs.secret_ref),
+                enabled = 1,
+                updated_at = excluded.updated_at
+            "#,
+        )
+        .bind(&config_id)
+        .bind(config.provider.trim())
+        .bind(config.chat_base_url.as_deref().map(str::trim))
+        .bind(config.embeddings_base_url.as_deref().map(str::trim))
+        .bind(config.default_chat_model.as_deref().map(str::trim))
+        .bind(config.default_embedding_model.as_deref().map(str::trim))
+        .bind(capabilities_json)
+        .bind(secret_ref)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn get_enabled_chat_config(&self) -> AppResult<Option<StoredModelProviderConfig>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT
+                id,
+                provider,
+                chat_base_url,
+                embeddings_base_url,
+                default_chat_model,
+                default_embedding_model,
+                capabilities_json,
+                secret_ref,
+                enabled
+            FROM model_provider_configs
+            WHERE enabled = 1
+            ORDER BY updated_at DESC
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(stored_model_config_from_row)
+            .find(|config| {
+                config
+                    .capabilities
+                    .iter()
+                    .any(|capability| capability == "chat")
+            }))
+    }
+
+    pub async fn get_enrichment_input(&self, object_id: &str) -> AppResult<AIEnrichmentInput> {
+        let row = sqlx::query(
+            r#"
+            SELECT
+                objects.id AS object_id,
+                objects.object_type,
+                objects.title,
+                objects.canonical_url,
+                objects.privacy_level,
+                parsed.id AS parsed_document_id,
+                parsed.source_snapshot_id,
+                parsed.text_content,
+                parsed.content_hash
+            FROM knowledge_objects AS objects
+            INNER JOIN parsed_documents AS parsed ON parsed.object_id = objects.id
+            WHERE objects.id = ?1
+              AND objects.lifecycle_status != 'deleted'
+            ORDER BY parsed.created_at DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(object_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        row.map(enrichment_input_from_row)
+            .ok_or(AppError::ObjectNotFound)
+    }
+
+    pub async fn create_enrichment_job(&self, object_id: &str) -> AppResult<String> {
+        let now = Utc::now().to_rfc3339();
+        let job_id = Uuid::new_v4().to_string();
+
+        sqlx::query(
+            r#"
+            INSERT INTO background_jobs (
+                id,
+                job_type,
+                status,
+                object_id,
+                payload_json,
+                attempt_count,
+                max_attempts,
+                created_at,
+                updated_at
+            ) VALUES (?1, ?2, 'running', ?3, ?4, 1, 1, ?5, ?5)
+            "#,
+        )
+        .bind(&job_id)
+        .bind(AI_ENRICHMENT_JOB_TYPE)
+        .bind(object_id)
+        .bind(json!({ "objectId": object_id }).to_string())
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(job_id)
+    }
+
+    pub async fn complete_enrichment_job(
+        &self,
+        job_id: &str,
+        analysis: &AIAnalysisSubmission,
+        trace: &AITraceSubmission,
+    ) -> AppResult<()> {
+        let now = Utc::now().to_rfc3339();
+        let mut tx = self.pool.begin().await?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO ai_analysis (
+                id,
+                object_id,
+                parsed_document_id,
+                analysis_type,
+                schema_version,
+                summary,
+                category,
+                tags_json,
+                key_points_json,
+                claims_json,
+                action_items_json,
+                risks_json,
+                quality_score,
+                confidence,
+                created_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+            "#,
+        )
+        .bind(&analysis.id)
+        .bind(&analysis.object_id)
+        .bind(&analysis.parsed_document_id)
+        .bind(&analysis.analysis_type)
+        .bind(analysis.schema_version)
+        .bind(&analysis.summary)
+        .bind(&analysis.category)
+        .bind(&analysis.tags_json)
+        .bind(&analysis.key_points_json)
+        .bind(&analysis.claims_json)
+        .bind(&analysis.action_items_json)
+        .bind(&analysis.risks_json)
+        .bind(analysis.quality_score)
+        .bind(analysis.confidence)
+        .bind(&analysis.created_at)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO ai_traces (
+                id,
+                analysis_id,
+                object_id,
+                provider,
+                model,
+                capability,
+                prompt_template_id,
+                prompt_template_version,
+                input_snapshot_id,
+                input_parsed_document_id,
+                input_hash,
+                output_hash,
+                prompt_tokens,
+                completion_tokens,
+                estimated_cost_usd,
+                latency_ms,
+                created_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
+            "#,
+        )
+        .bind(&trace.id)
+        .bind(&trace.analysis_id)
+        .bind(&trace.object_id)
+        .bind(&trace.provider)
+        .bind(&trace.model)
+        .bind(&trace.capability)
+        .bind(&trace.prompt_template_id)
+        .bind(&trace.prompt_template_version)
+        .bind(&trace.input_snapshot_id)
+        .bind(&trace.input_parsed_document_id)
+        .bind(&trace.input_hash)
+        .bind(&trace.output_hash)
+        .bind(trace.prompt_tokens)
+        .bind(trace.completion_tokens)
+        .bind(trace.estimated_cost_usd)
+        .bind(trace.latency_ms)
+        .bind(&trace.created_at)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            r#"
+            UPDATE background_jobs
+            SET status = 'succeeded',
+                last_error = NULL,
+                locked_at = NULL,
+                locked_by = NULL,
+                updated_at = ?2
+            WHERE id = ?1
+            "#,
+        )
+        .bind(job_id)
+        .bind(&now)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            r#"
+            UPDATE knowledge_objects
+            SET lifecycle_status = 'enriched',
+                updated_at = ?2
+            WHERE id = ?1 AND lifecycle_status = 'parsed'
+            "#,
+        )
+        .bind(&analysis.object_id)
+        .bind(&now)
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(())
+    }
+
+    pub async fn fail_enrichment_job(&self, job_id: &str, failure_reason: &str) -> AppResult<()> {
+        let now = Utc::now().to_rfc3339();
+        let failure_reason = truncate_failure_reason(failure_reason);
+
+        sqlx::query(
+            r#"
+            UPDATE background_jobs
+            SET status = 'failed',
+                last_error = ?2,
+                locked_at = NULL,
+                locked_by = NULL,
+                updated_at = ?3
+            WHERE id = ?1
+            "#,
+        )
+        .bind(job_id)
+        .bind(failure_reason)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+}
+
+fn normalize_provider_id(provider: &str) -> AppResult<String> {
+    let provider = provider.trim();
+    if provider.is_empty() {
+        return Err(AppError::PolicyDenied(
+            "model provider is required".to_string(),
+        ));
+    }
+
+    Ok(provider.to_ascii_lowercase().replace(' ', "_"))
+}
+
+fn stored_model_config_from_row(row: SqliteRow) -> StoredModelProviderConfig {
+    let capabilities_json: String = row.get("capabilities_json");
+    let capabilities = serde_json::from_str::<Vec<String>>(&capabilities_json).unwrap_or_default();
+
+    StoredModelProviderConfig {
+        id: row.get("id"),
+        provider: row.get("provider"),
+        chat_base_url: row.get("chat_base_url"),
+        embeddings_base_url: row.get("embeddings_base_url"),
+        default_chat_model: row.get("default_chat_model"),
+        default_embedding_model: row.get("default_embedding_model"),
+        capabilities,
+        secret_ref: row.get("secret_ref"),
+        enabled: row.get::<i64, _>("enabled") == 1,
+    }
+}
+
+fn enrichment_input_from_row(row: SqliteRow) -> AIEnrichmentInput {
+    AIEnrichmentInput {
+        object_id: row.get("object_id"),
+        object_type: row.get("object_type"),
+        title: row.get("title"),
+        canonical_url: row.get("canonical_url"),
+        privacy_level: row.get("privacy_level"),
+        parsed_document_id: row.get("parsed_document_id"),
+        source_snapshot_id: row.get("source_snapshot_id"),
+        text_content: row.get("text_content"),
+        content_hash: row.get("content_hash"),
+    }
+}
+
+fn truncate_failure_reason(reason: &str) -> String {
+    const MAX_FAILURE_REASON_CHARS: usize = 500;
+
+    if reason.chars().count() <= MAX_FAILURE_REASON_CHARS {
+        return reason.to_string();
+    }
+
+    reason
+        .chars()
+        .take(MAX_FAILURE_REASON_CHARS)
+        .collect::<String>()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AIRepository;
+    use crate::domain::ai::ModelProviderConfig;
+    use crate::storage::database::Database;
+
+    #[tokio::test]
+    async fn upsert_model_provider_config_does_not_store_api_key() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        let repository = AIRepository::new(database.pool().clone());
+
+        repository
+            .upsert_model_provider_config(
+                &ModelProviderConfig {
+                    provider: "openai-compatible".to_string(),
+                    chat_base_url: Some("https://api.openai.com/v1".to_string()),
+                    embeddings_base_url: None,
+                    api_key: Some("sk-secret".to_string()),
+                    default_chat_model: Some("gpt-4.1-mini".to_string()),
+                    default_embedding_model: None,
+                    capabilities: vec!["chat".to_string()],
+                },
+                Some("memory:model_provider:openai-compatible:api_key"),
+            )
+            .await
+            .expect("config should upsert");
+
+        let row: (String, Option<String>) =
+            sqlx::query_as("SELECT capabilities_json, secret_ref FROM model_provider_configs")
+                .fetch_one(database.pool())
+                .await
+                .expect("config row should be readable");
+
+        assert_eq!(row.0, "[\"chat\"]");
+        assert_eq!(
+            row.1.as_deref(),
+            Some("memory:model_provider:openai-compatible:api_key")
+        );
+
+        let leaked_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM model_provider_configs WHERE secret_ref LIKE '%sk-secret%'",
+        )
+        .fetch_one(database.pool())
+        .await
+        .expect("leak query should be readable");
+
+        assert_eq!(leaked_count, 0);
+    }
+}

@@ -1,6 +1,8 @@
 use crate::errors::{AppError, AppResult};
 use crate::storage::database::Database;
 use crate::storage::object_store::ObjectStore;
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 use tauri::Manager;
 
 #[derive(Debug, Default)]
@@ -8,6 +10,31 @@ pub struct AppState {
     backend_version: String,
     database: Option<Database>,
     object_store: Option<ObjectStore>,
+    secrets: SecretStore,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SecretStore {
+    inner: Arc<RwLock<HashMap<String, String>>>,
+}
+
+impl SecretStore {
+    pub fn set(&self, secret_ref: &str, value: String) -> AppResult<()> {
+        let mut secrets = self.inner.write().map_err(|_| AppError::SecretStorage)?;
+        secrets.insert(secret_ref.to_string(), value);
+        Ok(())
+    }
+
+    pub fn resolve(&self, secret_ref: &str) -> AppResult<Option<String>> {
+        if let Some(env_key) = secret_ref.strip_prefix("env:") {
+            return Ok(std::env::var(env_key)
+                .ok()
+                .filter(|value| !value.is_empty()));
+        }
+
+        let secrets = self.inner.read().map_err(|_| AppError::SecretStorage)?;
+        Ok(secrets.get(secret_ref).cloned())
+    }
 }
 
 impl AppState {
@@ -16,6 +43,7 @@ impl AppState {
             backend_version: env!("CARGO_PKG_VERSION").to_string(),
             database: None,
             object_store: None,
+            secrets: SecretStore::default(),
         }
     }
 
@@ -31,6 +59,7 @@ impl AppState {
             backend_version: env!("CARGO_PKG_VERSION").to_string(),
             database: Some(database),
             object_store: Some(object_store),
+            secrets: SecretStore::default(),
         })
     }
 
@@ -48,5 +77,9 @@ impl AppState {
         self.object_store
             .as_ref()
             .ok_or_else(|| AppError::Filesystem("object store is not initialized".to_string()))
+    }
+
+    pub fn secrets(&self) -> &SecretStore {
+        &self.secrets
     }
 }

@@ -11,6 +11,9 @@ import { usePing } from "../hooks/commands/usePing";
 import { useRecentObjects } from "../hooks/commands/useRecentObjects";
 import { useRetryBackgroundJob } from "../hooks/commands/useRetryBackgroundJob";
 import { useSubmitCapture } from "../hooks/commands/useSubmitCapture";
+import { useTriggerAIEnrichment } from "../hooks/commands/useTriggerAIEnrichment";
+import { useUpdateModelProviderConfig } from "../hooks/commands/useUpdateModelProviderConfig";
+import type { AppUiError } from "../lib/errors";
 import { useLibraryStore } from "../store/libraryStore";
 import type { BackgroundJob } from "../types/api";
 
@@ -26,6 +29,9 @@ interface CaptureJobCompletedPayload {
 export function LibraryShellContainer() {
   const [captureUrl, setCaptureUrl] = useState("");
   const [lastCaptureJob, setLastCaptureJob] = useState<CaptureJobCompletedPayload>();
+  const [aiChatBaseUrl, setAIChatBaseUrl] = useState("https://api.openai.com/v1");
+  const [aiChatModel, setAIChatModel] = useState("gpt-4.1-mini");
+  const [aiApiKey, setAIApiKey] = useState("");
   const { objects, selectedObjectId, selectedDetail, selectObject, setObjects, setSelectedDetail } = useLibraryStore();
   const selectedObject = objects.find((object) => object.id === selectedObjectId);
   const { data, error, loading, ping } = usePing();
@@ -64,6 +70,17 @@ export function LibraryShellContainer() {
     loading: retryJobLoading,
     retryBackgroundJob,
   } = useRetryBackgroundJob();
+  const {
+    error: updateModelConfigError,
+    loading: updateModelConfigLoading,
+    updateModelProviderConfig,
+  } = useUpdateModelProviderConfig();
+  const {
+    data: aiRunResult,
+    error: triggerAIError,
+    loading: triggerAILoading,
+    triggerAIEnrichment,
+  } = useTriggerAIEnrichment();
   const retryableCaptureJob = findRetryableCaptureJob(objectJobs, selectedObject?.id);
 
   const refreshRecentObjects = useCallback(() => {
@@ -233,6 +250,41 @@ export function LibraryShellContainer() {
     selectedObjectId,
   ]);
 
+  const handleSaveAIConfig = useCallback(async () => {
+    const saved = await updateModelProviderConfig({
+      provider: "openai-compatible",
+      chatBaseUrl: aiChatBaseUrl.trim(),
+      apiKey: aiApiKey.trim() || undefined,
+      defaultChatModel: aiChatModel.trim(),
+      capabilities: ["chat"],
+    });
+
+    if (saved) {
+      setAIApiKey("");
+    }
+  }, [aiApiKey, aiChatBaseUrl, aiChatModel, updateModelProviderConfig]);
+
+  const handleRunAIAnalysis = useCallback(async () => {
+    if (!selectedObjectId) {
+      return;
+    }
+
+    const run = await triggerAIEnrichment({ objectId: selectedObjectId });
+    if (!run) {
+      return;
+    }
+
+    await refreshRecentObjects();
+    await loadObjectDetail(selectedObjectId);
+    await loadObjectJobs({ objectId: selectedObjectId, limit: 10 });
+  }, [
+    loadObjectDetail,
+    loadObjectJobs,
+    refreshRecentObjects,
+    selectedObjectId,
+    triggerAIEnrichment,
+  ]);
+
   return (
     <AppShell>
       <ThreePaneLayout
@@ -266,16 +318,41 @@ export function LibraryShellContainer() {
             retryJob={retryableCaptureJob}
             retryError={retryJobError ?? objectJobsError}
             retryLoading={retryJobLoading || objectJobsLoading}
+            aiChatBaseUrl={aiChatBaseUrl}
+            aiChatModel={aiChatModel}
+            aiApiKey={aiApiKey}
+            aiConfigLoading={updateModelConfigLoading}
+            aiRunLoading={triggerAILoading}
+            aiError={triggerAIError ?? updateModelConfigError ?? aiRunFailureToError(aiRunResult)}
             onPing={() => {
               void ping();
             }}
             onDeleteObject={handleDeleteObject}
             onRetryCapture={handleRetryCapture}
+            onAIChatBaseUrlChange={setAIChatBaseUrl}
+            onAIChatModelChange={setAIChatModel}
+            onAIApiKeyChange={setAIApiKey}
+            onSaveAIConfig={handleSaveAIConfig}
+            onRunAIAnalysis={handleRunAIAnalysis}
           />
         }
       />
     </AppShell>
   );
+}
+
+function aiRunFailureToError(run?: { status: string; failureReason?: string }): AppUiError | undefined {
+  if (!run || run.status !== "failed") {
+    return undefined;
+  }
+
+  return {
+    code: "ERR_MODEL_OUTPUT_SCHEMA",
+    title: "AI analysis failed",
+    message: run.failureReason ?? "The model provider did not return a usable analysis.",
+    retryable: true,
+    action: "retry" as const,
+  };
 }
 
 function findRetryableCaptureJob(jobs: BackgroundJob[], objectId?: string) {
