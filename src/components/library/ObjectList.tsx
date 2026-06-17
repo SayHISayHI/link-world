@@ -1,9 +1,10 @@
+import { RefreshCw } from "lucide-react";
+import type { RefObject } from "react";
 import type { KnowledgeObject, SearchResult } from "../../types/api";
 import { formatRelativeStatus } from "../../lib/formatting";
 import { cn } from "../../lib/cn";
 import type { AppUiError } from "../../lib/errors";
 import { CaptureBar } from "./CaptureBar";
-import type { RefObject } from "react";
 
 interface ObjectListProps {
   objects: KnowledgeObject[];
@@ -23,10 +24,14 @@ interface ObjectListProps {
   searchResults: SearchResult[];
   searchLoading: boolean;
   searchError?: AppUiError;
+  searchMaintenanceLoading: boolean;
+  searchMaintenanceError?: AppUiError;
+  searchMaintenanceMessage?: string;
   onCaptureValueChange: (value: string) => void;
   onCaptureSubmit: () => void;
   onSearchValueChange: (value: string) => void;
   onClearSearch: () => void;
+  onRebuildSearchIndex: () => void;
   onSelectObject: (objectId: string) => void;
 }
 
@@ -44,10 +49,14 @@ export function ObjectList({
   searchResults,
   searchLoading,
   searchError,
+  searchMaintenanceLoading,
+  searchMaintenanceError,
+  searchMaintenanceMessage,
   onCaptureValueChange,
   onCaptureSubmit,
   onSearchValueChange,
   onClearSearch,
+  onRebuildSearchIndex,
   onSelectObject,
 }: ObjectListProps) {
   const searchActive = searchValue.trim().length > 0;
@@ -81,7 +90,25 @@ export function ObjectList({
               Clear
             </button>
           ) : null}
+          <button
+            className="flex h-9 shrink-0 items-center gap-1 rounded-md border border-border px-3 text-xs text-muted-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={searchMaintenanceLoading}
+            onClick={onRebuildSearchIndex}
+            title="Rebuild search index"
+            type="button"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", searchMaintenanceLoading && "animate-spin")} aria-hidden="true" />
+            Rebuild
+          </button>
         </div>
+        {searchMaintenanceError ? (
+          <div className="mt-2 rounded-md border border-red-200 bg-red-50 p-2 text-xs leading-5 text-red-800">
+            <p className="font-medium">{searchMaintenanceError.title}</p>
+            <p className="mt-1">{searchMaintenanceError.message}</p>
+          </div>
+        ) : searchMaintenanceMessage ? (
+          <p className="mt-2 text-xs text-muted-foreground">{searchMaintenanceMessage}</p>
+        ) : null}
       </div>
 
       <CaptureBar

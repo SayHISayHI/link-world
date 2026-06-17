@@ -9,6 +9,8 @@ import { useObjectDetail } from "../hooks/commands/useObjectDetail";
 import { useObjectJobs } from "../hooks/commands/useObjectJobs";
 import { usePing } from "../hooks/commands/usePing";
 import { useRecentObjects } from "../hooks/commands/useRecentObjects";
+import { useRebuildSearchIndex } from "../hooks/commands/useRebuildSearchIndex";
+import { useReindexObject } from "../hooks/commands/useReindexObject";
 import { useRetryBackgroundJob } from "../hooks/commands/useRetryBackgroundJob";
 import { useSearchHybrid } from "../hooks/commands/useSearchHybrid";
 import { useSubmitCapture } from "../hooks/commands/useSubmitCapture";
@@ -40,6 +42,13 @@ interface AIEnrichmentCompletedPayload {
 interface EvaluationCompletedPayload {
   objectId?: string;
   runId?: string;
+}
+
+interface SearchIndexUpdatedPayload {
+  jobId?: string;
+  objectId?: string;
+  indexed?: boolean;
+  indexedObjects?: number;
 }
 
 export function LibraryShellContainer() {
@@ -94,6 +103,18 @@ export function LibraryShellContainer() {
     resetSearch,
     searchHybrid,
   } = useSearchHybrid();
+  const {
+    data: rebuildSearchIndexResult,
+    error: rebuildSearchIndexError,
+    loading: rebuildSearchIndexLoading,
+    rebuildSearchIndex,
+  } = useRebuildSearchIndex();
+  const {
+    data: reindexObjectResult,
+    error: reindexObjectError,
+    loading: reindexObjectLoading,
+    reindexObject,
+  } = useReindexObject();
   const {
     error: updateModelConfigError,
     loading: updateModelConfigLoading,
@@ -170,6 +191,8 @@ export function LibraryShellContainer() {
     let unlistenCapture: (() => void) | undefined;
     let unlistenAI: (() => void) | undefined;
     let unlistenEvaluation: (() => void) | undefined;
+    let unlistenSearchRebuilt: (() => void) | undefined;
+    let unlistenObjectReindexed: (() => void) | undefined;
     let disposed = false;
 
     void import("@tauri-apps/api/event")
@@ -212,28 +235,66 @@ export function LibraryShellContainer() {
             void loadObjectJobs({ objectId, limit: 10 });
           }
         });
+        const unsubscribeSearchRebuilt = await listen<SearchIndexUpdatedPayload>("search://index-rebuilt", () => {
+          void refreshRecentObjects();
+          void refreshSearchResults();
+        });
+        const unsubscribeObjectReindexed = await listen<SearchIndexUpdatedPayload>(
+          "search://object-reindexed",
+          (event) => {
+            void refreshSearchResults();
 
-        return { unsubscribeAI, unsubscribeCapture, unsubscribeEvaluation, unsubscribeLibrary };
-      })
-      .then(({ unsubscribeAI, unsubscribeCapture, unsubscribeEvaluation, unsubscribeLibrary }) => {
-        if (disposed) {
-          unsubscribeLibrary();
-          unsubscribeCapture();
-          unsubscribeAI();
-          unsubscribeEvaluation();
-          return;
-        }
+            const objectId = event.payload.objectId;
+            if (objectId && objectId === selectedObjectId) {
+              void loadObjectDetail(objectId);
+              void loadObjectJobs({ objectId, limit: 10 });
+            }
+          },
+        );
 
-        unlisten = unsubscribeLibrary;
-        unlistenCapture = unsubscribeCapture;
-        unlistenAI = unsubscribeAI;
-        unlistenEvaluation = unsubscribeEvaluation;
+        return {
+          unsubscribeAI,
+          unsubscribeCapture,
+          unsubscribeEvaluation,
+          unsubscribeLibrary,
+          unsubscribeObjectReindexed,
+          unsubscribeSearchRebuilt,
+        };
       })
+      .then(
+        ({
+          unsubscribeAI,
+          unsubscribeCapture,
+          unsubscribeEvaluation,
+          unsubscribeLibrary,
+          unsubscribeObjectReindexed,
+          unsubscribeSearchRebuilt,
+        }) => {
+          if (disposed) {
+            unsubscribeLibrary();
+            unsubscribeCapture();
+            unsubscribeAI();
+            unsubscribeEvaluation();
+            unsubscribeSearchRebuilt();
+            unsubscribeObjectReindexed();
+            return;
+          }
+
+          unlisten = unsubscribeLibrary;
+          unlistenCapture = unsubscribeCapture;
+          unlistenAI = unsubscribeAI;
+          unlistenEvaluation = unsubscribeEvaluation;
+          unlistenSearchRebuilt = unsubscribeSearchRebuilt;
+          unlistenObjectReindexed = unsubscribeObjectReindexed;
+        },
+      )
       .catch(() => {
         unlisten = undefined;
         unlistenCapture = undefined;
         unlistenAI = undefined;
         unlistenEvaluation = undefined;
+        unlistenSearchRebuilt = undefined;
+        unlistenObjectReindexed = undefined;
       });
 
     return () => {
@@ -242,6 +303,8 @@ export function LibraryShellContainer() {
       unlistenCapture?.();
       unlistenAI?.();
       unlistenEvaluation?.();
+      unlistenSearchRebuilt?.();
+      unlistenObjectReindexed?.();
     };
   }, [loadObjectDetail, loadObjectJobs, refreshRecentObjects, refreshSearchResults, selectedObjectId]);
 
@@ -402,6 +465,40 @@ export function LibraryShellContainer() {
     triggerAIEnrichment,
   ]);
 
+  const handleRebuildSearchIndex = useCallback(async () => {
+    const response = await rebuildSearchIndex();
+    if (!response) {
+      return;
+    }
+
+    await Promise.all([refreshRecentObjects(), refreshSearchResults()]);
+  }, [rebuildSearchIndex, refreshRecentObjects, refreshSearchResults]);
+
+  const handleReindexSelectedObject = useCallback(async () => {
+    if (!selectedObjectId) {
+      return;
+    }
+
+    const response = await reindexObject({ objectId: selectedObjectId });
+    if (!response) {
+      return;
+    }
+
+    await Promise.all([
+      refreshRecentObjects(),
+      refreshSearchResults(),
+      loadObjectDetail(selectedObjectId),
+      loadObjectJobs({ objectId: selectedObjectId, limit: 10 }),
+    ]);
+  }, [
+    loadObjectDetail,
+    loadObjectJobs,
+    refreshRecentObjects,
+    refreshSearchResults,
+    reindexObject,
+    selectedObjectId,
+  ]);
+
   const handleRunEvaluation = useCallback(async () => {
     if (!selectedObjectId) {
       return;
@@ -450,6 +547,11 @@ export function LibraryShellContainer() {
             searchResults={searchResults}
             searchLoading={searchLoading}
             searchError={searchError}
+            searchMaintenanceLoading={rebuildSearchIndexLoading}
+            searchMaintenanceError={rebuildSearchIndexError}
+            searchMaintenanceMessage={
+              rebuildSearchIndexResult ? `Indexed ${rebuildSearchIndexResult.indexedObjects} objects` : undefined
+            }
             onCaptureValueChange={setCaptureUrl}
             onCaptureSubmit={handleCaptureSubmit}
             onSearchValueChange={setSearchQuery}
@@ -457,6 +559,7 @@ export function LibraryShellContainer() {
               setSearchQuery("");
               resetSearch();
             }}
+            onRebuildSearchIndex={handleRebuildSearchIndex}
             onSelectObject={selectObject}
           />
         }
@@ -480,6 +583,9 @@ export function LibraryShellContainer() {
             aiConfigLoading={updateModelConfigLoading}
             aiRunLoading={triggerAILoading}
             aiError={triggerAIError ?? updateModelConfigError ?? aiRunFailureToError(aiRunResult)}
+            searchIndexLoading={reindexObjectLoading}
+            searchIndexError={reindexObjectError}
+            searchIndexMessage={reindexStatusMessage(reindexObjectResult, selectedObjectId)}
             evaluationLoading={triggerEvaluationLoading}
             evaluationError={triggerEvaluationError}
             onPing={() => {
@@ -492,12 +598,24 @@ export function LibraryShellContainer() {
             onAIApiKeyChange={setAIApiKey}
             onSaveAIConfig={handleSaveAIConfig}
             onRunAIAnalysis={handleRunAIAnalysis}
+            onReindexObject={handleReindexSelectedObject}
             onRunEvaluation={handleRunEvaluation}
           />
         }
       />
     </AppShell>
   );
+}
+
+function reindexStatusMessage(
+  result: { objectId: string; indexed: boolean } | undefined,
+  selectedObjectId?: string,
+) {
+  if (!result || result.objectId !== selectedObjectId) {
+    return undefined;
+  }
+
+  return result.indexed ? "Search index updated." : "No parsed document available for indexing.";
 }
 
 function inferEvaluatorType(object?: KnowledgeObject) {

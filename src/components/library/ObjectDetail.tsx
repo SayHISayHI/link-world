@@ -30,6 +30,9 @@ interface ObjectDetailProps {
   aiConfigLoading: boolean;
   aiRunLoading: boolean;
   aiError?: AppUiError;
+  searchIndexLoading: boolean;
+  searchIndexError?: AppUiError;
+  searchIndexMessage?: string;
   evaluationLoading: boolean;
   evaluationError?: AppUiError;
   onPing: () => void;
@@ -40,6 +43,7 @@ interface ObjectDetailProps {
   onAIApiKeyChange: (value: string) => void;
   onSaveAIConfig: () => void;
   onRunAIAnalysis: () => void;
+  onReindexObject: () => void;
   onRunEvaluation: () => void;
 }
 
@@ -62,6 +66,9 @@ export function ObjectDetail({
   aiConfigLoading,
   aiRunLoading,
   aiError,
+  searchIndexLoading,
+  searchIndexError,
+  searchIndexMessage,
   evaluationLoading,
   evaluationError,
   onPing,
@@ -72,6 +79,7 @@ export function ObjectDetail({
   onAIApiKeyChange,
   onSaveAIConfig,
   onRunAIAnalysis,
+  onReindexObject,
   onRunEvaluation,
 }: ObjectDetailProps) {
   if (!object) {
@@ -188,6 +196,25 @@ export function ObjectDetail({
               <p>Snapshots {detail?.snapshots.length ?? 0}</p>
               <p>Parsed document {parsedDocument ? "available" : "pending"}</p>
             </div>
+            <div className="mt-3">
+              <Button
+                variant="secondary"
+                onClick={onReindexObject}
+                disabled={searchIndexLoading || !parsedDocument}
+                title="Reindex selected object"
+              >
+                <RefreshCw className={searchIndexLoading ? "h-4 w-4 animate-spin" : "h-4 w-4"} aria-hidden="true" />
+                Reindex
+              </Button>
+            </div>
+            {searchIndexError ? (
+              <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-2 text-red-800">
+                <p className="font-medium">{searchIndexError.title}</p>
+                <p className="mt-1">{searchIndexError.message}</p>
+              </div>
+            ) : searchIndexMessage ? (
+              <p className="mt-3 text-muted-foreground">{searchIndexMessage}</p>
+            ) : null}
           </div>
           <AIAnalysisPanel
             latestAnalysis={latestAnalysis}

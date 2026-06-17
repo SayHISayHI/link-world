@@ -9,3 +9,18 @@ pub struct SearchResult {
     pub snippet: Option<String>,
     pub score: f64,
 }
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RebuildSearchIndexResponse {
+    pub job_id: String,
+    pub indexed_objects: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReindexObjectResponse {
+    pub job_id: String,
+    pub object_id: String,
+    pub indexed: bool,
+}

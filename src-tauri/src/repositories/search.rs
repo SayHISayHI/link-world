@@ -1,11 +1,13 @@
 use crate::domain::knowledge::KnowledgeObject;
 use crate::domain::search::SearchResult;
 use crate::errors::{AppError, AppResult};
+use serde_json::json;
 use sqlx::sqlite::SqliteRow;
 use sqlx::{Row, Sqlite, SqlitePool, Transaction};
 
 const DEFAULT_SEARCH_LIMIT: i64 = 20;
 const MAX_SEARCH_LIMIT: i64 = 50;
+const SEARCH_REINDEX_JOB_TYPE: &str = "search.reindex_object";
 
 #[derive(Debug, Clone)]
 pub struct SearchRepository {
@@ -68,10 +70,113 @@ impl SearchRepository {
             .collect())
     }
 
+    pub async fn rebuild_index_with_job(&self, job_id: &str, now: &str) -> AppResult<i64> {
+        let mut tx = self.pool.begin().await?;
+
+        sqlx::query("DELETE FROM knowledge_fts")
+            .execute(&mut *tx)
+            .await?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO knowledge_fts (
+                object_id,
+                parsed_document_id,
+                title,
+                author,
+                content,
+                ai_summary
+            )
+            SELECT
+                objects.id,
+                parsed.id,
+                COALESCE(NULLIF(parsed.title, ''), objects.title, objects.canonical_url, objects.id),
+                objects.author,
+                parsed.text_content,
+                (
+                    SELECT analysis.summary
+                    FROM ai_analysis AS analysis
+                    WHERE analysis.object_id = objects.id
+                    ORDER BY analysis.created_at DESC
+                    LIMIT 1
+                )
+            FROM knowledge_objects AS objects
+            INNER JOIN parsed_documents AS parsed ON parsed.id = (
+                SELECT latest.id
+                FROM parsed_documents AS latest
+                WHERE latest.object_id = objects.id
+                ORDER BY latest.created_at DESC
+                LIMIT 1
+            )
+            WHERE objects.lifecycle_status != 'deleted'
+            "#,
+        )
+        .execute(&mut *tx)
+        .await?;
+
+        let indexed_objects =
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(DISTINCT object_id) FROM knowledge_fts")
+                .fetch_one(&mut *tx)
+                .await?;
+
+        Self::insert_reindex_job(
+            &mut tx,
+            job_id,
+            None,
+            json!({
+                "scope": "all",
+                "indexedObjects": indexed_objects,
+            })
+            .to_string(),
+            now,
+        )
+        .await?;
+
+        tx.commit().await?;
+        Ok(indexed_objects)
+    }
+
+    pub async fn reindex_object_with_job(
+        &self,
+        object_id: &str,
+        job_id: &str,
+        now: &str,
+    ) -> AppResult<bool> {
+        let mut tx = self.pool.begin().await?;
+        let active_object_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM knowledge_objects WHERE id = ?1 AND lifecycle_status != 'deleted'",
+        )
+        .bind(object_id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        if active_object_count == 0 {
+            return Err(AppError::ObjectNotFound);
+        }
+
+        let indexed = Self::reindex_object(&mut tx, object_id).await?;
+        Self::insert_reindex_job(
+            &mut tx,
+            job_id,
+            Some(object_id),
+            json!({
+                "scope": "object",
+                "objectId": object_id,
+                "indexed": indexed,
+            })
+            .to_string(),
+            now,
+        )
+        .await?;
+
+        tx.commit().await?;
+        Ok(indexed)
+    }
+
     pub async fn reindex_object(
         tx: &mut Transaction<'_, Sqlite>,
         object_id: &str,
-    ) -> AppResult<()> {
+    ) -> AppResult<bool> {
         Self::delete_object_index(tx, object_id).await?;
 
         sqlx::query(
@@ -113,7 +218,13 @@ impl SearchRepository {
         .execute(&mut **tx)
         .await?;
 
-        Ok(())
+        let indexed_rows: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM knowledge_fts WHERE object_id = ?1")
+                .bind(object_id)
+                .fetch_one(&mut **tx)
+                .await?;
+
+        Ok(indexed_rows > 0)
     }
 
     pub async fn delete_object_index(
@@ -124,6 +235,40 @@ impl SearchRepository {
             .bind(object_id)
             .execute(&mut **tx)
             .await?;
+
+        Ok(())
+    }
+
+    async fn insert_reindex_job(
+        tx: &mut Transaction<'_, Sqlite>,
+        job_id: &str,
+        object_id: Option<&str>,
+        payload_json: String,
+        now: &str,
+    ) -> AppResult<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO background_jobs (
+                id,
+                job_type,
+                status,
+                object_id,
+                payload_json,
+                attempt_count,
+                max_attempts,
+                last_error,
+                created_at,
+                updated_at
+            ) VALUES (?1, ?2, 'succeeded', ?3, ?4, 1, 1, NULL, ?5, ?5)
+            "#,
+        )
+        .bind(job_id)
+        .bind(SEARCH_REINDEX_JOB_TYPE)
+        .bind(object_id)
+        .bind(payload_json)
+        .bind(now)
+        .execute(&mut **tx)
+        .await?;
 
         Ok(())
     }
@@ -301,6 +446,109 @@ mod tests {
         assert!(results.is_empty());
     }
 
+    #[tokio::test]
+    async fn rebuild_index_recreates_search_rows_and_records_job() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        seed_searchable_object(database.pool()).await;
+        seed_unparsed_object(database.pool(), "obj-unparsed").await;
+        seed_deleted_searchable_object(database.pool()).await;
+
+        let repository = SearchRepository::new(database.pool().clone());
+        let indexed_objects = repository
+            .rebuild_index_with_job("job-rebuild-search", "2026-06-17T00:00:02Z")
+            .await
+            .expect("index should rebuild");
+
+        assert_eq!(indexed_objects, 1);
+
+        let durable_results = repository
+            .search_hybrid("durable workflows", Some(10))
+            .await
+            .expect("active object should be searchable");
+        let deleted_results = repository
+            .search_hybrid("deleted marker", Some(10))
+            .await
+            .expect("deleted object search should work");
+        let job: (String, Option<String>, String) = sqlx::query_as(
+            r#"
+            SELECT status, object_id, payload_json
+            FROM background_jobs
+            WHERE id = 'job-rebuild-search'
+            "#,
+        )
+        .fetch_one(database.pool())
+        .await
+        .expect("job should be readable");
+
+        assert_eq!(durable_results.len(), 1);
+        assert!(deleted_results.is_empty());
+        assert_eq!(job.0, "succeeded");
+        assert!(job.1.is_none());
+        assert!(job.2.contains("\"indexedObjects\":1"));
+    }
+
+    #[tokio::test]
+    async fn reindex_object_with_job_reports_if_object_has_searchable_document() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        seed_searchable_object(database.pool()).await;
+        seed_unparsed_object(database.pool(), "obj-unparsed").await;
+        let repository = SearchRepository::new(database.pool().clone());
+
+        let indexed = repository
+            .reindex_object_with_job("obj-search", "job-reindex-object", "2026-06-17T00:00:02Z")
+            .await
+            .expect("parsed object should reindex");
+        let unparsed_indexed = repository
+            .reindex_object_with_job(
+                "obj-unparsed",
+                "job-reindex-unparsed",
+                "2026-06-17T00:00:03Z",
+            )
+            .await
+            .expect("unparsed object should produce an empty index");
+        let job_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM background_jobs WHERE job_type = 'search.reindex_object'",
+        )
+        .fetch_one(database.pool())
+        .await
+        .expect("job count should be readable");
+
+        assert!(indexed);
+        assert!(!unparsed_indexed);
+        assert_eq!(job_count, 2);
+    }
+
+    #[tokio::test]
+    async fn reindex_object_with_job_rejects_missing_or_deleted_objects() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        seed_deleted_searchable_object(database.pool()).await;
+        let repository = SearchRepository::new(database.pool().clone());
+
+        let missing_error = repository
+            .reindex_object_with_job("obj-missing", "job-missing", "2026-06-17T00:00:02Z")
+            .await
+            .expect_err("missing object should fail");
+        let deleted_error = repository
+            .reindex_object_with_job("obj-deleted", "job-deleted", "2026-06-17T00:00:03Z")
+            .await
+            .expect_err("deleted object should fail");
+
+        assert!(matches!(
+            missing_error,
+            crate::errors::AppError::ObjectNotFound
+        ));
+        assert!(matches!(
+            deleted_error,
+            crate::errors::AppError::ObjectNotFound
+        ));
+    }
+
     async fn seed_searchable_object(pool: &sqlx::SqlitePool) {
         sqlx::query(
             r#"
@@ -330,6 +578,54 @@ mod tests {
         .execute(pool)
         .await
         .expect("parsed document should insert");
+    }
+
+    async fn seed_unparsed_object(pool: &sqlx::SqlitePool, object_id: &str) {
+        sqlx::query(
+            r#"
+            INSERT INTO knowledge_objects (
+                id, user_id, object_type, title, author, privacy_level, lifecycle_status, captured_at, updated_at
+            ) VALUES (
+                ?1, 'local', 'article', 'Unparsed Notes', 'Author', 'personal', 'captured',
+                '2026-06-17T00:00:00Z', '2026-06-17T00:00:00Z'
+            )
+            "#,
+        )
+        .bind(object_id)
+        .execute(pool)
+        .await
+        .expect("unparsed object should insert");
+    }
+
+    async fn seed_deleted_searchable_object(pool: &sqlx::SqlitePool) {
+        sqlx::query(
+            r#"
+            INSERT INTO knowledge_objects (
+                id, user_id, object_type, title, author, privacy_level, lifecycle_status, captured_at, updated_at
+            ) VALUES (
+                'obj-deleted', 'local', 'article', 'Deleted Notes', 'Author', 'personal', 'deleted',
+                '2026-06-17T00:00:00Z', '2026-06-17T00:00:00Z'
+            )
+            "#,
+        )
+        .execute(pool)
+        .await
+        .expect("deleted object should insert");
+
+        sqlx::query(
+            r#"
+            INSERT INTO parsed_documents (
+                id, object_id, title, text_content, word_count, content_hash, parser_id, parser_version, created_at
+            ) VALUES (
+                'parsed-deleted', 'obj-deleted', 'Deleted Notes',
+                'Deleted marker content must not appear in rebuilt search index.',
+                10, 'hash-deleted', 'test.parser', '0.1.0', '2026-06-17T00:00:00Z'
+            )
+            "#,
+        )
+        .execute(pool)
+        .await
+        .expect("deleted parsed document should insert");
     }
 
     async fn reindex(pool: &sqlx::SqlitePool, object_id: &str) {

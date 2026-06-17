@@ -246,6 +246,17 @@ export interface SearchResult {
   score: number;
 }
 
+export interface RebuildSearchIndexResponse {
+  jobId: string;
+  indexedObjects: number;
+}
+
+export interface ReindexObjectResponse {
+  jobId: string;
+  objectId: string;
+  indexed: boolean;
+}
+
 export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled" | "blocked";
 
 export interface BackgroundJob {

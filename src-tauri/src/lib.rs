@@ -45,7 +45,9 @@ pub fn run() {
             commands::operations::get_background_job,
             commands::operations::get_object_jobs,
             commands::operations::retry_background_job,
-            commands::search::search_hybrid
+            commands::search::search_hybrid,
+            commands::search::rebuild_search_index,
+            commands::search::reindex_object
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Link World");
