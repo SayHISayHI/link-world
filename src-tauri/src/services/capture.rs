@@ -9,7 +9,7 @@ use crate::state::AppState;
 use crate::storage::object_store::{sha256_hex, ObjectStore};
 use chrono::Utc;
 use reqwest::Url;
-use scraper::{Html, Selector};
+use scraper::{ElementRef, Html, Selector};
 use serde_json::json;
 use sqlx::SqlitePool;
 use std::time::Duration;
@@ -23,6 +23,29 @@ const HTML_FETCH_PARSER_VERSION: &str = "0.1.0";
 const MAX_RAW_CAPTURE_BYTES: usize = 5 * 1024 * 1024;
 const MAX_FETCH_BYTES: usize = 5 * 1024 * 1024;
 const FETCH_TIMEOUT_SECONDS: u64 = 20;
+const MIN_EXTRACTED_TEXT_CHARS: usize = 24;
+const READABLE_TEXT_BLOCK_SELECTOR: &str =
+    "h1, h2, h3, h4, p, li, blockquote, pre, code, figcaption";
+const READABLE_CONTAINER_SELECTORS: &[&str] = &[
+    "article",
+    "main",
+    r#"[role="main"]"#,
+    r#"[itemprop="articleBody"]"#,
+    "#js_content",
+    ".rich_media_content",
+    ".topic_content",
+    ".markdown_body",
+    ".entry-content",
+    ".article-content",
+    ".post-content",
+    ".Post-RichText",
+    ".RichContent-inner",
+    r#"[data-testid="tweetText"]"#,
+    ".article",
+    ".post",
+    ".content",
+    "body",
+];
 
 #[derive(Clone)]
 pub struct CaptureService {
@@ -367,7 +390,7 @@ fn parse_fetched_html_sync(html: String) -> AppResult<FetchedHtmlDocument> {
     let title = select_first_text(&document, "title");
     let description = select_first_attr(&document, r#"meta[name="description"]"#, "content");
     let language = select_first_attr(&document, "html", "lang");
-    let text_content = select_body_text(&document)
+    let text_content = select_readable_text(&document)
         .or_else(|| description.clone())
         .unwrap_or_else(|| strip_html_tags(&html));
     let text_content = normalize_whitespace(&text_content);
@@ -375,6 +398,24 @@ fn parse_fetched_html_sync(html: String) -> AppResult<FetchedHtmlDocument> {
     if text_content.is_empty() {
         return Err(AppError::ParseFailed(
             "HTML document did not contain readable text".to_string(),
+        ));
+    }
+
+    if let Some(reason) =
+        detect_blocked_or_verification_page(title.as_deref(), description.as_deref(), &text_content)
+    {
+        return Err(AppError::ParseFailed(reason));
+    }
+
+    if !is_meaningful_extracted_text(&text_content, description.as_deref()) {
+        return Err(AppError::ParseFailed(
+            "HTML document did not contain enough readable content".to_string(),
+        ));
+    }
+
+    if looks_like_script_or_style_dump(&text_content) {
+        return Err(AppError::ParseFailed(
+            "HTML parser extracted script/style noise instead of readable content".to_string(),
         ));
     }
 
@@ -414,14 +455,192 @@ fn select_first_attr(document: &Html, selector: &str, attr: &str) -> Option<Stri
         .filter(|text| !text.is_empty())
 }
 
-fn select_body_text(document: &Html) -> Option<String> {
-    let selector = Selector::parse("body").ok()?;
-    document
-        .select(&selector)
-        .next()
-        .map(|element| element.text().collect::<Vec<_>>().join(" "))
-        .map(|text| normalize_whitespace(&text))
-        .filter(|text| !text.is_empty())
+fn select_readable_text(document: &Html) -> Option<String> {
+    let mut best: Option<(usize, String)> = None;
+
+    for selector_text in READABLE_CONTAINER_SELECTORS {
+        let Ok(selector) = Selector::parse(selector_text) else {
+            continue;
+        };
+
+        for element in document.select(&selector) {
+            let allow_fallback = *selector_text != "body";
+            let Some(candidate) = collect_candidate_text(element, allow_fallback) else {
+                continue;
+            };
+            let score = readable_text_score(&candidate, allow_fallback);
+            let should_replace = match best.as_ref() {
+                Some((best_score, _)) => score > *best_score,
+                None => true,
+            };
+
+            if should_replace {
+                best = Some((score, candidate));
+            }
+        }
+    }
+
+    best.map(|(_, text)| text)
+}
+
+fn collect_candidate_text(element: ElementRef<'_>, allow_fallback: bool) -> Option<String> {
+    let block_selector = Selector::parse(READABLE_TEXT_BLOCK_SELECTOR).ok()?;
+    let mut blocks = Vec::new();
+
+    for block in element.select(&block_selector) {
+        let block_text = normalize_whitespace(&block.text().collect::<Vec<_>>().join(" "));
+        if is_readable_text_block(&block_text) {
+            blocks.push(block_text);
+        }
+    }
+
+    let block_text = normalize_whitespace(&blocks.join("\n\n"));
+    if is_readable_text_block(&block_text) {
+        return Some(block_text);
+    }
+
+    if allow_fallback {
+        let fallback = normalize_whitespace(&element.text().collect::<Vec<_>>().join(" "));
+        if is_readable_text_block(&fallback) {
+            return Some(fallback);
+        }
+    }
+
+    None
+}
+
+fn is_readable_text_block(text: &str) -> bool {
+    text.chars().any(|character| !character.is_whitespace())
+}
+
+fn readable_text_score(text: &str, from_specific_container: bool) -> usize {
+    let specificity_bonus = if from_specific_container { 10_000 } else { 0 };
+    specificity_bonus
+        + text
+            .chars()
+            .filter(|character| !character.is_whitespace())
+            .count()
+}
+
+fn is_meaningful_extracted_text(text: &str, description: Option<&str>) -> bool {
+    let text_chars = text
+        .chars()
+        .filter(|character| !character.is_whitespace())
+        .count();
+
+    if text_chars >= MIN_EXTRACTED_TEXT_CHARS {
+        return true;
+    }
+
+    description
+        .map(|description| {
+            text_chars
+                + description
+                    .chars()
+                    .filter(|character| !character.is_whitespace())
+                    .count()
+        })
+        .is_some_and(|total_chars| total_chars >= MIN_EXTRACTED_TEXT_CHARS)
+}
+
+fn detect_blocked_or_verification_page(
+    title: Option<&str>,
+    description: Option<&str>,
+    text_content: &str,
+) -> Option<String> {
+    let combined = format!(
+        "{} {} {}",
+        title.unwrap_or_default(),
+        description.unwrap_or_default(),
+        text_content
+    );
+    let lower_combined = combined.to_lowercase();
+
+    let ascii_markers = [
+        ("captcha", "captcha challenge"),
+        ("verify you are human", "human verification"),
+        ("security check", "security check"),
+        ("access denied", "access denied"),
+        ("checking your browser", "browser verification"),
+        (
+            "please enable javascript and cookies to continue",
+            "browser verification",
+        ),
+    ];
+
+    for (marker, reason) in ascii_markers {
+        if lower_combined.contains(marker) {
+            return Some(format!("blocked or verification page detected: {reason}"));
+        }
+    }
+
+    let cjk_markers = [
+        ("环境异常", "environment verification"),
+        ("完成验证", "environment verification"),
+        ("去验证", "environment verification"),
+        ("安全验证", "security verification"),
+        ("验证码", "captcha challenge"),
+        ("访问受限", "access restricted"),
+        ("请先登录", "login required"),
+        ("登录后继续", "login required"),
+    ];
+
+    for (marker, reason) in cjk_markers {
+        if combined.contains(marker) {
+            return Some(format!("blocked or verification page detected: {reason}"));
+        }
+    }
+
+    None
+}
+
+fn looks_like_script_or_style_dump(text: &str) -> bool {
+    let lower_text = text.to_lowercase();
+
+    if lower_text.matches("--weui-").count() >= 4 {
+        return true;
+    }
+
+    let script_markers = [
+        "document.",
+        "addeventlistener",
+        "queryselector",
+        "window.",
+        "function(",
+        "function ",
+        "var ",
+        "__next_data__",
+        "webpack",
+    ];
+    let style_markers = [
+        "@media",
+        "rgba(",
+        "prefers-color-scheme",
+        "background-",
+        "font-",
+        "color:",
+    ];
+
+    let script_hits = script_markers
+        .iter()
+        .filter(|marker| lower_text.contains(**marker))
+        .count();
+    let style_hits = style_markers
+        .iter()
+        .filter(|marker| lower_text.contains(**marker))
+        .count();
+    let non_whitespace_chars = text
+        .chars()
+        .filter(|character| !character.is_whitespace())
+        .count();
+    let syntax_chars = text
+        .chars()
+        .filter(|character| matches!(character, '{' | '}' | '(' | ')' | ';' | '='))
+        .count();
+    let syntax_ratio = syntax_chars as f32 / non_whitespace_chars.max(1) as f32;
+
+    (script_hits >= 4 && syntax_ratio > 0.06 && non_whitespace_chars > 300)
+        || (style_hits >= 4 && lower_text.matches("--").count() >= 10)
 }
 
 fn build_markdown_preview(
@@ -770,13 +989,65 @@ fn build_fetch_failed_event(
 
 #[cfg(test)]
 mod tests {
-    use super::CaptureService;
+    use super::{parse_fetched_html_sync, CaptureService};
     use crate::domain::capture::{PermissionContext, RawCaptureItem};
     use crate::storage::database::Database;
     use crate::storage::object_store::ObjectStore;
     use serde_json::json;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
+
+    #[test]
+    fn parse_fetched_html_prefers_readable_content_over_script_and_style_noise() {
+        let parsed = parse_fetched_html_sync(
+            r#"<!doctype html>
+            <html lang="zh-CN">
+              <head>
+                <title>Readable Guide</title>
+                <style>:root { --weui-BG-0: #ededed; color: rgba(0,0,0,.9); }</style>
+              </head>
+              <body>
+                <script>
+                  document.addEventListener('DOMContentLoaded', function() {
+                    window.localStorage.setItem('noise', 'true');
+                    document.querySelectorAll('[data-pro-link]').forEach(function(item) {});
+                  });
+                </script>
+                <main>
+                  <article>
+                    <h1>Readable Guide</h1>
+                    <p>Use a structured capture checklist before saving useful links.</p>
+                    <p>Keep the source snapshot, parsed text, and review state separate.</p>
+                  </article>
+                </main>
+              </body>
+            </html>"#
+                .to_string(),
+        )
+        .expect("readable article should parse");
+
+        assert_eq!(parsed.title.as_deref(), Some("Readable Guide"));
+        assert!(parsed.text_content.contains("structured capture checklist"));
+        assert!(!parsed.text_content.contains("document.addEventListener"));
+        assert!(!parsed.text_content.contains("--weui"));
+    }
+
+    #[test]
+    fn parse_fetched_html_rejects_verification_page() {
+        let error = parse_fetched_html_sync(
+            r#"<!doctype html>
+            <html>
+              <head><title>环境异常</title></head>
+              <body>
+                <div>环境异常 当前环境异常，完成验证后即可继续访问。去验证</div>
+              </body>
+            </html>"#
+                .to_string(),
+        )
+        .expect_err("verification page should not be parsed as content");
+
+        assert!(error.to_string().contains("verification page"));
+    }
 
     #[tokio::test]
     async fn submit_text_capture_writes_object_snapshot_document_event_and_job() {
@@ -958,6 +1229,70 @@ mod tests {
         assert_eq!(job_status, "succeeded");
         assert_eq!(snapshot_count, 2);
         assert!(parsed_text.contains("local job runner"));
+    }
+
+    #[tokio::test]
+    async fn run_fetch_job_marks_object_failed_for_verification_page() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        let object_store = test_object_store();
+        let service = CaptureService::new(database.pool().clone(), object_store);
+        let url = start_test_html_server(
+            r#"<!doctype html>
+            <html>
+              <head><title>环境异常</title></head>
+              <body>
+                <style>:root { --weui-BG-0:#ededed; --weui-FG-0:rgba(0,0,0,.9); }</style>
+                <div>环境异常 当前环境异常，完成验证后即可继续访问。去验证</div>
+              </body>
+            </html>"#,
+        )
+        .await;
+
+        let response = service
+            .submit(RawCaptureItem {
+                id: None,
+                user_id: None,
+                source_type: "url".to_string(),
+                source_platform: Some("wechat".to_string()),
+                source_url: Some(url.clone()),
+                canonical_url: Some(url),
+                title: None,
+                author: None,
+                captured_at: None,
+                raw_html: None,
+                raw_text: None,
+                assets: Vec::new(),
+                metadata: json!({}),
+                privacy_level: "personal".to_string(),
+                permission_context: confirmed_permission(),
+            })
+            .await
+            .expect("capture should be submitted");
+
+        let run_result = service
+            .run_fetch_job(&response.job_id)
+            .await
+            .expect("job runner should record failure")
+            .expect("job should be claimed");
+
+        assert_eq!(run_result.status, "failed");
+        assert_eq!(run_result.lifecycle_status, "failed");
+        assert!(run_result
+            .failure_reason
+            .as_deref()
+            .unwrap_or_default()
+            .contains("verification page"));
+
+        let parsed_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM parsed_documents WHERE object_id = ?1")
+                .bind(&response.object_id)
+                .fetch_one(database.pool())
+                .await
+                .expect("parsed document count should be readable");
+
+        assert_eq!(parsed_count, 0);
     }
 
     #[tokio::test]

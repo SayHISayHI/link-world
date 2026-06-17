@@ -4,11 +4,15 @@ import { ThreePaneLayout } from "../components/layout/ThreePaneLayout";
 import { ObjectDetail } from "../components/library/ObjectDetail";
 import { ObjectList } from "../components/library/ObjectList";
 import { Sidebar } from "../components/library/Sidebar";
+import { useDeleteObject } from "../hooks/commands/useDeleteObject";
 import { useObjectDetail } from "../hooks/commands/useObjectDetail";
+import { useObjectJobs } from "../hooks/commands/useObjectJobs";
 import { usePing } from "../hooks/commands/usePing";
 import { useRecentObjects } from "../hooks/commands/useRecentObjects";
+import { useRetryBackgroundJob } from "../hooks/commands/useRetryBackgroundJob";
 import { useSubmitCapture } from "../hooks/commands/useSubmitCapture";
 import { useLibraryStore } from "../store/libraryStore";
+import type { BackgroundJob } from "../types/api";
 
 interface CaptureJobCompletedPayload {
   jobId: string;
@@ -43,6 +47,24 @@ export function LibraryShellContainer() {
     loading: submitCaptureLoading,
     submitCapture,
   } = useSubmitCapture();
+  const {
+    error: deleteObjectError,
+    loading: deleteObjectLoading,
+    deleteObject,
+  } = useDeleteObject();
+  const {
+    data: objectJobs,
+    error: objectJobsError,
+    loading: objectJobsLoading,
+    loadObjectJobs,
+    resetObjectJobs,
+  } = useObjectJobs();
+  const {
+    error: retryJobError,
+    loading: retryJobLoading,
+    retryBackgroundJob,
+  } = useRetryBackgroundJob();
+  const retryableCaptureJob = findRetryableCaptureJob(objectJobs, selectedObject?.id);
 
   const refreshRecentObjects = useCallback(() => {
     return loadRecentObjects({ limit: 50, offset: 0 });
@@ -69,6 +91,7 @@ export function LibraryShellContainer() {
           const objectId = event.payload.objectId;
           if (objectId && objectId === selectedObjectId) {
             void loadObjectDetail(objectId);
+            void loadObjectJobs({ objectId, limit: 10 });
           }
         });
 
@@ -94,7 +117,7 @@ export function LibraryShellContainer() {
       unlisten?.();
       unlistenCapture?.();
     };
-  }, [loadObjectDetail, refreshRecentObjects, selectedObjectId]);
+  }, [loadObjectDetail, loadObjectJobs, refreshRecentObjects, selectedObjectId]);
 
   useEffect(() => {
     setObjects(recentObjects);
@@ -103,12 +126,21 @@ export function LibraryShellContainer() {
   useEffect(() => {
     if (!selectedObjectId) {
       resetObjectDetail();
+      resetObjectJobs();
       setSelectedDetail(undefined);
       return;
     }
 
     void loadObjectDetail(selectedObjectId);
-  }, [loadObjectDetail, resetObjectDetail, selectedObjectId, setSelectedDetail]);
+    void loadObjectJobs({ objectId: selectedObjectId, limit: 10 });
+  }, [
+    loadObjectDetail,
+    loadObjectJobs,
+    resetObjectDetail,
+    resetObjectJobs,
+    selectedObjectId,
+    setSelectedDetail,
+  ]);
 
   useEffect(() => {
     setSelectedDetail(objectDetail);
@@ -143,6 +175,64 @@ export function LibraryShellContainer() {
     await refreshRecentObjects();
   }, [captureUrl, refreshRecentObjects, selectObject, submitCapture]);
 
+  const handleDeleteObject = useCallback(async () => {
+    if (!selectedObjectId) {
+      return;
+    }
+
+    const confirmed = window.confirm("Delete this item from the local library?");
+    if (!confirmed) {
+      return;
+    }
+
+    const response = await deleteObject({
+      objectId: selectedObjectId,
+      mode: "soft_delete",
+    });
+
+    if (!response) {
+      return;
+    }
+
+    resetObjectDetail();
+    resetObjectJobs();
+    setSelectedDetail(undefined);
+    const nextObjects = await refreshRecentObjects();
+    setObjects(nextObjects);
+  }, [
+    deleteObject,
+    refreshRecentObjects,
+    resetObjectDetail,
+    resetObjectJobs,
+    selectedObjectId,
+    setObjects,
+    setSelectedDetail,
+  ]);
+
+  const handleRetryCapture = useCallback(async () => {
+    if (!retryableCaptureJob) {
+      return;
+    }
+
+    const retried = await retryBackgroundJob({ jobId: retryableCaptureJob.id });
+    if (!retried) {
+      return;
+    }
+
+    await refreshRecentObjects();
+    if (selectedObjectId) {
+      await loadObjectDetail(selectedObjectId);
+      await loadObjectJobs({ objectId: selectedObjectId, limit: 10 });
+    }
+  }, [
+    loadObjectDetail,
+    loadObjectJobs,
+    refreshRecentObjects,
+    retryBackgroundJob,
+    retryableCaptureJob,
+    selectedObjectId,
+  ]);
+
   return (
     <AppShell>
       <ThreePaneLayout
@@ -171,13 +261,33 @@ export function LibraryShellContainer() {
             pingData={data}
             pingError={error}
             pingLoading={loading}
+            deleteError={deleteObjectError}
+            deleteLoading={deleteObjectLoading}
+            retryJob={retryableCaptureJob}
+            retryError={retryJobError ?? objectJobsError}
+            retryLoading={retryJobLoading || objectJobsLoading}
             onPing={() => {
               void ping();
             }}
+            onDeleteObject={handleDeleteObject}
+            onRetryCapture={handleRetryCapture}
           />
         }
       />
     </AppShell>
+  );
+}
+
+function findRetryableCaptureJob(jobs: BackgroundJob[], objectId?: string) {
+  if (!objectId) {
+    return undefined;
+  }
+
+  return jobs.find(
+    (job) =>
+      job.objectId === objectId &&
+      job.type === "capture.fetch_url" &&
+      ["failed", "cancelled", "blocked"].includes(job.status),
   );
 }
 

@@ -14,6 +14,8 @@ pub enum AppError {
     Database(String),
     #[error("filesystem error: {0}")]
     Filesystem(String),
+    #[error("job not found")]
+    JobNotFound,
     #[error("network timeout")]
     NetworkTimeout,
     #[error("parse failed: {0}")]
@@ -93,6 +95,7 @@ impl From<AppError> for IpcError {
             AppError::DbMigration(_) => IpcErrorCode::ErrDbMigration,
             AppError::Database(_) => IpcErrorCode::ErrUnknown,
             AppError::Filesystem(_) => IpcErrorCode::ErrUnknown,
+            AppError::JobNotFound => IpcErrorCode::ErrJobNotFound,
             AppError::NetworkTimeout => IpcErrorCode::ErrNetworkTimeout,
             AppError::ParseFailed(_) => IpcErrorCode::ErrParseFailed,
             AppError::ModelAuth => IpcErrorCode::ErrModelAuth,

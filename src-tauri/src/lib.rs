@@ -27,7 +27,11 @@ pub fn run() {
             commands::system::ping,
             commands::capture::submit_capture,
             commands::library::get_recent_objects,
-            commands::library::get_object_detail
+            commands::library::get_object_detail,
+            commands::library::delete_object,
+            commands::operations::get_background_job,
+            commands::operations::get_object_jobs,
+            commands::operations::retry_background_job
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Link World");

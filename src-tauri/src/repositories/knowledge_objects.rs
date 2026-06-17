@@ -1,9 +1,10 @@
 use crate::domain::knowledge::{
-    AIAnalysis, AITrace, EvaluationArtifact, EvaluationRun, KnowledgeObject, KnowledgeObjectDetail,
-    NewKnowledgeObject, ParsedDocument, SourceSnapshot,
+    AIAnalysis, AITrace, DeleteObjectMode, DeleteObjectResponse, EvaluationArtifact, EvaluationRun,
+    KnowledgeObject, KnowledgeObjectDetail, NewKnowledgeObject, ParsedDocument, SourceSnapshot,
 };
 use crate::errors::{AppError, AppResult};
 use chrono::Utc;
+use serde_json::json;
 use serde_json::Value;
 use sqlx::sqlite::SqliteRow;
 use sqlx::{Row, SqlitePool};
@@ -130,6 +131,194 @@ impl KnowledgeObjectRepository {
             snapshots,
             ai_analyses,
             evaluations,
+        })
+    }
+
+    pub async fn delete_object(
+        &self,
+        object_id: &str,
+        mode: DeleteObjectMode,
+    ) -> AppResult<DeleteObjectResponse> {
+        if matches!(mode, DeleteObjectMode::ExportThenDelete) {
+            return Err(AppError::PolicyDenied(
+                "export_then_delete is not implemented in the MVP maintenance path".to_string(),
+            ));
+        }
+
+        let now = Utc::now().to_rfc3339();
+        let row = sqlx::query(
+            r#"
+            SELECT user_id
+            FROM knowledge_objects
+            WHERE id = ?1 AND lifecycle_status != 'deleted'
+            "#,
+        )
+        .bind(object_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        let Some(row) = row else {
+            return Err(AppError::ObjectNotFound);
+        };
+        let user_id: String = row.get("user_id");
+        let tombstone_id = Uuid::new_v4().to_string();
+        let event_id = Uuid::new_v4().to_string();
+        let audit_id = Uuid::new_v4().to_string();
+        let purge_job_id = if matches!(mode, DeleteObjectMode::Purge) {
+            Some(Uuid::new_v4().to_string())
+        } else {
+            None
+        };
+        let purge_status = if purge_job_id.is_some() {
+            "pending"
+        } else {
+            "completed"
+        };
+        let completed_at = if purge_job_id.is_some() {
+            None
+        } else {
+            Some(now.clone())
+        };
+
+        let mut tx = self.pool.begin().await?;
+
+        let update_result = sqlx::query(
+            r#"
+            UPDATE knowledge_objects
+            SET
+                lifecycle_status = 'deleted',
+                failure_reason = NULL,
+                updated_at = ?2
+            WHERE id = ?1 AND lifecycle_status != 'deleted'
+            "#,
+        )
+        .bind(object_id)
+        .bind(&now)
+        .execute(&mut *tx)
+        .await?;
+
+        if update_result.rows_affected() == 0 {
+            tx.rollback().await?;
+            return Err(AppError::ObjectNotFound);
+        }
+
+        sqlx::query(
+            r#"
+            INSERT INTO deletion_tombstones (
+                id,
+                object_id,
+                user_id,
+                deletion_mode,
+                purge_status,
+                reason,
+                created_at,
+                completed_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            "#,
+        )
+        .bind(&tombstone_id)
+        .bind(object_id)
+        .bind(&user_id)
+        .bind(mode.as_str())
+        .bind(purge_status)
+        .bind("user_requested")
+        .bind(&now)
+        .bind(&completed_at)
+        .execute(&mut *tx)
+        .await?;
+
+        if let Some(job_id) = &purge_job_id {
+            sqlx::query(
+                r#"
+                INSERT INTO background_jobs (
+                    id,
+                    job_type,
+                    status,
+                    object_id,
+                    payload_json,
+                    attempt_count,
+                    max_attempts,
+                    created_at,
+                    updated_at
+                ) VALUES (?1, 'storage.purge_deleted_object', 'queued', ?2, ?3, 0, 3, ?4, ?4)
+                "#,
+            )
+            .bind(job_id)
+            .bind(object_id)
+            .bind(
+                json!({
+                    "objectId": object_id,
+                    "tombstoneId": tombstone_id,
+                    "deletionMode": mode.as_str(),
+                })
+                .to_string(),
+            )
+            .bind(&now)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        sqlx::query(
+            r#"
+            INSERT INTO domain_events (
+                id,
+                event_type,
+                event_version,
+                user_id,
+                object_id,
+                payload_json,
+                occurred_at
+            ) VALUES (?1, 'object.deleted', 1, ?2, ?3, ?4, ?5)
+            "#,
+        )
+        .bind(&event_id)
+        .bind(&user_id)
+        .bind(object_id)
+        .bind(
+            json!({
+                "objectId": object_id,
+                "mode": mode.as_str(),
+                "tombstoneId": tombstone_id,
+                "purgeJobId": purge_job_id,
+            })
+            .to_string(),
+        )
+        .bind(&now)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO audit_logs (
+                id,
+                user_id,
+                actor_type,
+                actor_id,
+                action,
+                object_id,
+                metadata_json,
+                created_at
+            ) VALUES (?1, ?2, 'local_user', ?2, 'object.delete', ?3, ?4, ?5)
+            "#,
+        )
+        .bind(&audit_id)
+        .bind(&user_id)
+        .bind(object_id)
+        .bind(
+            json!({
+                "mode": mode.as_str(),
+                "tombstoneId": tombstone_id,
+                "purgeJobId": purge_job_id,
+            })
+            .to_string(),
+        )
+        .bind(&now)
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+
+        Ok(DeleteObjectResponse {
+            job_id: purge_job_id,
         })
     }
 
@@ -469,7 +658,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::KnowledgeObjectRepository;
-    use crate::domain::knowledge::NewKnowledgeObject;
+    use crate::domain::knowledge::{DeleteObjectMode, NewKnowledgeObject};
+    use crate::errors::AppError;
     use crate::storage::database::Database;
 
     #[tokio::test]
@@ -536,5 +726,118 @@ mod tests {
         assert_eq!(objects.len(), 2);
         assert_eq!(objects[0].id, "obj-new");
         assert_eq!(objects[1].id, "obj-old");
+    }
+
+    #[tokio::test]
+    async fn soft_delete_marks_object_deleted_and_writes_audit_trail() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        let repository = KnowledgeObjectRepository::new(database.pool().clone());
+        let inserted = repository
+            .insert(NewKnowledgeObject {
+                user_id: "local".to_string(),
+                object_type: "article".to_string(),
+                title: Some("Delete Me".to_string()),
+                canonical_url: Some("https://example.com/delete-me".to_string()),
+                source_platform: Some("web".to_string()),
+                author: None,
+                privacy_level: "personal".to_string(),
+            })
+            .await
+            .expect("insert should succeed");
+
+        let response = repository
+            .delete_object(&inserted.id, DeleteObjectMode::SoftDelete)
+            .await
+            .expect("soft delete should succeed");
+
+        assert!(response.job_id.is_none());
+
+        let lifecycle_status: String =
+            sqlx::query_scalar("SELECT lifecycle_status FROM knowledge_objects WHERE id = ?1")
+                .bind(&inserted.id)
+                .fetch_one(database.pool())
+                .await
+                .expect("object status should be readable");
+        let tombstone_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM deletion_tombstones WHERE object_id = ?1")
+                .bind(&inserted.id)
+                .fetch_one(database.pool())
+                .await
+                .expect("tombstone count should be readable");
+        let event_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM domain_events WHERE object_id = ?1 AND event_type = 'object.deleted'",
+        )
+        .bind(&inserted.id)
+        .fetch_one(database.pool())
+        .await
+        .expect("event count should be readable");
+        let audit_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM audit_logs WHERE object_id = ?1 AND action = 'object.delete'",
+        )
+        .bind(&inserted.id)
+        .fetch_one(database.pool())
+        .await
+        .expect("audit count should be readable");
+
+        assert_eq!(lifecycle_status, "deleted");
+        assert_eq!(tombstone_count, 1);
+        assert_eq!(event_count, 1);
+        assert_eq!(audit_count, 1);
+
+        let objects = repository
+            .list_recent(Some(10), Some(0), None)
+            .await
+            .expect("list should succeed");
+        assert!(objects.is_empty());
+
+        let detail_error = repository
+            .get_detail(&inserted.id)
+            .await
+            .expect_err("deleted object should not be returned");
+        assert!(matches!(detail_error, AppError::ObjectNotFound));
+    }
+
+    #[tokio::test]
+    async fn purge_delete_queues_storage_cleanup_job() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        let repository = KnowledgeObjectRepository::new(database.pool().clone());
+        let inserted = repository
+            .insert(NewKnowledgeObject {
+                user_id: "local".to_string(),
+                object_type: "article".to_string(),
+                title: Some("Purge Me".to_string()),
+                canonical_url: Some("https://example.com/purge-me".to_string()),
+                source_platform: Some("web".to_string()),
+                author: None,
+                privacy_level: "personal".to_string(),
+            })
+            .await
+            .expect("insert should succeed");
+
+        let response = repository
+            .delete_object(&inserted.id, DeleteObjectMode::Purge)
+            .await
+            .expect("purge delete should succeed");
+        let job_id = response.job_id.expect("purge should create a job");
+
+        let job_type: String =
+            sqlx::query_scalar("SELECT job_type FROM background_jobs WHERE id = ?1")
+                .bind(&job_id)
+                .fetch_one(database.pool())
+                .await
+                .expect("job type should be readable");
+        let purge_status: String =
+            sqlx::query_scalar("SELECT purge_status FROM deletion_tombstones WHERE object_id = ?1")
+                .bind(&inserted.id)
+                .fetch_one(database.pool())
+                .await
+                .expect("purge status should be readable");
+
+        assert_eq!(job_type, "storage.purge_deleted_object");
+        assert_eq!(purge_status, "pending");
     }
 }

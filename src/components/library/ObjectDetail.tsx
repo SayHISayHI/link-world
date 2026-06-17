@@ -1,6 +1,11 @@
-import { Activity, RefreshCw } from "lucide-react";
+import { Activity, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "../ui/button";
-import type { KnowledgeObject, KnowledgeObjectDetail, PingResponse } from "../../types/api";
+import type {
+  BackgroundJob,
+  KnowledgeObject,
+  KnowledgeObjectDetail,
+  PingResponse,
+} from "../../types/api";
 import type { AppUiError } from "../../lib/errors";
 import { formatRelativeStatus } from "../../lib/formatting";
 
@@ -12,7 +17,14 @@ interface ObjectDetailProps {
   pingData?: PingResponse;
   pingError?: AppUiError;
   pingLoading: boolean;
+  deleteError?: AppUiError;
+  deleteLoading: boolean;
+  retryJob?: BackgroundJob;
+  retryError?: AppUiError;
+  retryLoading: boolean;
   onPing: () => void;
+  onDeleteObject: () => void;
+  onRetryCapture: () => void;
 }
 
 export function ObjectDetail({
@@ -23,7 +35,14 @@ export function ObjectDetail({
   pingData,
   pingError,
   pingLoading,
+  deleteError,
+  deleteLoading,
+  retryJob,
+  retryError,
+  retryLoading,
   onPing,
+  onDeleteObject,
+  onRetryCapture,
 }: ObjectDetailProps) {
   if (!object) {
     return (
@@ -48,10 +67,21 @@ export function ObjectDetail({
             {object.type} / {statusText}
           </p>
         </div>
-        <Button onClick={onPing} disabled={pingLoading} title="Ping backend">
-          <RefreshCw className="h-4 w-4" aria-hidden="true" />
-          Ping
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            variant="ghost"
+            onClick={onDeleteObject}
+            disabled={deleteLoading}
+            title="Delete object"
+          >
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+            Delete
+          </Button>
+          <Button onClick={onPing} disabled={pingLoading} title="Ping backend">
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
+            Ping
+          </Button>
+        </div>
       </header>
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_320px]">
         <article className="overflow-y-auto p-6">
@@ -62,8 +92,36 @@ export function ObjectDetail({
             </div>
             {object.failureReason ? (
               <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-800">
-                <p className="font-medium">Capture failed</p>
-                <p className="mt-1">{object.failureReason}</p>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium">Capture failed</p>
+                    <p className="mt-1">{object.failureReason}</p>
+                  </div>
+                  {retryJob ? (
+                    <Button
+                      variant="secondary"
+                      onClick={onRetryCapture}
+                      disabled={retryLoading}
+                      title="Retry capture"
+                      className="shrink-0 bg-white text-red-800 hover:bg-red-100"
+                    >
+                      <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                      Retry
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+            {retryError ? (
+              <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-800">
+                <p className="font-medium">{retryError.title}</p>
+                <p className="mt-1">{retryError.message}</p>
+              </div>
+            ) : null}
+            {deleteError ? (
+              <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-800">
+                <p className="font-medium">{deleteError.title}</p>
+                <p className="mt-1">{deleteError.message}</p>
               </div>
             ) : null}
             {detailLoading ? (

@@ -217,3 +217,35 @@ export interface KnowledgeObjectDetail {
   aiAnalyses: AIAnalysis[];
   evaluations: EvaluationRun[];
 }
+
+export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled" | "blocked";
+
+export interface BackgroundJob {
+  id: string;
+  type:
+    | "capture.fetch_url"
+    | "parser.extract_document"
+    | "ai.enrich_object"
+    | "embedding.create_chunks"
+    | "evaluation.run"
+    | "search.reindex_object"
+    | "review.schedule_object"
+    | "storage.purge_deleted_object"
+    | "sync.push_changes"
+    | "sync.pull_changes"
+    | string;
+  status: JobStatus;
+  objectId?: string;
+  attemptCount: number;
+  maxAttempts: number;
+  nextRunAt?: string;
+  lastError?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type DeleteObjectMode = "soft_delete" | "purge" | "export_then_delete";
+
+export interface DeleteObjectResponse {
+  jobId?: string;
+}

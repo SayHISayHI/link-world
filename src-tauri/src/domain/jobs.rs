@@ -1,0 +1,23 @@
+use serde::Serialize;
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackgroundJob {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub job_type: String,
+    pub status: String,
+    pub object_id: Option<String>,
+    pub attempt_count: i64,
+    pub max_attempts: i64,
+    pub next_run_at: Option<String>,
+    pub last_error: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct RetriedBackgroundJob {
+    pub id: String,
+    pub job_type: String,
+}

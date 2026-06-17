@@ -1,6 +1,30 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeleteObjectMode {
+    SoftDelete,
+    Purge,
+    ExportThenDelete,
+}
+
+impl DeleteObjectMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::SoftDelete => "soft_delete",
+            Self::Purge => "purge",
+            Self::ExportThenDelete => "export_then_delete",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteObjectResponse {
+    pub job_id: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KnowledgeObject {

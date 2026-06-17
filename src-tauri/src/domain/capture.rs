@@ -40,6 +40,7 @@ pub struct PermissionContext {
     pub user_confirmed: bool,
     pub platform_terms_hint: Option<String>,
     pub allowed_for_cloud_processing: bool,
+    #[serde(rename = "allowedForThirdPartyAI", alias = "allowedForThirdPartyAi")]
     pub allowed_for_third_party_ai: bool,
 }
 
@@ -136,4 +137,54 @@ pub struct CaptureDomainEventSubmission {
     pub user_id: String,
     pub payload_json: String,
     pub occurred_at: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RawCaptureItem;
+    use serde_json::json;
+
+    #[test]
+    fn raw_capture_item_accepts_contract_ai_acronym_field() {
+        let item: RawCaptureItem = serde_json::from_value(json!({
+            "sourceType": "url",
+            "sourceUrl": "https://example.com",
+            "metadata": {},
+            "privacyLevel": "personal",
+            "permissionContext": {
+                "acquisitionMode": "user_action",
+                "userConfirmed": true,
+                "allowedForCloudProcessing": false,
+                "allowedForThirdPartyAI": false
+            }
+        }))
+        .expect("contract field should deserialize");
+
+        assert!(!item.permission_context.allowed_for_third_party_ai);
+    }
+
+    #[test]
+    fn raw_capture_item_serializes_contract_ai_acronym_field() {
+        let item: RawCaptureItem = serde_json::from_value(json!({
+            "sourceType": "url",
+            "sourceUrl": "https://example.com",
+            "metadata": {},
+            "privacyLevel": "personal",
+            "permissionContext": {
+                "acquisitionMode": "user_action",
+                "userConfirmed": true,
+                "allowedForCloudProcessing": false,
+                "allowedForThirdPartyAI": false
+            }
+        }))
+        .expect("contract field should deserialize");
+
+        let serialized = serde_json::to_value(item).expect("item should serialize");
+        assert!(serialized["permissionContext"]
+            .get("allowedForThirdPartyAI")
+            .is_some());
+        assert!(serialized["permissionContext"]
+            .get("allowedForThirdPartyAi")
+            .is_none());
+    }
 }

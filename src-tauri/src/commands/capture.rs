@@ -26,7 +26,11 @@ pub async fn submit_capture(
     Ok(map_ipc_result(result))
 }
 
-fn spawn_fetch_job_runner(app_handle: tauri::AppHandle, service: CaptureService, job_id: String) {
+pub(crate) fn spawn_fetch_job_runner(
+    app_handle: tauri::AppHandle,
+    service: CaptureService,
+    job_id: String,
+) {
     tauri::async_runtime::spawn(async move {
         let result = service.run_fetch_job(&job_id).await;
 
