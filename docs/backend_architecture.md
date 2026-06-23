@@ -386,15 +386,18 @@ Model runtime 使用 capability-specific contract；当前落地 `TextGeneration
 Rules:
 
 - 业务层只依赖 capability，不依赖 vendor。
-- `provider` 是供应商品牌/配置 ID，`api_family` 是线协议；registry 必须优先按协议分发。
+- config `id` 是稳定配置标识，`provider` 是供应商品牌，`api_family` 是线协议；registry 必须优先按协议分发。
 - 内置 `genai` adapter 支持 `openai_chat_completions`、`openai_responses`、`anthropic_messages`、`google_generative_ai`、`ollama`。
 - OpenAI-compatible provider 通过配置扩展；业务 service 不拼 endpoint、不构造 vendor-specific payload。
 - Base URL 表示 API 根路径，例如 `https://api.openai.com/v1` 或 `http://127.0.0.1:11434`，不包含 `chat/completions`、`responses`、`messages` 等操作路径。
-- API key 通过 `SecretStore` 临时读取，不返回给调用者。
+- API key 通过 `SecretStore` 临时读取，不返回给调用者；Windows production backend 使用 Credential Manager，测试使用进程内 memory backend。
+- Repository 支持 list/save/delete/set-default；默认 Chat config id 存在 `local_settings`。历史未设置默认项时仅为兼容选择最新 enabled Chat 配置；一旦存在默认设置，失效时不得隐式 fallback；删除默认项写入空字符串哨兵，区别于历史记录缺失。
+- 删除配置时 service 先删除 credential，repository 再以 transaction 删除配置和匹配的 default setting。
 - 请求 payload 日志必须脱敏。
 - Chat 输出 JSON 必须做 schema validation。
 - Embedding dimensions 必须写入 `vector_chunks_meta.embedding_dimensions`。
 - Provider 错误必须映射为 `AppError`。
+- Command read model 只能包含 `hasApiKey` / `isDefault`，不得包含 `apiKey` 或 `secretRef`。
 - Client 在 `AppState` 启动时构造并通过 `ModelProviderRegistry` 复用；请求 timeout 为 60 秒，可重试网络错误与 429/5xx，最多 3 次。
 
 ## 14. Plugin Runtime

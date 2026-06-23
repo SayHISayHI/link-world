@@ -62,7 +62,7 @@
 目标：实现 PRD 的三栏布局，但先使用 mock 数据。
 
 1. 配置 Zustand，建立 `useLibraryStore`。
-2. 按 `docs/frontend_architecture.md` 拆分 `uiStore`, `libraryStore`, `searchStore`, `jobStore`, `settingsStore`。
+2. 按 `docs/frontend_architecture.md` 拆分 `uiStore`, `libraryStore`, `searchStore`, `jobStore`；Settings server state 通过 command hook 管理，draft 保持组件本地。
 3. 拆分 React 组件：`Sidebar.tsx`, `ObjectList.tsx`, `ObjectDetail.tsx`, `SettingsPanel.tsx`。
 4. Store 中填入覆盖 `captured`, `parsed`, `enriched`, `evaluated`, `failed` 的 mock objects。
 5. 详情页展示 mock `parsedDocument`, `aiAnalyses`, `evaluations`, `jobs`。
@@ -96,13 +96,13 @@
 
 目标：对解析后的正文进行 AI 摘要，并完整记录 AI trace。
 
-1. 设置面板允许配置 `ModelProviderConfig`，包括供应商标识、`apiFamily`、Chat Base URL、Embedding Base URL、默认模型和能力列表，并提供不泄露凭据的连接测试。
-2. API Key 只能保存到系统安全凭据存储或本地加密 secret store，禁止写入普通配置表。
+1. 正式 Settings route 允许维护多个 `ModelProviderConfig`，包括稳定 id、供应商标识、`apiFamily`、Chat Base URL、Embedding Base URL、默认模型、能力、enabled 和唯一默认 Chat 项，并提供不泄露凭据的连接测试；对象详情不得编辑 provider。
+2. Windows Alpha 的 API Key 保存到 Credential Manager；普通配置表只保存 credential reference。删除 provider 时必须同步删除 credential，禁止写入日志或前端持久化状态。
 3. Rust 端由项目自有 `ModelProviderRegistry` 和 capability contract 隔离业务层，内置 `genai` adapter 支持 OpenAI Chat Completions/Responses、Anthropic Messages、Google Generative AI、Ollama 及 OpenAI-compatible Chat；Embedding 使用独立 capability contract 后续实现。
 4. 当对象进入 `parsed` 状态后，从 `parsed_documents` 读取正文，使用 `builtin.general_enrichment` prompt `0.2.0` 拼接输入并发送 Chat 请求。
 5. 解析 schema version 2 的 LLM JSON，写入 `ai_analysis` 和可选的版本化 `display_hints_json`，同时写入 `ai_traces`；无效展示提示不得让主体分析失败。
 6. AI 调用失败时对象保持 `parsed`，记录错误，不允许后台任务崩溃。
-7. 验证标准：切换协议时请求由 registry 发送到正确 endpoint；连接测试返回 provider/model/latency；文章详情页在数秒后出现 AI 摘要、分数、行动项和 trace 摘要；关闭模型配置、提示无效或记录过期时仍使用 Markdown AST 推断完成基础阅读展示。
+7. 验证标准：切换协议时请求由 registry 发送到正确 endpoint；多配置互不覆盖且默认项显式；连接测试返回 provider/model/latency；文章详情页在数秒后出现 AI 摘要、分数、行动项和 trace 摘要；删除默认配置、提示无效或记录过期时仍使用 Markdown AST 推断完成基础阅读展示。
 
 ## Phase 7: Evaluation Engine 最小闭环
 

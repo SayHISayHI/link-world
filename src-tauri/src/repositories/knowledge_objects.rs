@@ -52,7 +52,12 @@ impl KnowledgeObjectRepository {
                 updated_at
             FROM knowledge_objects
             WHERE lifecycle_status != 'deleted'
-              AND (?1 IS NULL OR object_type = ?1)
+              AND (
+                ?1 IS NULL
+                OR (?1 = 'inbox' AND lifecycle_status IN ('captured', 'parsed'))
+                OR (?1 = 'failed' AND lifecycle_status = 'failed')
+                OR object_type = ?1
+              )
             ORDER BY updated_at DESC, captured_at DESC
             LIMIT ?2 OFFSET ?3
             "#,
@@ -739,6 +744,62 @@ mod tests {
         assert_eq!(objects.len(), 2);
         assert_eq!(objects[0].id, "obj-new");
         assert_eq!(objects[1].id, "obj-old");
+    }
+
+    #[tokio::test]
+    async fn list_recent_supports_lifecycle_and_type_navigation_filters() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        sqlx::query(
+            r#"
+            INSERT INTO knowledge_objects (
+                id, user_id, object_type, title, privacy_level, lifecycle_status, captured_at, updated_at
+            ) VALUES
+              ('obj-inbox', 'local', 'article', 'Inbox', 'personal', 'parsed', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'),
+              ('obj-failed', 'local', 'article', 'Failed', 'personal', 'failed', '2026-01-02T00:00:00Z', '2026-01-02T00:00:00Z'),
+              ('obj-prompt', 'local', 'prompt', 'Prompt', 'personal', 'enriched', '2026-01-03T00:00:00Z', '2026-01-03T00:00:00Z')
+            "#,
+        )
+        .execute(database.pool())
+        .await
+        .expect("fixtures should insert");
+
+        let repository = KnowledgeObjectRepository::new(database.pool().clone());
+        let inbox = repository
+            .list_recent(Some(10), Some(0), Some("inbox".to_string()))
+            .await
+            .expect("inbox filter should work");
+        let failed = repository
+            .list_recent(Some(10), Some(0), Some("failed".to_string()))
+            .await
+            .expect("failed filter should work");
+        let prompts = repository
+            .list_recent(Some(10), Some(0), Some("prompt".to_string()))
+            .await
+            .expect("type filter should work");
+
+        assert_eq!(
+            inbox
+                .iter()
+                .map(|item| item.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["obj-inbox"]
+        );
+        assert_eq!(
+            failed
+                .iter()
+                .map(|item| item.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["obj-failed"]
+        );
+        assert_eq!(
+            prompts
+                .iter()
+                .map(|item| item.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["obj-prompt"]
+        );
     }
 
     #[tokio::test]

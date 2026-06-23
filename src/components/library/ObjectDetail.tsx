@@ -6,8 +6,6 @@ import type {
   KnowledgeObject,
   KnowledgeObjectDetail,
   PingResponse,
-  ModelApiFamily,
-  ModelProviderTestResult,
 } from "../../types/api";
 import type { AppUiError } from "../../lib/errors";
 import { formatRelativeStatus } from "../../lib/formatting";
@@ -34,16 +32,7 @@ interface ObjectDetailProps {
   retryJob?: BackgroundJob;
   retryError?: AppUiError;
   retryLoading: boolean;
-  aiProvider: string;
-  aiApiFamily: ModelApiFamily;
-  aiChatBaseUrl: string;
-  aiChatModel: string;
-  aiApiKey: string;
-  aiHasApiKey: boolean;
-  aiConfigLoading: boolean;
-  aiTestLoading: boolean;
   aiRunLoading: boolean;
-  aiTestResult?: ModelProviderTestResult;
   aiError?: AppUiError;
   searchIndexLoading: boolean;
   searchIndexError?: AppUiError;
@@ -53,13 +42,7 @@ interface ObjectDetailProps {
   onPing: () => void;
   onDeleteObject: () => void;
   onRetryCapture: () => void;
-  onAIProviderChange: (value: string) => void;
-  onAIApiFamilyChange: (value: ModelApiFamily) => void;
-  onAIChatBaseUrlChange: (value: string) => void;
-  onAIChatModelChange: (value: string) => void;
-  onAIApiKeyChange: (value: string) => void;
-  onSaveAIConfig: () => void;
-  onTestAIConfig: () => void;
+  onOpenModelSettings: () => void;
   onRunAIAnalysis: () => void;
   onReindexObject: () => void;
   onRunEvaluation: () => void;
@@ -78,16 +61,7 @@ export function ObjectDetail({
   retryJob,
   retryError,
   retryLoading,
-  aiProvider,
-  aiApiFamily,
-  aiChatBaseUrl,
-  aiChatModel,
-  aiApiKey,
-  aiHasApiKey,
-  aiConfigLoading,
-  aiTestLoading,
   aiRunLoading,
-  aiTestResult,
   aiError,
   searchIndexLoading,
   searchIndexError,
@@ -97,13 +71,7 @@ export function ObjectDetail({
   onPing,
   onDeleteObject,
   onRetryCapture,
-  onAIProviderChange,
-  onAIApiFamilyChange,
-  onAIChatBaseUrlChange,
-  onAIChatModelChange,
-  onAIApiKeyChange,
-  onSaveAIConfig,
-  onTestAIConfig,
+  onOpenModelSettings,
   onRunAIAnalysis,
   onReindexObject,
   onRunEvaluation,
@@ -255,24 +223,9 @@ export function ObjectDetail({
           </div>
           <AIAnalysisPanel
             latestAnalysis={latestAnalysis}
-            provider={aiProvider}
-            apiFamily={aiApiFamily}
-            chatBaseUrl={aiChatBaseUrl}
-            chatModel={aiChatModel}
-            apiKey={aiApiKey}
-            hasApiKey={aiHasApiKey}
-            configLoading={aiConfigLoading}
-            testLoading={aiTestLoading}
             runLoading={aiRunLoading}
-            testResult={aiTestResult}
             error={aiError}
-            onProviderChange={onAIProviderChange}
-            onApiFamilyChange={onAIApiFamilyChange}
-            onChatBaseUrlChange={onAIChatBaseUrlChange}
-            onChatModelChange={onAIChatModelChange}
-            onApiKeyChange={onAIApiKeyChange}
-            onSaveConfig={onSaveAIConfig}
-            onTestConfig={onTestAIConfig}
+            onOpenSettings={onOpenModelSettings}
             onRunAnalysis={onRunAIAnalysis}
           />
           <EvaluationPanel

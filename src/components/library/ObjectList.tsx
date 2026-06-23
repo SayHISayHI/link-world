@@ -8,6 +8,8 @@ import { CaptureBar } from "./CaptureBar";
 
 interface ObjectListProps {
   objects: KnowledgeObject[];
+  heading: string;
+  hasMore: boolean;
   selectedObjectId?: string;
   loading: boolean;
   error?: AppUiError;
@@ -32,11 +34,14 @@ interface ObjectListProps {
   onSearchValueChange: (value: string) => void;
   onClearSearch: () => void;
   onRebuildSearchIndex: () => void;
+  onLoadMore: () => void;
   onSelectObject: (objectId: string) => void;
 }
 
 export function ObjectList({
   objects,
+  heading,
+  hasMore,
   selectedObjectId,
   loading,
   error,
@@ -57,6 +62,7 @@ export function ObjectList({
   onSearchValueChange,
   onClearSearch,
   onRebuildSearchIndex,
+  onLoadMore,
   onSelectObject,
 }: ObjectListProps) {
   const searchActive = searchValue.trim().length > 0;
@@ -66,7 +72,7 @@ export function ObjectList({
   return (
     <div className="h-screen overflow-y-auto p-3">
       <div className="mb-3 px-1">
-        <h1 className="text-base font-semibold">{searchActive ? "Search" : "Inbox"}</h1>
+        <h1 className="text-base font-semibold">{searchActive ? "Search" : heading}</h1>
         <p className="mt-1 text-xs text-muted-foreground">
           {searchActive ? "FTS results from parsed text and AI summaries." : "Captured items ready for processing."}
         </p>
@@ -195,6 +201,16 @@ export function ObjectList({
           );
         })}
       </div>
+      {!searchActive && hasMore ? (
+        <button
+          className="mt-3 h-9 w-full rounded-md border border-border text-xs text-muted-foreground hover:bg-muted disabled:opacity-60"
+          disabled={loading}
+          onClick={onLoadMore}
+          type="button"
+        >
+          {loading ? "Loading..." : "Load more"}
+        </button>
+      ) : null}
     </div>
   );
 }

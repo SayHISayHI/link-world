@@ -19,7 +19,7 @@
 
 MVP 主支持：
 
-- Windows 11。
+- Windows 11（当前 Local Alpha 主目标；API Key 使用 Credential Manager）。
 - Tauri v2。
 - SQLite + FTS5。
 - OpenAI Chat Completions/Responses、Anthropic Messages、Google Generative AI、OpenAI-compatible 和 Ollama Chat provider。
@@ -48,6 +48,8 @@ MVP 主支持：
 - 模型 provider 连接测试结果。
 - 当前 provider、API protocol、base URL、model 与凭据是否已配置；不得显示 secret 内容。
 - 插件列表和权限状态。
+
+当前实现状态：Models 已提供正式 Settings route、多配置、默认项、连接测试和 credential 状态；Privacy、Capture、Plugins、Storage、Diagnostics、About 仅提供明确的里程碑占位，不计为已交付。
 
 ### 3.2 Logs
 

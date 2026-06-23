@@ -4,8 +4,8 @@ import { ThreePaneLayout } from "../components/layout/ThreePaneLayout";
 import { ObjectDetail } from "../components/library/ObjectDetail";
 import { ObjectList } from "../components/library/ObjectList";
 import { Sidebar } from "../components/library/Sidebar";
+import { SettingsPanel, type SettingsPanelName } from "../components/settings/SettingsPanel";
 import { useDeleteObject } from "../hooks/commands/useDeleteObject";
-import { useGetModelProviderConfig } from "../hooks/commands/useGetModelProviderConfig";
 import { useObjectDetail } from "../hooks/commands/useObjectDetail";
 import { useObjectJobs } from "../hooks/commands/useObjectJobs";
 import { usePing } from "../hooks/commands/usePing";
@@ -15,63 +15,15 @@ import { useReindexObject } from "../hooks/commands/useReindexObject";
 import { useRetryBackgroundJob } from "../hooks/commands/useRetryBackgroundJob";
 import { useSearchHybrid } from "../hooks/commands/useSearchHybrid";
 import { useSubmitCapture } from "../hooks/commands/useSubmitCapture";
-import { useTestModelProviderConfig } from "../hooks/commands/useTestModelProviderConfig";
 import { useTriggerAIEnrichment } from "../hooks/commands/useTriggerAIEnrichment";
 import { useTriggerEvaluation } from "../hooks/commands/useTriggerEvaluation";
-import { useUpdateModelProviderConfig } from "../hooks/commands/useUpdateModelProviderConfig";
 import type { AppUiError } from "../lib/errors";
 import { useLibraryStore } from "../store/libraryStore";
 import { useSearchStore } from "../store/searchStore";
-import type { BackgroundJob, KnowledgeObject, ModelApiFamily, ModelProviderConfig } from "../types/api";
+import { useUiStore } from "../store/uiStore";
+import type { BackgroundJob, KnowledgeObject } from "../types/api";
 
-interface ProviderPreset {
-  apiFamily: ModelApiFamily;
-  chatBaseUrl: string;
-  chatModel: string;
-}
-
-const MODEL_PROVIDER_PRESETS: Record<string, ProviderPreset> = {
-  openai: {
-    apiFamily: "openai_chat_completions",
-    chatBaseUrl: "https://api.openai.com/v1",
-    chatModel: "gpt-4.1-mini",
-  },
-  anthropic: {
-    apiFamily: "anthropic_messages",
-    chatBaseUrl: "https://api.anthropic.com/v1",
-    chatModel: "claude-sonnet-4-5",
-  },
-  google: {
-    apiFamily: "google_generative_ai",
-    chatBaseUrl: "https://generativelanguage.googleapis.com/v1beta",
-    chatModel: "gemini-2.5-flash",
-  },
-  deepseek: {
-    apiFamily: "openai_chat_completions",
-    chatBaseUrl: "https://api.deepseek.com",
-    chatModel: "deepseek-chat",
-  },
-  openrouter: {
-    apiFamily: "openai_chat_completions",
-    chatBaseUrl: "https://openrouter.ai/api/v1",
-    chatModel: "openai/gpt-4.1-mini",
-  },
-  groq: {
-    apiFamily: "openai_chat_completions",
-    chatBaseUrl: "https://api.groq.com/openai/v1",
-    chatModel: "llama-3.3-70b-versatile",
-  },
-  xai: {
-    apiFamily: "openai_chat_completions",
-    chatBaseUrl: "https://api.x.ai/v1",
-    chatModel: "grok-3-mini",
-  },
-  ollama: {
-    apiFamily: "ollama",
-    chatBaseUrl: "http://127.0.0.1:11434",
-    chatModel: "llama3.2",
-  },
-};
+const LIBRARY_PAGE_SIZE = 30;
 
 interface CaptureJobCompletedPayload {
   jobId: string;
@@ -103,17 +55,11 @@ interface SearchIndexUpdatedPayload {
 }
 
 export function LibraryShellContainer() {
+  const { route, setRoute } = useUiStore();
   const [captureUrl, setCaptureUrl] = useState("");
   const [lastCaptureJob, setLastCaptureJob] = useState<CaptureJobCompletedPayload>();
+  const [hasMoreObjects, setHasMoreObjects] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const aiConfigDirtyRef = useRef(false);
-  const [aiProvider, setAIProvider] = useState("openai");
-  const [aiApiFamily, setAIApiFamily] = useState<ModelApiFamily>("openai_chat_completions");
-  const [aiChatBaseUrl, setAIChatBaseUrl] = useState("https://api.openai.com/v1");
-  const [aiChatModel, setAIChatModel] = useState("gpt-4.1-mini");
-  const [aiApiKey, setAIApiKey] = useState("");
-  const [aiHasApiKey, setAIHasApiKey] = useState(false);
-  const [testedAIConfigFingerprint, setTestedAIConfigFingerprint] = useState<string>();
   const { objects, selectedObjectId, selectedDetail, selectObject, setObjects, setSelectedDetail } = useLibraryStore();
   const { query: searchQuery, setQuery: setSearchQuery } = useSearchStore();
   const { data, error, loading, ping } = usePing();
@@ -172,23 +118,6 @@ export function LibraryShellContainer() {
     reindexObject,
   } = useReindexObject();
   const {
-    data: storedModelConfig,
-    error: getModelConfigError,
-    loading: getModelConfigLoading,
-    getModelProviderConfig,
-  } = useGetModelProviderConfig();
-  const {
-    error: updateModelConfigError,
-    loading: updateModelConfigLoading,
-    updateModelProviderConfig,
-  } = useUpdateModelProviderConfig();
-  const {
-    data: testModelConfigResult,
-    error: testModelConfigError,
-    loading: testModelConfigLoading,
-    testModelProviderConfig,
-  } = useTestModelProviderConfig();
-  const {
     data: aiRunResult,
     error: triggerAIError,
     loading: triggerAILoading,
@@ -202,18 +131,20 @@ export function LibraryShellContainer() {
   const selectedSearchResult = searchResults.find((result) => result.object.id === selectedObjectId);
   const selectedObject = objects.find((object) => object.id === selectedObjectId) ?? selectedSearchResult?.object;
   const retryableCaptureJob = findRetryableCaptureJob(objectJobs, selectedObject?.id);
-  const aiConfig = createModelProviderConfig(
-    aiProvider,
-    aiApiFamily,
-    aiChatBaseUrl,
-    aiChatModel,
-    aiApiKey,
-  );
-  const aiConfigFingerprint = modelProviderConfigFingerprint(aiConfig);
+  const libraryFilter =
+    route.name === "library" && route.filter && route.filter !== "all"
+      ? route.filter
+      : undefined;
 
-  const refreshRecentObjects = useCallback(() => {
-    return loadRecentObjects({ limit: 50, offset: 0 });
-  }, [loadRecentObjects]);
+  const refreshRecentObjects = useCallback(async () => {
+    const page = await loadRecentObjects({
+      filterType: libraryFilter,
+      limit: LIBRARY_PAGE_SIZE,
+      offset: 0,
+    });
+    setHasMoreObjects(page.length === LIBRARY_PAGE_SIZE);
+    return page;
+  }, [libraryFilter, loadRecentObjects]);
 
   const refreshSearchResults = useCallback(() => {
     const query = searchQuery.trim();
@@ -230,21 +161,6 @@ export function LibraryShellContainer() {
     void refreshRecentObjects();
   }, [refreshRecentObjects]);
 
-  useEffect(() => {
-    void getModelProviderConfig();
-  }, [getModelProviderConfig]);
-
-  useEffect(() => {
-    if (!storedModelConfig || aiConfigDirtyRef.current) {
-      return;
-    }
-
-    setAIProvider(storedModelConfig.provider);
-    setAIApiFamily(storedModelConfig.apiFamily);
-    setAIChatBaseUrl(storedModelConfig.chatBaseUrl ?? "");
-    setAIChatModel(storedModelConfig.defaultChatModel ?? "");
-    setAIHasApiKey(storedModelConfig.hasApiKey);
-  }, [storedModelConfig]);
 
   useEffect(() => {
     const query = searchQuery.trim();
@@ -518,82 +434,6 @@ export function LibraryShellContainer() {
     selectedObjectId,
   ]);
 
-  const handleSaveAIConfig = useCallback(async () => {
-    const config = createModelProviderConfig(
-      aiProvider,
-      aiApiFamily,
-      aiChatBaseUrl,
-      aiChatModel,
-      aiApiKey,
-    );
-    const saved = await updateModelProviderConfig(config);
-
-    if (saved) {
-      aiConfigDirtyRef.current = false;
-      setAIApiKey("");
-      await getModelProviderConfig();
-    }
-  }, [
-    aiApiFamily,
-    aiApiKey,
-    aiChatBaseUrl,
-    aiChatModel,
-    aiProvider,
-    getModelProviderConfig,
-    updateModelProviderConfig,
-  ]);
-
-  const handleTestAIConfig = useCallback(async () => {
-    const config = createModelProviderConfig(
-      aiProvider,
-      aiApiFamily,
-      aiChatBaseUrl,
-      aiChatModel,
-      aiApiKey,
-    );
-    const result = await testModelProviderConfig(config);
-    if (result) {
-      setTestedAIConfigFingerprint(modelProviderConfigFingerprint(config));
-    }
-  }, [aiApiFamily, aiApiKey, aiChatBaseUrl, aiChatModel, aiProvider, testModelProviderConfig]);
-
-  const handleAIProviderChange = useCallback((value: string) => {
-    aiConfigDirtyRef.current = true;
-    setTestedAIConfigFingerprint(undefined);
-    setAIProvider(value);
-    setAIHasApiKey(false);
-
-    const preset = MODEL_PROVIDER_PRESETS[value.trim().toLowerCase()];
-    if (preset) {
-      setAIApiFamily(preset.apiFamily);
-      setAIChatBaseUrl(preset.chatBaseUrl);
-      setAIChatModel(preset.chatModel);
-    }
-  }, []);
-
-  const handleAIApiFamilyChange = useCallback((value: ModelApiFamily) => {
-    aiConfigDirtyRef.current = true;
-    setTestedAIConfigFingerprint(undefined);
-    setAIApiFamily(value);
-  }, []);
-
-  const handleAIChatBaseUrlChange = useCallback((value: string) => {
-    aiConfigDirtyRef.current = true;
-    setTestedAIConfigFingerprint(undefined);
-    setAIChatBaseUrl(value);
-  }, []);
-
-  const handleAIChatModelChange = useCallback((value: string) => {
-    aiConfigDirtyRef.current = true;
-    setTestedAIConfigFingerprint(undefined);
-    setAIChatModel(value);
-  }, []);
-
-  const handleAIApiKeyChange = useCallback((value: string) => {
-    aiConfigDirtyRef.current = true;
-    setTestedAIConfigFingerprint(undefined);
-    setAIApiKey(value);
-  }, []);
 
   const handleRunAIAnalysis = useCallback(async () => {
     if (!selectedObjectId) {
@@ -619,6 +459,16 @@ export function LibraryShellContainer() {
     selectedObjectId,
     triggerAIEnrichment,
   ]);
+
+  const handleLoadMoreObjects = useCallback(async () => {
+    const page = await loadRecentObjects({
+      append: true,
+      filterType: libraryFilter,
+      limit: LIBRARY_PAGE_SIZE,
+      offset: objects.length,
+    });
+    setHasMoreObjects(page.length === LIBRARY_PAGE_SIZE);
+  }, [libraryFilter, loadRecentObjects, objects.length]);
 
   const handleRebuildSearchIndex = useCallback(async () => {
     const response = await rebuildSearchIndex();
@@ -683,13 +533,31 @@ export function LibraryShellContainer() {
     triggerEvaluation,
   ]);
 
+  if (route.name === "settings") {
+    const panel = (route.panel ?? "models") as SettingsPanelName;
+    return (
+      <AppShell>
+        <div className="grid min-h-screen grid-cols-[232px_minmax(0,1fr)]">
+          <aside className="border-r border-border bg-surface">
+            <Sidebar route={route} onNavigate={setRoute} />
+          </aside>
+          <SettingsPanel
+            panel={panel}
+            onPanelChange={(nextPanel) => setRoute({ name: "settings", panel: nextPanel })}
+          />
+        </div>
+      </AppShell>
+    );
+  }
   return (
     <AppShell>
       <ThreePaneLayout
-        sidebar={<Sidebar />}
+        sidebar={<Sidebar route={route} onNavigate={setRoute} />}
         list={
           <ObjectList
             objects={objects}
+            heading={libraryHeading(route)}
+            hasMore={hasMoreObjects}
             selectedObjectId={selectedObjectId}
             loading={recentObjectsLoading}
             error={recentObjectsError}
@@ -715,6 +583,9 @@ export function LibraryShellContainer() {
               resetSearch();
             }}
             onRebuildSearchIndex={handleRebuildSearchIndex}
+            onLoadMore={() => {
+              void handleLoadMoreObjects();
+            }}
             onSelectObject={selectObject}
           />
         }
@@ -732,25 +603,8 @@ export function LibraryShellContainer() {
             retryJob={retryableCaptureJob}
             retryError={retryJobError ?? objectJobsError}
             retryLoading={retryJobLoading || objectJobsLoading}
-            aiProvider={aiProvider}
-            aiApiFamily={aiApiFamily}
-            aiChatBaseUrl={aiChatBaseUrl}
-            aiChatModel={aiChatModel}
-            aiApiKey={aiApiKey}
-            aiHasApiKey={aiHasApiKey}
-            aiConfigLoading={getModelConfigLoading || updateModelConfigLoading}
-            aiTestLoading={testModelConfigLoading}
             aiRunLoading={triggerAILoading}
-            aiTestResult={
-              testedAIConfigFingerprint === aiConfigFingerprint ? testModelConfigResult : undefined
-            }
-            aiError={
-              triggerAIError ??
-              testModelConfigError ??
-              updateModelConfigError ??
-              getModelConfigError ??
-              aiRunFailureToError(aiRunResult)
-            }
+            aiError={triggerAIError ?? aiRunFailureToError(aiRunResult)}
             searchIndexLoading={reindexObjectLoading}
             searchIndexError={reindexObjectError}
             searchIndexMessage={reindexStatusMessage(reindexObjectResult, selectedObjectId)}
@@ -761,13 +615,7 @@ export function LibraryShellContainer() {
             }}
             onDeleteObject={handleDeleteObject}
             onRetryCapture={handleRetryCapture}
-            onAIProviderChange={handleAIProviderChange}
-            onAIApiFamilyChange={handleAIApiFamilyChange}
-            onAIChatBaseUrlChange={handleAIChatBaseUrlChange}
-            onAIChatModelChange={handleAIChatModelChange}
-            onAIApiKeyChange={handleAIApiKeyChange}
-            onSaveAIConfig={handleSaveAIConfig}
-            onTestAIConfig={handleTestAIConfig}
+            onOpenModelSettings={() => setRoute({ name: "settings", panel: "models" })}
             onRunAIAnalysis={handleRunAIAnalysis}
             onReindexObject={handleReindexSelectedObject}
             onRunEvaluation={handleRunEvaluation}
@@ -778,31 +626,19 @@ export function LibraryShellContainer() {
   );
 }
 
-function createModelProviderConfig(
-  provider: string,
-  apiFamily: ModelApiFamily,
-  chatBaseUrl: string,
-  chatModel: string,
-  apiKey: string,
-): ModelProviderConfig {
-  return {
-    provider: provider.trim(),
-    apiFamily,
-    chatBaseUrl: chatBaseUrl.trim(),
-    apiKey: apiKey.trim() || undefined,
-    defaultChatModel: chatModel.trim(),
-    capabilities: ["chat"],
+function libraryHeading(route: ReturnType<typeof useUiStore.getState>["route"]) {
+  if (route.name !== "library") {
+    return "All";
+  }
+  const labels: Record<string, string> = {
+    all: "All",
+    article: "Articles",
+    failed: "Failed",
+    github_repo: "GitHub",
+    inbox: "Inbox",
+    prompt: "Prompts",
   };
-}
-
-function modelProviderConfigFingerprint(config: ModelProviderConfig) {
-  return JSON.stringify({
-    provider: config.provider,
-    apiFamily: config.apiFamily,
-    chatBaseUrl: config.chatBaseUrl,
-    defaultChatModel: config.defaultChatModel,
-    capabilities: config.capabilities,
-  });
+  return labels[route.filter ?? "all"] ?? "All";
 }
 
 function reindexStatusMessage(

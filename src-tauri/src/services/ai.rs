@@ -45,7 +45,24 @@ impl AIEnrichmentService {
         })
     }
 
-    pub async fn update_model_provider_config(&self, config: ModelProviderConfig) -> AppResult<()> {
+    pub async fn update_model_provider_config(
+        &self,
+        mut config: ModelProviderConfig,
+    ) -> AppResult<()> {
+        if config.id.is_none() {
+            config.id = self
+                .repository
+                .get_model_provider_config(&config.provider)
+                .await?
+                .map(|stored| stored.id);
+        }
+        self.save_model_provider_config(config).await.map(|_| ())
+    }
+
+    pub async fn save_model_provider_config(
+        &self,
+        config: ModelProviderConfig,
+    ) -> AppResult<ModelProviderConfigView> {
         let config = normalize_model_provider_config(config);
         validate_model_provider_config(&config)?;
         if !self.model_registry.supports(config.api_family) {
@@ -54,19 +71,91 @@ impl AIEnrichmentService {
                 config.api_family.as_str()
             )));
         }
-        let secret_ref = self.store_or_resolve_secret_ref(&config)?;
+
+        let config_id = match config.id.as_deref() {
+            Some(value) => normalize_model_provider_config_id(value)?,
+            None => Uuid::new_v4().to_string(),
+        };
+        let existing = self
+            .repository
+            .get_model_provider_config_by_id(&config_id)
+            .await?;
+        let default_id = self.repository.get_default_chat_config_id().await?;
+        if !config.enabled && default_id.as_deref() == Some(config_id.as_str()) {
+            return Err(AppError::PolicyDenied(
+                "select another default chat model before disabling this config".to_string(),
+            ));
+        }
+
+        let secret_ref =
+            self.store_or_resolve_secret_ref(&config_id, &config, existing.as_ref())?;
         self.repository
-            .upsert_model_provider_config(&config, secret_ref.as_deref())
+            .save_model_provider_config(&config_id, &config, secret_ref.as_deref())
+            .await?;
+
+        if default_id.is_none()
+            && config.enabled
+            && config
+                .capabilities
+                .iter()
+                .any(|capability| capability == "chat")
+        {
+            self.repository.set_default_chat_config(&config_id).await?;
+        }
+
+        let stored = self
+            .repository
+            .get_model_provider_config_by_id(&config_id)
+            .await?
+            .ok_or_else(|| {
+                AppError::Unknown("saved model provider config is missing".to_string())
+            })?;
+        self.model_provider_config_view(stored).await
+    }
+
+    pub async fn list_model_provider_configs(&self) -> AppResult<Vec<ModelProviderConfigView>> {
+        let configs = self.repository.list_model_provider_configs().await?;
+        let mut views = Vec::with_capacity(configs.len());
+        for config in configs {
+            views.push(self.model_provider_config_view(config).await?);
+        }
+        Ok(views)
+    }
+
+    pub async fn delete_model_provider_config(&self, config_id: &str) -> AppResult<()> {
+        let config = self
+            .repository
+            .get_model_provider_config_by_id(config_id)
+            .await?
+            .ok_or_else(|| AppError::PolicyDenied("model provider config not found".to_string()))?;
+        if let Some(secret_ref) = config.secret_ref.as_deref() {
+            self.secrets.delete(secret_ref)?;
+        }
+        self.repository
+            .delete_model_provider_config(config_id)
             .await
+    }
+
+    pub async fn set_default_model_provider(&self, config_id: &str) -> AppResult<()> {
+        self.repository.set_default_chat_config(config_id).await
     }
 
     pub async fn get_model_provider_config(&self) -> AppResult<Option<ModelProviderConfigView>> {
         let Some(config) = self.repository.get_latest_model_provider_config().await? else {
             return Ok(None);
         };
+        self.model_provider_config_view(config).await.map(Some)
+    }
+
+    async fn model_provider_config_view(
+        &self,
+        config: StoredModelProviderConfig,
+    ) -> AppResult<ModelProviderConfigView> {
+        let default_id = self.repository.get_default_chat_config_id().await?;
         let has_api_key = self.resolve_api_key(&config)?.is_some();
 
-        Ok(Some(ModelProviderConfigView {
+        Ok(ModelProviderConfigView {
+            id: config.id.clone(),
             provider: config.provider,
             api_family: config.api_family,
             chat_base_url: config.chat_base_url,
@@ -76,7 +165,8 @@ impl AIEnrichmentService {
             capabilities: config.capabilities,
             has_api_key,
             enabled: config.enabled,
-        }))
+            is_default: default_id.as_deref() == Some(config.id.as_str()),
+        })
     }
 
     pub async fn test_model_provider_config(
@@ -133,7 +223,6 @@ impl AIEnrichmentService {
             latency_ms: response.latency_ms,
         })
     }
-
     pub async fn run_auto_enrichment_for_object(
         &self,
         object_id: &str,
@@ -279,19 +368,26 @@ impl AIEnrichmentService {
 
     fn store_or_resolve_secret_ref(
         &self,
+        config_id: &str,
         config: &ModelProviderConfig,
+        existing: Option<&StoredModelProviderConfig>,
     ) -> AppResult<Option<String>> {
-        let provider_id = sha256_hex(config.provider.to_ascii_lowercase().as_bytes());
-
         if let Some(api_key) = config
             .api_key
             .as_ref()
             .map(|value| value.trim())
             .filter(|value| !value.is_empty())
         {
-            let secret_ref = format!("memory:model_provider:{provider_id}:api_key");
+            let secret_ref = format!("keyring:model-provider:{config_id}");
             self.secrets.set(&secret_ref, api_key.to_string())?;
             return Ok(Some(secret_ref));
+        }
+
+        if existing
+            .and_then(|stored| stored.secret_ref.as_ref())
+            .is_some()
+        {
+            return Ok(None);
         }
 
         for env_key in provider_env_keys(&config.provider) {
@@ -329,11 +425,16 @@ impl AIEnrichmentService {
             return Ok(Some(api_key.to_string()));
         }
 
-        if let Some(stored) = self
-            .repository
-            .get_model_provider_config(&config.provider)
-            .await?
-        {
+        let stored = if let Some(config_id) = config.id.as_deref() {
+            self.repository
+                .get_model_provider_config_by_id(config_id)
+                .await?
+        } else {
+            self.repository
+                .get_model_provider_config(&config.provider)
+                .await?
+        };
+        if let Some(stored) = stored {
             if let Some(api_key) = self.resolve_api_key(&stored)? {
                 return Ok(Some(api_key));
             }
@@ -372,6 +473,22 @@ pub fn spawn_ai_enrichment_runner(
     });
 }
 
+fn normalize_model_provider_config_id(config_id: &str) -> AppResult<String> {
+    let config_id = config_id.trim();
+    if config_id.is_empty()
+        || config_id.len() > 128
+        || !config_id.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
+        })
+    {
+        return Err(AppError::PolicyDenied(
+            "invalid model provider config id".to_string(),
+        ));
+    }
+
+    Ok(config_id.to_string())
+}
+
 fn validate_model_provider_config(config: &ModelProviderConfig) -> AppResult<()> {
     if config.provider.trim().is_empty() {
         return Err(AppError::PolicyDenied(
@@ -393,17 +510,14 @@ fn validate_model_provider_config(config: &ModelProviderConfig) -> AppResult<()>
         .chat_base_url
         .as_ref()
         .and_then(|url| Url::parse(url.trim()).ok());
-    if !parsed_url
-        .as_ref()
-        .is_some_and(|url| {
-            matches!(url.scheme(), "http" | "https")
-                && url.host_str().is_some()
-                && url.username().is_empty()
-                && url.password().is_none()
-                && url.query().is_none()
-                && url.fragment().is_none()
-        })
-    {
+    if !parsed_url.as_ref().is_some_and(|url| {
+        matches!(url.scheme(), "http" | "https")
+            && url.host_str().is_some()
+            && url.username().is_empty()
+            && url.password().is_none()
+            && url.query().is_none()
+            && url.fragment().is_none()
+    }) {
         return Err(AppError::PolicyDenied(
             "valid HTTP(S) chat base URL without credentials, query, or fragment is required"
                 .to_string(),
@@ -697,6 +811,7 @@ mod tests {
     #[test]
     fn validates_provider_config_without_allowing_credentials_in_base_url() {
         let mut config = ModelProviderConfig {
+            id: None,
             provider: "custom".to_string(),
             api_family: ModelApiFamily::OpenAiChatCompletions,
             chat_base_url: Some("https://api.example.com/v1".to_string()),
@@ -705,11 +820,13 @@ mod tests {
             default_chat_model: Some("test-model".to_string()),
             default_embedding_model: None,
             capabilities: vec!["chat".to_string()],
+            enabled: true,
         };
 
         validate_model_provider_config(&config).expect("valid provider config should pass");
 
-        config.chat_base_url = Some("https://user:secret@api.example.com/v1?key=secret".to_string());
+        config.chat_base_url =
+            Some("https://user:secret@api.example.com/v1?key=secret".to_string());
         assert!(validate_model_provider_config(&config).is_err());
     }
 

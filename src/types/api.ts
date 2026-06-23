@@ -205,6 +205,7 @@ export type ModelApiFamily =
   | "ollama";
 
 export interface ModelProviderConfig {
+  id?: string;
   provider: string;
   apiFamily: ModelApiFamily;
   chatBaseUrl?: string;
@@ -213,11 +214,15 @@ export interface ModelProviderConfig {
   defaultChatModel?: string;
   defaultEmbeddingModel?: string;
   capabilities: Array<"chat" | "embedding" | "rerank" | "vision" | string>;
+  enabled?: boolean;
 }
 
-export interface ModelProviderConfigView extends Omit<ModelProviderConfig, "apiKey"> {
+export interface ModelProviderConfigView
+  extends Omit<ModelProviderConfig, "apiKey" | "enabled" | "id"> {
+  id: string;
   hasApiKey: boolean;
   enabled: boolean;
+  isDefault: boolean;
 }
 
 export interface ModelProviderTestResult {

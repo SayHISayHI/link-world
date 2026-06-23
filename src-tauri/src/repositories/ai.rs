@@ -22,13 +22,13 @@ impl AIRepository {
         Self { pool }
     }
 
-    pub async fn upsert_model_provider_config(
+    pub async fn save_model_provider_config(
         &self,
+        config_id: &str,
         config: &ModelProviderConfig,
         secret_ref: Option<&str>,
     ) -> AppResult<()> {
         let now = Utc::now().to_rfc3339();
-        let config_id = normalize_provider_id(&config.provider)?;
         let capabilities_json = serde_json::to_string(&config.capabilities).map_err(|error| {
             AppError::ModelOutputSchema(format!("invalid capabilities: {error}"))
         })?;
@@ -48,7 +48,7 @@ impl AIRepository {
                 enabled,
                 created_at,
                 updated_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 1, ?10, ?10)
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11)
             ON CONFLICT(id) DO UPDATE SET
                 provider = excluded.provider,
                 api_family = excluded.api_family,
@@ -58,11 +58,11 @@ impl AIRepository {
                 default_embedding_model = excluded.default_embedding_model,
                 capabilities_json = excluded.capabilities_json,
                 secret_ref = COALESCE(excluded.secret_ref, model_provider_configs.secret_ref),
-                enabled = 1,
+                enabled = excluded.enabled,
                 updated_at = excluded.updated_at
             "#,
         )
-        .bind(&config_id)
+        .bind(config_id)
         .bind(config.provider.trim())
         .bind(config.api_family.as_str())
         .bind(config.chat_base_url.as_deref().map(str::trim))
@@ -71,6 +71,7 @@ impl AIRepository {
         .bind(config.default_embedding_model.as_deref().map(str::trim))
         .bind(capabilities_json)
         .bind(secret_ref)
+        .bind(i64::from(config.enabled))
         .bind(now)
         .execute(&self.pool)
         .await?;
@@ -78,7 +79,7 @@ impl AIRepository {
         Ok(())
     }
 
-    pub async fn get_enabled_chat_config(&self) -> AppResult<Option<StoredModelProviderConfig>> {
+    pub async fn list_model_provider_configs(&self) -> AppResult<Vec<StoredModelProviderConfig>> {
         let rows = sqlx::query(
             r#"
             SELECT
@@ -93,56 +94,50 @@ impl AIRepository {
                 secret_ref,
                 enabled
             FROM model_provider_configs
-            WHERE enabled = 1
             ORDER BY updated_at DESC
             "#,
         )
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(rows
+        Ok(rows.into_iter().map(stored_model_config_from_row).collect())
+    }
+
+    pub async fn get_enabled_chat_config(&self) -> AppResult<Option<StoredModelProviderConfig>> {
+        if let Some(default_id) = self.get_default_chat_config_id().await? {
+            let config = self.get_model_provider_config_by_id(&default_id).await?;
+            return Ok(config.filter(|config| {
+                config.enabled
+                    && config
+                        .capabilities
+                        .iter()
+                        .any(|capability| capability == "chat")
+            }));
+        }
+
+        Ok(self
+            .list_model_provider_configs()
+            .await?
             .into_iter()
-            .map(stored_model_config_from_row)
             .find(|config| {
-                config
-                    .capabilities
-                    .iter()
-                    .any(|capability| capability == "chat")
+                config.enabled
+                    && config
+                        .capabilities
+                        .iter()
+                        .any(|capability| capability == "chat")
             }))
     }
 
     pub async fn get_latest_model_provider_config(
         &self,
     ) -> AppResult<Option<StoredModelProviderConfig>> {
-        let row = sqlx::query(
-            r#"
-            SELECT
-                id,
-                provider,
-                api_family,
-                chat_base_url,
-                embeddings_base_url,
-                default_chat_model,
-                default_embedding_model,
-                capabilities_json,
-                secret_ref,
-                enabled
-            FROM model_provider_configs
-            ORDER BY updated_at DESC
-            LIMIT 1
-            "#,
-        )
-        .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(row.map(stored_model_config_from_row))
+        Ok(self.list_model_provider_configs().await?.into_iter().next())
     }
 
-    pub async fn get_model_provider_config(
+    pub async fn get_model_provider_config_by_id(
         &self,
-        provider: &str,
+        config_id: &str,
     ) -> AppResult<Option<StoredModelProviderConfig>> {
-        let config_id = normalize_provider_id(provider)?;
         let row = sqlx::query(
             r#"
             SELECT
@@ -168,6 +163,111 @@ impl AIRepository {
         Ok(row.map(stored_model_config_from_row))
     }
 
+    pub async fn get_model_provider_config(
+        &self,
+        id_or_provider: &str,
+    ) -> AppResult<Option<StoredModelProviderConfig>> {
+        let row = sqlx::query(
+            r#"
+            SELECT
+                id,
+                provider,
+                api_family,
+                chat_base_url,
+                embeddings_base_url,
+                default_chat_model,
+                default_embedding_model,
+                capabilities_json,
+                secret_ref,
+                enabled
+            FROM model_provider_configs
+            WHERE id = ?1 OR lower(provider) = lower(?1)
+            ORDER BY CASE WHEN id = ?1 THEN 0 ELSE 1 END, updated_at DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(id_or_provider.trim())
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(stored_model_config_from_row))
+    }
+
+    pub async fn get_default_chat_config_id(&self) -> AppResult<Option<String>> {
+        let value_json: Option<String> = sqlx::query_scalar(
+            "SELECT value_json FROM local_settings WHERE key = 'models.default.chat.config_id'",
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        value_json
+            .map(|value| {
+                serde_json::from_str::<String>(&value)
+                    .map_err(|error| AppError::Database(error.to_string()))
+            })
+            .transpose()
+    }
+
+    pub async fn set_default_chat_config(&self, config_id: &str) -> AppResult<()> {
+        let config = self
+            .get_model_provider_config_by_id(config_id)
+            .await?
+            .ok_or_else(|| AppError::PolicyDenied("model provider config not found".to_string()))?;
+        if !config.enabled
+            || !config
+                .capabilities
+                .iter()
+                .any(|capability| capability == "chat")
+        {
+            return Err(AppError::PolicyDenied(
+                "default chat model provider must be enabled and support chat".to_string(),
+            ));
+        }
+
+        let now = Utc::now().to_rfc3339();
+        let value_json = serde_json::to_string(config_id)
+            .map_err(|error| AppError::Database(error.to_string()))?;
+        sqlx::query(
+            r#"
+            INSERT INTO local_settings (key, value_json, updated_at)
+            VALUES ('models.default.chat.config_id', ?1, ?2)
+            ON CONFLICT(key) DO UPDATE SET
+                value_json = excluded.value_json,
+                updated_at = excluded.updated_at
+            "#,
+        )
+        .bind(value_json)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn delete_model_provider_config(&self, config_id: &str) -> AppResult<()> {
+        let value_json = serde_json::to_string(config_id)
+            .map_err(|error| AppError::Database(error.to_string()))?;
+        let mut tx = self.pool.begin().await?;
+
+        sqlx::query("DELETE FROM model_provider_configs WHERE id = ?1")
+            .bind(config_id)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query(
+            r#"
+            UPDATE local_settings
+            SET value_json = '""',
+                updated_at = ?2
+            WHERE key = 'models.default.chat.config_id' AND value_json = ?1
+            "#,
+        )
+        .bind(value_json)
+        .bind(Utc::now().to_rfc3339())
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(())
+    }
     pub async fn get_enrichment_input(&self, object_id: &str) -> AppResult<AIEnrichmentInput> {
         let row = sqlx::query(
             r#"
@@ -380,17 +480,6 @@ impl AIRepository {
     }
 }
 
-fn normalize_provider_id(provider: &str) -> AppResult<String> {
-    let provider = provider.trim();
-    if provider.is_empty() {
-        return Err(AppError::PolicyDenied(
-            "model provider is required".to_string(),
-        ));
-    }
-
-    Ok(provider.to_ascii_lowercase().replace(' ', "_"))
-}
-
 fn stored_model_config_from_row(row: SqliteRow) -> StoredModelProviderConfig {
     let capabilities_json: String = row.get("capabilities_json");
     let capabilities = serde_json::from_str::<Vec<String>>(&capabilities_json).unwrap_or_default();
@@ -454,8 +543,10 @@ mod tests {
         let repository = AIRepository::new(database.pool().clone());
 
         repository
-            .upsert_model_provider_config(
+            .save_model_provider_config(
+                "openai-compatible",
                 &ModelProviderConfig {
+                    id: None,
                     provider: "openai-compatible".to_string(),
                     api_family: ModelApiFamily::OpenAiChatCompletions,
                     chat_base_url: Some("https://api.openai.com/v1".to_string()),
@@ -464,8 +555,9 @@ mod tests {
                     default_chat_model: Some("gpt-4.1-mini".to_string()),
                     default_embedding_model: None,
                     capabilities: vec!["chat".to_string()],
+                    enabled: true,
                 },
-                Some("memory:model_provider:openai-compatible:api_key"),
+                Some("keyring:model-provider:openai-compatible"),
             )
             .await
             .expect("config should upsert");
@@ -479,7 +571,7 @@ mod tests {
         assert_eq!(row.0, "[\"chat\"]");
         assert_eq!(
             row.1.as_deref(),
-            Some("memory:model_provider:openai-compatible:api_key")
+            Some("keyring:model-provider:openai-compatible")
         );
 
         let leaked_count: i64 = sqlx::query_scalar(
@@ -492,6 +584,66 @@ mod tests {
         assert_eq!(leaked_count, 0);
     }
 
+    #[tokio::test]
+    async fn explicit_default_does_not_fail_over_after_delete() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        let repository = AIRepository::new(database.pool().clone());
+
+        for (id, provider) in [("config-a", "provider-a"), ("config-b", "provider-b")] {
+            repository
+                .save_model_provider_config(
+                    id,
+                    &ModelProviderConfig {
+                        id: Some(id.to_string()),
+                        provider: provider.to_string(),
+                        api_family: ModelApiFamily::OpenAiChatCompletions,
+                        chat_base_url: Some("https://api.example.com/v1".to_string()),
+                        embeddings_base_url: None,
+                        api_key: None,
+                        default_chat_model: Some("test-model".to_string()),
+                        default_embedding_model: None,
+                        capabilities: vec!["chat".to_string()],
+                        enabled: true,
+                    },
+                    None,
+                )
+                .await
+                .expect("config should save");
+        }
+
+        repository
+            .set_default_chat_config("config-a")
+            .await
+            .expect("default should save");
+        assert_eq!(
+            repository
+                .get_enabled_chat_config()
+                .await
+                .expect("default should resolve")
+                .map(|config| config.id),
+            Some("config-a".to_string())
+        );
+
+        repository
+            .delete_model_provider_config("config-a")
+            .await
+            .expect("default should delete");
+
+        assert_eq!(
+            repository
+                .get_default_chat_config_id()
+                .await
+                .expect("explicit empty default should resolve"),
+            Some(String::new())
+        );
+        assert!(repository
+            .get_enabled_chat_config()
+            .await
+            .expect("deleted default must not fail over")
+            .is_none());
+    }
     #[tokio::test]
     async fn complete_enrichment_job_updates_search_index() {
         let database = Database::initialize_in_memory()

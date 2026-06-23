@@ -17,12 +17,13 @@ MVP 不做云端代登录和后台批量抓取。所有采集都必须来自用�
   - 中间：固定分类导航，包括 All、Inbox、Articles、GitHub Repos、Prompts、Failed。
   - 底部：设置入口，用于配置模型提供商、凭据、插件和本地存储。
 - **中间列表栏 (List View)**
-  - 根据左侧选中的分类，显示对应的 Knowledge Object 列表。
+  - 根据左侧选中的分类，显示对应的 Knowledge Object 列表；All/Inbox/Articles/GitHub Repos/Prompts/Failed 必须映射为后端过滤，而不是只改变高亮。
+  - 列表按固定页大小加载，MVP 使用显式 Load more，不一次读取全部对象。
   - 每个列表项显示标题、来源图标、AI 一句话摘要、生命周期状态、标签和失败提示。
 - **右侧详情区 (Detail View)**
   - 顶部操作栏：来源链接、重新解析、重新评估、删除。
   - 主视图：左侧使用安全 Markdown 阅读器显示 `parsed_documents` 正文，包括目录、标题锚点、Callout、表格和长代码折叠；右侧显示 AI Analysis 和 Evaluation 模块。
-  - AI Analysis 显示摘要、质量初评分、关键行动点、风险、置信度和 trace 摘要。
+  - AI Analysis 显示摘要、质量初评分、关键行动点、风险、置信度和 trace 摘要；只提供运行和进入模型设置的动作，不在对象上下文编辑 provider 或 API Key。
   - Evaluation 显示 verdict、score、维度评分、evidence、limitations 和 artifacts。
 
 ## 3. 核心用户故事 (User Stories)
@@ -32,7 +33,9 @@ MVP 不做云端代登录和后台批量抓取。所有采集都必须来自用�
 - **US 1.1**: 作为首次打开应用的用户，我需要配置供应商品牌、API 协议、Chat Base URL、Embedding Base URL、默认 Chat Model、默认 Embedding Model 和 API Key；系统应为常见供应商提供预设，同时允许输入自定义 OpenAI-compatible 供应商标识。
 - **US 1.2**: API Key 必须保存到系统安全凭据存储或本地加密 secret store，不允许进入普通配置表、日志或前端持久化状态。
 - **US 1.3**: 如果没有配置模型，应用应该只做基础解析和 FTS 检索，并提示“配置 AI 获取深度洞察”。
-- **US 1.4**: 用户可以在保存前测试候选 provider 配置；省略 API Key 时可复用该 provider 已保存的凭据，结果必须区分鉴权、限流、网络和输出 schema 错误，且不得回显凭据。
+- **US 1.4**: 用户可以在保存前测试候选 provider 配置；编辑已有配置且省略 API Key 时可按稳定 config id 复用凭据，结果必须区分鉴权、限流、网络和输出 schema 错误，且不得回显凭据。
+- **US 1.5**: 用户可以维护多个 provider 配置，并显式选择唯一默认 Chat 配置；系统不得静默切换到另一家第三方 provider。
+- **US 1.6**: 模型配置只出现在正式 Settings route。删除配置必须同时删除 OS credential；删除默认项后 AI 变为未配置，保存、解析和 FTS 仍可用。
 
 ### Epic 2: 数据捕获与解析 (Capture & Parse)
 

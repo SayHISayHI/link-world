@@ -934,6 +934,8 @@ interface EvaluatorPlugin {
 
 模型品牌（`provider`）与线协议（`apiFamily`）必须分离。业务 service 只依赖能力契约，由 registry 按协议选择 adapter；供应商名称只用于配置、trace 和 OpenAI-compatible 的已知扩展。
 
+Provider 配置是全局运行时设置，不属于单个 Knowledge Object。多个配置使用稳定 id；`local_settings.models.default.chat.config_id` 只选择一个默认 Chat 配置。默认项失效或被删除时调用显式失败，不跨第三方 provider 自动 failover。凭据通过 OS secret backend 解析，配置表和前端只接触引用与 `hasApiKey`。
+
 ```ts
 type ModelApiFamily =
   | 'openai_chat_completions'

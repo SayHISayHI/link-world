@@ -345,7 +345,8 @@ CREATE INDEX IF NOT EXISTS idx_plugin_permissions_plugin
     ON plugin_permissions(plugin_id);
 
 -- 15. 模型配置
--- api_key 不进入此表；这里只保存 keychain/secret store 的引用。
+-- api_key 不进入此表；这里只保存 OS credential / environment reference。
+-- id 是稳定配置标识；新配置使用 UUID，历史单 provider id 保持兼容。
 CREATE TABLE IF NOT EXISTS model_provider_configs (
     id TEXT PRIMARY KEY,
     provider TEXT NOT NULL,
@@ -389,6 +390,7 @@ CREATE INDEX IF NOT EXISTS idx_deletion_tombstones_status
     ON deletion_tombstones(purge_status, created_at);
 
 -- 17. 本地设置
+-- models.default.chat.config_id 保存 JSON string config id；缺失表示历史数据尚未选择，空字符串表示用户显式处于未配置状态。
 CREATE TABLE IF NOT EXISTS local_settings (
     key TEXT PRIMARY KEY,
     value_json TEXT NOT NULL,

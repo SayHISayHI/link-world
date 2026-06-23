@@ -16,7 +16,9 @@ OpenClaw demonstrates the useful architectural boundary: provider selection, mod
 - The first `TextGenerationProvider` implementation wraps Rust `genai` for OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, Google Generative AI and Ollama.
 - Known OpenAI-compatible suppliers may select specialized `genai` adapters, while unknown compatible suppliers fall back to the OpenAI adapter with an explicit base URL.
 - AI enrichment depends only on the registry contract. It does not construct provider URLs or vendor payloads.
-- Credentials remain behind `SecretStore`; API keys are never returned by read commands or persisted in the normal configuration table.
+- Credentials remain behind `SecretStore`; Windows Alpha uses Credential Manager. API keys are never returned by read commands or persisted in the normal configuration table.
+- Multiple provider configs use stable ids. The selected default Chat config id is stored in `local_settings`; automatic cross-provider failover is explicitly out of scope.
+- Provider configuration belongs to the formal Settings route. Object detail can trigger a run and show trace metadata, but cannot edit credentials.
 - Embedding, rerank and vision will use separate capability contracts and registries when implemented.
 
 ## Consequences
@@ -26,6 +28,7 @@ OpenClaw demonstrates the useful architectural boundary: provider selection, mod
 - The `genai` dependency is replaceable because its types do not cross the Link World runtime contract.
 - New native protocols still require an adapter implementation and capability tests.
 - `api_family` requires an additive database migration; old configurations default to OpenAI Chat Completions.
+- Legacy single-provider rows remain readable. On first save they can be updated in place, while new configurations receive UUID ids and an explicit default selection.
 
 ## Alternatives Considered
 

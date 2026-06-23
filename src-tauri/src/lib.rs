@@ -35,6 +35,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::system::ping,
             commands::ai::get_model_provider_config,
+            commands::ai::list_model_provider_configs,
+            commands::ai::save_model_provider_config,
+            commands::ai::delete_model_provider_config,
+            commands::ai::set_default_model_provider,
             commands::ai::test_model_provider_config,
             commands::ai::update_model_provider_config,
             commands::ai::trigger_ai_enrichment,

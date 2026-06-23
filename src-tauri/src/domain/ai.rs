@@ -5,7 +5,9 @@ use serde_json::Value;
 #[serde(rename_all = "snake_case")]
 pub enum ModelApiFamily {
     #[default]
+    #[serde(rename = "openai_chat_completions")]
     OpenAiChatCompletions,
+    #[serde(rename = "openai_responses")]
     OpenAiResponses,
     AnthropicMessages,
     GoogleGenerativeAi,
@@ -38,6 +40,8 @@ impl ModelApiFamily {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelProviderConfig {
+    #[serde(default)]
+    pub id: Option<String>,
     pub provider: String,
     #[serde(default)]
     pub api_family: ModelApiFamily,
@@ -49,6 +53,12 @@ pub struct ModelProviderConfig {
     pub default_embedding_model: Option<String>,
     #[serde(default)]
     pub capabilities: Vec<String>,
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+}
+
+fn default_enabled() -> bool {
+    true
 }
 
 #[derive(Debug, Clone)]
@@ -68,6 +78,7 @@ pub struct StoredModelProviderConfig {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelProviderConfigView {
+    pub id: String,
     pub provider: String,
     pub api_family: ModelApiFamily,
     pub chat_base_url: Option<String>,
@@ -77,6 +88,7 @@ pub struct ModelProviderConfigView {
     pub capabilities: Vec<String>,
     pub has_api_key: bool,
     pub enabled: bool,
+    pub is_default: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

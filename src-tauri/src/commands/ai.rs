@@ -7,13 +7,69 @@ use crate::state::AppState;
 use tauri::Emitter;
 
 #[tauri::command]
+pub async fn save_model_provider_config(
+    state: tauri::State<'_, AppState>,
+    config: ModelProviderConfig,
+) -> Result<IpcResponse<ModelProviderConfigView>, String> {
+    let result = async {
+        let service = AIEnrichmentService::from_state(state.inner())?;
+        service.save_model_provider_config(config).await
+    }
+    .await;
+
+    Ok(map_ipc_result(result))
+}
+
+#[tauri::command]
+pub async fn list_model_provider_configs(
+    state: tauri::State<'_, AppState>,
+) -> Result<IpcResponse<Vec<ModelProviderConfigView>>, String> {
+    let result = async {
+        let service = AIEnrichmentService::from_state(state.inner())?;
+        service.list_model_provider_configs().await
+    }
+    .await;
+
+    Ok(map_ipc_result(result))
+}
+
+#[tauri::command]
+pub async fn delete_model_provider_config(
+    state: tauri::State<'_, AppState>,
+    config_id: String,
+) -> Result<IpcResponse<bool>, String> {
+    let result = async {
+        let service = AIEnrichmentService::from_state(state.inner())?;
+        service.delete_model_provider_config(&config_id).await?;
+        Ok(true)
+    }
+    .await;
+
+    Ok(map_ipc_result(result))
+}
+
+#[tauri::command]
+pub async fn set_default_model_provider(
+    state: tauri::State<'_, AppState>,
+    config_id: String,
+) -> Result<IpcResponse<bool>, String> {
+    let result = async {
+        let service = AIEnrichmentService::from_state(state.inner())?;
+        service.set_default_model_provider(&config_id).await?;
+        Ok(true)
+    }
+    .await;
+
+    Ok(map_ipc_result(result))
+}
+
+#[tauri::command]
 pub async fn update_model_provider_config(
     state: tauri::State<'_, AppState>,
     config: ModelProviderConfig,
 ) -> Result<IpcResponse<bool>, String> {
     let result = async {
         let service = AIEnrichmentService::from_state(state.inner())?;
-
         service.update_model_provider_config(config).await?;
         Ok(true)
     }
@@ -57,7 +113,6 @@ pub async fn trigger_ai_enrichment(
 ) -> Result<IpcResponse<AIEnrichmentRunResult>, String> {
     let result = async {
         let service = AIEnrichmentService::from_state(state.inner())?;
-
         service.run_enrichment_for_object(&object_id).await
     }
     .await;

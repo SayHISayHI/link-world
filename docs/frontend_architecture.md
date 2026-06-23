@@ -44,7 +44,6 @@ src/
 │   ├── libraryStore.ts
 │   ├── searchStore.ts
 │   ├── jobStore.ts
-│   ├── settingsStore.ts
 │   └── pluginStore.ts
 ├── types/
 │   └── api.ts               # generated or copied from docs/api_contracts.ts
@@ -136,9 +135,9 @@ Rules:
 
 ### 3.5 Settings and plugins state
 
-Provider 配置属于后端 server state，通过 command hooks 读取和修改。MVP 中编辑草稿由 container 本地 state 管理；独立设置页落地后可迁入 `settingsStore`。`pluginStore` 管理插件状态：
+Provider 配置属于后端 server state，通过 `useModelProviderConfigs` 读取和修改。编辑草稿只存在于 `SettingsPanel` 的组件本地 state；对象详情不拥有 provider 表单或凭据状态。`pluginStore` 管理插件状态：
 
-- provider config metadata，包括 provider、API protocol、base URL、model 和 `hasApiKey`。
+- provider config metadata，包括稳定 `id`、provider、API protocol、base URL、model、enabled、`hasApiKey` 和 `isDefault`。
 - connection test result。
 - plugin manifests。
 - plugin permissions。
@@ -177,8 +176,7 @@ Hook examples:
 - `useTriggerEvaluation`
 - `useObjectJobs`
 - `useModelProviderConfig`
-- `useGetModelProviderConfig`
-- `useTestModelProviderConfig`
+- `useModelProviderConfigs`
 - `usePluginPermissions`
 
 Rules:
@@ -198,7 +196,7 @@ Route model:
 type AppRoute =
   | { name: 'library'; filter?: string; objectId?: string }
   | { name: 'search'; query?: string }
-  | { name: 'settings'; panel?: 'models' | 'plugins' | 'storage' | 'diagnostics' }
+  | { name: 'settings'; panel?: 'models' | 'privacy' | 'capture' | 'plugins' | 'storage' | 'diagnostics' | 'about' }
   | { name: 'evaluation'; objectId: string; runId?: string };
 ```
 
@@ -207,6 +205,8 @@ Rules:
 - Tauri desktop 不依赖 browser history。
 - 如果未来引入 React Router，必须使用 `HashRouter`，避免本地文件路径刷新问题。
 - Deep link / browser extension capture 进入应用后，只能转换为 route action，不直接改 domain store。
+- Sidebar 分类通过 `library.filter` 驱动后端过滤；`inbox` / `failed` 是 lifecycle 过滤，其余值按 object type 过滤。
+- Settings 是与 Library 同级的正式 route；凭据表单不得嵌入对象详情。
 
 ## 6. Container and Presentational Components
 
@@ -269,7 +269,7 @@ Rules:
 布局要求：
 
 - 左侧 Sidebar 宽度稳定。
-- 中间列表支持虚拟滚动或后续可替换为虚拟滚动。
+- 中间列表按 30 条分页并显式 Load more；后续可在不改变 command contract 的前提下替换为虚拟滚动。
 - 右侧详情支持 loading、empty、failed、deleted。
 - 三栏区域不得出现嵌套卡片堆叠。
 - 工具按钮使用 lucide icons + tooltip。
@@ -350,7 +350,7 @@ Rules:
 
 ## 11. Forms and Validation
 
-使用 `react-hook-form + zod`。
+表单库不是当前边界要求；当前 Settings 使用受控本地 draft 和后端验证。表单复杂度提高后可引入 `react-hook-form + zod`，但不得复制后端安全策略。
 
 Settings forms:
 
@@ -362,9 +362,11 @@ Settings forms:
 Rules:
 
 - API key 输入框支持 paste，但提交后不保留明文。
-- key 回显只显示 masked value。
+- 保存后清空 key draft；读取接口只返回 `hasApiKey`，不返回 masked key、明文或 `secretRef`。
 - Base URL 必须校验 URL。
 - Model name 不能为空。
+- 多配置列表必须表达 enabled/default/credential-available；只能有一个默认 Chat 配置。
+- 禁用当前默认项前必须先选择另一个默认项；删除默认项后 AI 显式变为未配置，不自动切换。
 - 权限变更必须显示影响范围。
 
 ## 12. Accessibility

@@ -212,6 +212,7 @@ export type ModelApiFamily =
   | 'ollama';
 
 export interface ModelProviderConfig {
+  id?: string;
   provider: string;
   apiFamily: ModelApiFamily;
   chatBaseUrl?: string;
@@ -220,11 +221,15 @@ export interface ModelProviderConfig {
   defaultChatModel?: string;
   defaultEmbeddingModel?: string;
   capabilities: Array<'chat' | 'embedding' | 'rerank' | 'vision'>;
+  enabled?: boolean;
 }
 
-export interface ModelProviderConfigView extends Omit<ModelProviderConfig, 'apiKey'> {
+export interface ModelProviderConfigView
+  extends Omit<ModelProviderConfig, 'apiKey' | 'enabled' | 'id'> {
+  id: string;
   hasApiKey: boolean;
   enabled: boolean;
+  isDefault: boolean;
 }
 
 export interface ModelProviderTestResult {
@@ -234,6 +239,12 @@ export interface ModelProviderTestResult {
   latencyMs: number;
 }
 
+export interface AIEnrichmentRunResult {
+  jobId: string;
+  analysisId?: string;
+  status: 'succeeded' | 'failed' | string;
+  failureReason?: string;
+}
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'blocked';
 
 export interface BackgroundJob {
@@ -362,7 +373,7 @@ export interface LibraryCommands {
   get_recent_objects: (args: {
     limit: number;
     offset: number;
-    filterType?: KnowledgeObjectType;
+    filterType?: KnowledgeObjectType | 'inbox' | 'failed';
   }) => Promise<IpcResponse<KnowledgeObject[]>>;
 
   // 获取对象的完整详情 (包含解析正文、AI 分析、快照和评估记录)
@@ -384,21 +395,38 @@ export interface LibraryCommands {
  * 模块：Agent / Settings (AI 模型配置与管理)
  */
 export interface AgentCommands {
-  // 读取最近使用的 provider 配置；只返回 hasApiKey，不返回 secret。
-  // invoke('get_model_provider_config')
-  get_model_provider_config: () => Promise<IpcResponse<ModelProviderConfigView | null>>;
+  // 列出全部配置；只返回 hasApiKey 和 isDefault，不返回 apiKey 或 secretRef。
+  // invoke('list_model_provider_configs')
+  list_model_provider_configs: () => Promise<IpcResponse<ModelProviderConfigView[]>>;
 
-  // 更新本地模型提供商配置。apiKey 只能保存到安全凭据存储，不允许进入普通配置表。
-  // invoke('update_model_provider_config', { config })
+  // 新建或按 config.id 更新配置。新建时由后端生成稳定 UUID。
+  // invoke('save_model_provider_config', { config })
+  save_model_provider_config: (args: {
+    config: ModelProviderConfig;
+  }) => Promise<IpcResponse<ModelProviderConfigView>>;
+
+  // 删除配置及其 OS credential；若它是默认项，同时清除默认设置。
+  delete_model_provider_config: (args: { configId: string }) => Promise<IpcResponse<boolean>>;
+
+  // 选择唯一默认 Chat 配置；目标必须 enabled 且声明 chat capability。
+  set_default_model_provider: (args: { configId: string }) => Promise<IpcResponse<boolean>>;
+
+  // Compatibility commands for the original single-provider UI. New UI must use list/save.
+  get_model_provider_config: () => Promise<IpcResponse<ModelProviderConfigView | null>>;
   update_model_provider_config: (args: {
     config: ModelProviderConfig;
   }) => Promise<IpcResponse<boolean>>;
 
-  // 使用候选配置执行最小 JSON 请求。省略 apiKey 时复用同 provider 已保存的 secret。
+  // 使用候选配置执行最小 JSON 请求。带 id 且省略 apiKey 时复用该配置的 secret。
   // invoke('test_model_provider_config', { config })
   test_model_provider_config: (args: {
     config: ModelProviderConfig;
   }) => Promise<IpcResponse<ModelProviderTestResult>>;
+
+  // 使用当前默认 Chat 配置分析指定对象；不进行隐式 provider failover。
+  trigger_ai_enrichment: (args: {
+    objectId: string;
+  }) => Promise<IpcResponse<AIEnrichmentRunResult>>;
 
   // 手动触发指定对象的深度 AI 评估 (Evaluation Engine)
   // invoke('trigger_evaluation', { objectId, evaluatorType })

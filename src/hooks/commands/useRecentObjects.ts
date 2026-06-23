@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { invokeCommand } from "../../lib/tauri";
 import type { AppUiError } from "../../lib/errors";
-import type { KnowledgeObject, KnowledgeObjectType } from "../../types/api";
+import type { KnowledgeObject } from "../../types/api";
 
 interface RecentObjectsState {
   data: KnowledgeObject[];
@@ -12,7 +12,8 @@ interface RecentObjectsState {
 interface LoadRecentObjectsArgs {
   limit?: number;
   offset?: number;
-  filterType?: KnowledgeObjectType;
+  filterType?: string;
+  append?: boolean;
 }
 
 export function useRecentObjects() {
@@ -25,18 +26,36 @@ export function useRecentObjects() {
     setState((current) => ({ ...current, error: undefined, loading: true }));
 
     try {
-      const data = await invokeCommand<LoadRecentObjectsArgs, KnowledgeObject[]>("get_recent_objects", {
+      const page = await invokeCommand<
+        Omit<LoadRecentObjectsArgs, "append">,
+        KnowledgeObject[]
+      >("get_recent_objects", {
         limit: args.limit ?? 50,
         offset: args.offset ?? 0,
         filterType: args.filterType,
       });
-      setState({ data, loading: false });
-      return data;
+      setState((current) => ({
+        data: args.append ? mergeObjects(current.data, page) : page,
+        loading: false,
+      }));
+      return page;
     } catch (error) {
-      setState({ data: [], error: error as AppUiError, loading: false });
+      setState((current) => ({
+        data: args.append ? current.data : [],
+        error: error as AppUiError,
+        loading: false,
+      }));
       return [];
     }
   }, []);
 
   return { ...state, loadRecentObjects };
+}
+
+function mergeObjects(current: KnowledgeObject[], page: KnowledgeObject[]) {
+  const byId = new Map(current.map((object) => [object.id, object]));
+  for (const object of page) {
+    byId.set(object.id, object);
+  }
+  return Array.from(byId.values());
 }

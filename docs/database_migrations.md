@@ -159,3 +159,9 @@ Before adding a migration:
 - Does it require backfill?
 - Are fixtures updated?
 - Is release note required?
+
+### Credential reference compatibility
+
+- 历史 `memory:model_provider:*` 引用没有可恢复的持久 secret，升级后按“未配置凭据”处理，不阻止配置列表加载。
+- 用户下一次保存 API Key 时写入 `keyring:model-provider:<config-id>`；迁移不得尝试从日志、配置表或环境中推断旧明文。
+- 历史 provider row id 原样保留；新配置使用 UUID，不做破坏性主键重写。

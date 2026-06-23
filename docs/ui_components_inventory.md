@@ -33,7 +33,7 @@
 | Component | Purpose | Required states |
 | --- | --- | --- |
 | `ObjectListContainer` | fetch and own list state | loading, empty, failed |
-| `ObjectList` | render object rows | empty |
+| `ObjectList` | render paged/filterable object rows | empty, loading more, end of page |
 | `ObjectListItem` | object summary row | selected, failed, archived |
 | `ObjectDetailContainer` | fetch detail | loading, failed, deleted |
 | `ObjectDetailHeader` | title/source/actions | stale, failed |
@@ -56,7 +56,7 @@ Document rendering rules:
 
 | Component | Purpose | Required data |
 | --- | --- | --- |
-| `AIAnalysisPanel` | summary, score, actions, risks | `AIAnalysis` |
+| `AIAnalysisPanel` | run action, summary and trace metadata; link to model settings | `AIAnalysis` |
 | `AITracePopover` | provider/model/time/cost | `AITrace` |
 | `QualityScoreBadge` | 0-10 score | score + confidence |
 | `RiskList` | risk display | risk type/severity/detail |
@@ -109,17 +109,15 @@ Rules:
 
 | Component | Purpose |
 | --- | --- |
-| `SettingsShell` | settings layout |
-| `ModelProviderSettings` | provider + API protocol + base URL + model config and connection test |
-| `SecretInput` | API key input |
-| `PluginSettings` | plugin list and permissions |
-| `StorageSettings` | data paths and sizes |
-| `DiagnosticsPanel` | local diagnostics |
-| `PrivacyPolicyPanel` | object/content policy |
+| `SettingsPanel` | formal settings route, section navigation and milestone boundaries |
+| `ModelSettings` | provider list, create/edit/delete/default, protocol, base URL, model and connection test |
+| `SettingsBoundary` | explicit placeholder for privacy/capture/plugins/storage/diagnostics/about until implemented |
 
 Rules:
 
-- API key never displayed in full after save.
+- API key never displayed in full after save；读取只显示 credential available / no credential。
+- 模型凭据只能在 Settings 编辑；对象详情只显示运行、结果和进入 Settings 的动作。
+- 只有 enabled 且支持 chat 的配置可以成为默认项；UI 不提供隐式 failover。
 - Provider 允许常见预设和自定义标识；protocol 必须显式可见，不能从品牌名隐式猜测后隐藏。
 - Base URL 输入 API 根路径，不包含具体 operation endpoint。
 - Provider test result must distinguish auth, network, model name and schema errors.
@@ -176,7 +174,7 @@ MVP must implement:
 - `Sidebar`
 - `ThreePaneLayout`
 - `ObjectListContainer`
-- `ObjectList`
+- `ObjectList`（包括后端 filter、30 条分页和 Load more）
 - `ObjectListItem`
 - `ObjectDetailContainer`
 - `MarkdownDocumentView`
@@ -188,7 +186,7 @@ MVP must implement:
 - `AddUrlDialog`
 - `SearchInput`
 - `SearchResultsList`
-- `SettingsShell`
-- `ModelProviderSettings`
-- `PluginSettings`
+- `SettingsPanel`
+- `ModelSettings`
+- `SettingsBoundary`
 - `DiagnosticsPanel`

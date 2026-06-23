@@ -53,8 +53,8 @@ Link World 采用 **桌面端 Local-first** 的架构。底层由 Rust 驱动 (T
   - 当前文本生成支持 OpenAI Chat Completions、OpenAI Responses、Anthropic Messages、Google Generative AI、Ollama 和 OpenAI-compatible base URL。
   - `provider` 与 `apiFamily` 分离；Ollama、LM Studio、OpenAI、Anthropic、Gemini 及兼容网关都必须通过 registry adapter 接入，业务层不得写供应商专用 HTTP 逻辑。
   - 不允许把模型接口简化为单一 `Chat Completions`，否则会阻塞 embedding、rerank、vision 等后续能力。
-- **凭据存储**: API Key 必须保存到 OS keychain、Tauri 安全存储或本地加密 secret store。
-  - 禁止将 API Key 明文写入普通 SQLite 配置表、日志或前端状态持久化。
+- **凭据存储**: Windows Alpha 使用 `keyring 3.6.x` 的 `windows-native` backend 写入 Windows Credential Manager；其他平台在实现对应 OS backend 前不宣称支持。
+  - 禁止将 API Key 明文写入普通 SQLite 配置表、日志或前端状态持久化；数据库只保存不可解密的 credential reference。
 - **AI 展示提示**: 作为 `ai_analysis` 上版本化、可选的结构化 sidecar 保存。模型只能建议文档级显示模式，不参与基础 Markdown 解析或安全决策。
 
 ## 3. 目录架构约定 (Directory Structure)

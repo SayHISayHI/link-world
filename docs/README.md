@@ -38,9 +38,11 @@
    - CI、构建矩阵、测试门槛、打包、签名、发布、回滚和诊断包。
 17. [plugins/plugin_development_guide.md](./plugins/plugin_development_guide.md)
    - Connector、Parser、Evaluator、Prompt 资源和 Registry 规范。
-18. [../tests/docs/testing_strategy.md](../tests/docs/testing_strategy.md)
+18. [post_mvp_roadmap.md](./post_mvp_roadmap.md)
+   - MVP 后 10 周执行范围、周度交付、验收门槛、当前状态和明确排除项。
+19. [../tests/docs/testing_strategy.md](../tests/docs/testing_strategy.md)
    - 测试分层、fixtures、AI evals、回归测试和发布测试清单。
-19. [adr/README.md](./adr/README.md)
+20. [adr/README.md](./adr/README.md)
    - 架构决策记录，解释关键技术和产品架构取舍，包括 Markdown/AST 渲染与 AI 展示提示边界。
 
 ## Source of Truth
@@ -59,6 +61,7 @@
 - 多端同步争议以 `sync_architecture.md` 为准。
 - 测试策略以 `tests/docs/testing_strategy.md` 为准。
 - 发布和运维争议以 `operational_readiness.md` 为准。
+- 当前里程碑、周度范围与完成状态以 `post_mvp_roadmap.md` 为准。
 - 架构取舍的历史原因以 `adr/` 为准。
 
 ## Documentation Versioning Policy

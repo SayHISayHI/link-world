@@ -121,9 +121,10 @@ Component tests:
 - Markdown AST analysis produces stable heading IDs, a bounded table of contents and deterministic display modes.
 - long code blocks support copy and collapse interactions without loading a syntax-highlighting engine.
 - valid AI display hints apply only to their source parsed document; stale, invalid and low-confidence hints fall back to AST inference.
-- `AIAnalysisPanel` shows summary, score, risk and trace.
+- `AIAnalysisPanel` shows run state, summary and trace, contains no provider credential form, and links to Settings.
 - `EvaluationPanel` shows verdict, evidence and limitations.
-- model provider settings load metadata without returning API keys, allow explicit protocol selection, mask key input and invalidate stale connection-test success after edits.
+- model provider settings list multiple stable ids without returning API keys, create/edit/delete configs, enforce one explicit default, allow protocol selection, clear key drafts after save and invalidate stale connection-test success after edits.
+- Sidebar filters All/Inbox/Articles/GitHub/Prompts/Failed through backend semantics; ObjectList appends 30-item pages without duplicates.
 - `PluginPermissionPanel` distinguishes required vs optional permissions.
 
 Interaction tests:
@@ -148,11 +149,12 @@ MVP smoke tests:
 7. Extension capture is `parsed` and preserves the same content boundaries and block structure as URL capture.
 8. A selected-text capture stores only the explicit selection and does not substitute the surrounding DOM article.
 9. Rebuild and Reindex leave the parsed document unchanged.
-10. Configure and connection-test a fake model provider through the registry contract.
-11. AI analysis fixture response writes trace.
-12. Trigger evaluation fixture response writes verdict.
-13. Delete object.
-14. Search no longer returns object.
+10. Configure two fake model providers, connection-test one, select an explicit default, reopen Settings and verify no key is returned.
+11. Switch library lifecycle/type filters and load a second page without duplicate rows.
+12. AI analysis fixture response writes trace.
+13. Trigger evaluation fixture response writes verdict.
+14. Delete object.
+15. Search no longer returns object.
 
 If CI cannot automate an installed browser extension, steps 6-8 must be covered by Loopback contract integration tests and repeated as a manual Chrome smoke test before release.
 

@@ -54,8 +54,8 @@ Before `TextGenerationProvider.generate` or any future embedding/rerank/vision p
 5. Create AI trace shell or policy denial audit.
 6. Redact logs.
 
-Provider connection tests do not include object content and do not create AI analyses, but they still use `SecretStore`, redacted errors and the configured destination. Read APIs return only `hasApiKey`, never the key or `secret_ref`.
-Provider base URL 不允许携带 userinfo、query 或 fragment，避免把凭据混入 URL、错误或诊断日志。
+Provider connection tests do not include object content and do not create AI analyses, but they still use `SecretStore`, redacted errors and the configured destination. Windows Alpha 使用 Credential Manager（service `com.linkworld.app.model-provider`）；SQLite 只保存 `keyring:model-provider:<config-id>` 或显式环境变量引用。Read APIs return only `hasApiKey`, never the key or `secret_ref`. 删除 provider 配置时先删除 credential，再删除数据库引用；任一步失败都不得伪装为成功。
+Provider base URL 不允许携带 userinfo、query 或 fragment，避免把凭据混入 URL、错误或诊断日志。默认 provider 的 config id 存在 `local_settings`；删除默认项只清除选择，不自动把内容路由到其他第三方 provider。
 
 Decision table:
 
