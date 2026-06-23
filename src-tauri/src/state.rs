@@ -1,16 +1,18 @@
 use crate::errors::{AppError, AppResult};
+use crate::runtime::models::ModelProviderRegistry;
 use crate::storage::database::Database;
 use crate::storage::object_store::ObjectStore;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tauri::Manager;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct AppState {
     backend_version: String,
     database: Option<Database>,
     object_store: Option<ObjectStore>,
     secrets: SecretStore,
+    model_registry: ModelProviderRegistry,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -38,13 +40,14 @@ impl SecretStore {
 }
 
 impl AppState {
-    pub fn new() -> Self {
-        Self {
+    pub fn new() -> AppResult<Self> {
+        Ok(Self {
             backend_version: env!("CARGO_PKG_VERSION").to_string(),
             database: None,
             object_store: None,
             secrets: SecretStore::default(),
-        }
+            model_registry: ModelProviderRegistry::new()?,
+        })
     }
 
     pub async fn initialize(app_handle: &tauri::AppHandle) -> AppResult<Self> {
@@ -54,12 +57,14 @@ impl AppState {
             .map_err(|error| AppError::Filesystem(error.to_string()))?;
         let database = Database::initialize(data_dir.clone()).await?;
         let object_store = ObjectStore::initialize(data_dir)?;
+        let model_registry = ModelProviderRegistry::new()?;
 
         Ok(Self {
             backend_version: env!("CARGO_PKG_VERSION").to_string(),
             database: Some(database),
             object_store: Some(object_store),
             secrets: SecretStore::default(),
+            model_registry,
         })
     }
 
@@ -81,5 +86,9 @@ impl AppState {
 
     pub fn secrets(&self) -> &SecretStore {
         &self.secrets
+    }
+
+    pub fn model_registry(&self) -> &ModelProviderRegistry {
+        &self.model_registry
     }
 }

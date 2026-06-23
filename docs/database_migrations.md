@@ -24,6 +24,7 @@ Migration 文件命名：
 src-tauri/migrations/
 ├── 0001_initial_schema.sql
 ├── 0002_ai_display_hints.sql
+├── 0003_model_provider_api_family.sql
 └── ...
 ```
 
@@ -105,6 +106,7 @@ Old data:
 
 - Old `ai_analysis` remains visible.
 - Migration `0002_ai_display_hints.sql` only adds nullable `ai_analysis.display_hints_json`; it does not backfill or rewrite existing analysis rows.
+- Migration `0003_model_provider_api_family.sql` adds a required `model_provider_configs.api_family` with the backward-compatible `openai_chat_completions` default; existing provider rows continue using their previous behavior.
 - Analysis schema version 1 with `display_hints_json IS NULL` must deserialize as `displayHints: undefined` and use deterministic Markdown AST layout inference.
 - Newly generated general analyses use analysis schema version 2; the nested display hint has its own independent schema version 1.
 - Old `evaluation_runs` remain visible.

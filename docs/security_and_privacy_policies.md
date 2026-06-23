@@ -45,7 +45,7 @@ Allowed in logs:
 
 ## 4. AI Policy Gates
 
-Before `ModelProvider.chat` or `ModelProvider.embed`:
+Before `TextGenerationProvider.generate` or any future embedding/rerank/vision provider call:
 
 1. Resolve object privacy level.
 2. Resolve collection/workspace policy.
@@ -53,6 +53,9 @@ Before `ModelProvider.chat` or `ModelProvider.embed`:
 4. Check explicit authorization if needed.
 5. Create AI trace shell or policy denial audit.
 6. Redact logs.
+
+Provider connection tests do not include object content and do not create AI analyses, but they still use `SecretStore`, redacted errors and the configured destination. Read APIs return only `hasApiKey`, never the key or `secret_ref`.
+Provider base URL 不允许携带 userinfo、query 或 fragment，避免把凭据混入 URL、错误或诊断日志。
 
 Decision table:
 

@@ -349,6 +349,15 @@ CREATE INDEX IF NOT EXISTS idx_plugin_permissions_plugin
 CREATE TABLE IF NOT EXISTS model_provider_configs (
     id TEXT PRIMARY KEY,
     provider TEXT NOT NULL,
+    api_family TEXT NOT NULL DEFAULT 'openai_chat_completions' CHECK (
+        api_family IN (
+            'openai_chat_completions',
+            'openai_responses',
+            'anthropic_messages',
+            'google_generative_ai',
+            'ollama'
+        )
+    ),
     chat_base_url TEXT,
     embeddings_base_url TEXT,
     default_chat_model TEXT,

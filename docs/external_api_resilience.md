@@ -11,7 +11,7 @@ Link World 依赖外部网络和第三方 API，但产品必须在外部服务�
 
 | Class | Examples | Criticality | Default behavior when down |
 | --- | --- | --- | --- |
-| Model provider | OpenAI-compatible, Ollama HTTP | optional for core library | keep parsed state, mark AI job failed/blocked |
+| Model provider | OpenAI, Anthropic, Gemini, OpenAI-compatible, Ollama HTTP | optional for core library | keep parsed state, mark AI job failed/blocked |
 | GitHub API | repo metadata | optional enrichment | fallback to public HTML/README if available |
 | URL fetch | user submitted URL | needed for URL capture | mark object failed, suggest browser capture |
 | Browser bridge | extension/deep link | capture path | keep app usable, suggest manual Add URL |
@@ -55,6 +55,7 @@ Backoff:
 - exponential backoff with jitter.
 - max 3 attempts by default.
 - user-triggered retry allowed after terminal UI feedback.
+- 内置文本生成 adapter 统一执行该策略，service 不得按供应商各自重试。
 
 ## 5. Circuit Breaker
 
@@ -80,6 +81,8 @@ On rate limit:
 - show provider-specific but redacted message.
 - do not hammer provider.
 - aggregate repeated failures in diagnostics.
+
+连接测试使用同一 adapter、timeout、错误映射和凭据解析路径，但不得写入 AI analysis/trace，也不得自动保存候选配置。
 
 ## 7. Fallback Strategy
 
@@ -112,6 +115,7 @@ Embedding:
 | timeout | `ERR_NETWORK_TIMEOUT` |
 | provider auth | `ERR_MODEL_AUTH` |
 | rate limit | `ERR_MODEL_RATE_LIMIT` |
+| model or provider endpoint not found | `ERR_MODEL_NOT_FOUND` |
 | invalid model JSON | `ERR_MODEL_OUTPUT_SCHEMA` |
 | policy denial | `ERR_POLICY_DENIED` |
 | unsupported parser | `ERR_PARSE_FAILED` |

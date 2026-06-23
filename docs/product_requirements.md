@@ -29,9 +29,10 @@ MVP 不做云端代登录和后台批量抓取。所有采集都必须来自用�
 
 ### Epic 1: 配置与初始化 (Onboarding)
 
-- **US 1.1**: 作为首次打开应用的用户，我需要一个设置面板来输入模型提供商配置，包括 Chat Base URL、Embedding Base URL、默认 Chat Model、默认 Embedding Model 和 API Key。
+- **US 1.1**: 作为首次打开应用的用户，我需要配置供应商品牌、API 协议、Chat Base URL、Embedding Base URL、默认 Chat Model、默认 Embedding Model 和 API Key；系统应为常见供应商提供预设，同时允许输入自定义 OpenAI-compatible 供应商标识。
 - **US 1.2**: API Key 必须保存到系统安全凭据存储或本地加密 secret store，不允许进入普通配置表、日志或前端持久化状态。
 - **US 1.3**: 如果没有配置模型，应用应该只做基础解析和 FTS 检索，并提示“配置 AI 获取深度洞察”。
+- **US 1.4**: 用户可以在保存前测试候选 provider 配置；省略 API Key 时可复用该 provider 已保存的凭据，结果必须区分鉴权、限流、网络和输出 schema 错误，且不得回显凭据。
 
 ### Epic 2: 数据捕获与解析 (Capture & Parse)
 

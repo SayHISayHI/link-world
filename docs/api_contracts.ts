@@ -204,14 +204,34 @@ export interface SearchResult {
   score: number;
 }
 
+export type ModelApiFamily =
+  | 'openai_chat_completions'
+  | 'openai_responses'
+  | 'anthropic_messages'
+  | 'google_generative_ai'
+  | 'ollama';
+
 export interface ModelProviderConfig {
   provider: string;
+  apiFamily: ModelApiFamily;
   chatBaseUrl?: string;
   embeddingsBaseUrl?: string;
   apiKey?: string;
   defaultChatModel?: string;
   defaultEmbeddingModel?: string;
   capabilities: Array<'chat' | 'embedding' | 'rerank' | 'vision'>;
+}
+
+export interface ModelProviderConfigView extends Omit<ModelProviderConfig, 'apiKey'> {
+  hasApiKey: boolean;
+  enabled: boolean;
+}
+
+export interface ModelProviderTestResult {
+  provider: string;
+  apiFamily: ModelApiFamily;
+  model: string;
+  latencyMs: number;
 }
 
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'blocked';
@@ -311,6 +331,7 @@ export type IpcErrorCode =
   | 'ERR_PARSE_FAILED'
   | 'ERR_MODEL_AUTH'
   | 'ERR_MODEL_RATE_LIMIT'
+  | 'ERR_MODEL_NOT_FOUND'
   | 'ERR_MODEL_OUTPUT_SCHEMA'
   | 'ERR_POLICY_DENIED'
   | 'ERR_PLUGIN_PERMISSION'
@@ -363,11 +384,21 @@ export interface LibraryCommands {
  * 模块：Agent / Settings (AI 模型配置与管理)
  */
 export interface AgentCommands {
+  // 读取最近使用的 provider 配置；只返回 hasApiKey，不返回 secret。
+  // invoke('get_model_provider_config')
+  get_model_provider_config: () => Promise<IpcResponse<ModelProviderConfigView | null>>;
+
   // 更新本地模型提供商配置。apiKey 只能保存到安全凭据存储，不允许进入普通配置表。
   // invoke('update_model_provider_config', { config })
   update_model_provider_config: (args: {
     config: ModelProviderConfig;
   }) => Promise<IpcResponse<boolean>>;
+
+  // 使用候选配置执行最小 JSON 请求。省略 apiKey 时复用同 provider 已保存的 secret。
+  // invoke('test_model_provider_config', { config })
+  test_model_provider_config: (args: {
+    config: ModelProviderConfig;
+  }) => Promise<IpcResponse<ModelProviderTestResult>>;
 
   // 手动触发指定对象的深度 AI 评估 (Evaluation Engine)
   // invoke('trigger_evaluation', { objectId, evaluatorType })

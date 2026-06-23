@@ -103,3 +103,10 @@ Prompt 文件存放在 `prompts/system_prompts/` 下，供 evaluator 或 AI enri
 - `ModelProviderRegistry`
 
 Registry 分发逻辑应基于能力声明和对象类型，不应只依赖硬编码域名。域名匹配可以作为 Parser 支持判断的一部分，但不能替代标准 contract。
+
+模型 provider 额外遵循：
+
+- 供应商品牌与 API protocol 分离；已有 protocol 的新供应商优先通过配置接入，不新增业务 service 分支。
+- 新 protocol 必须实现 capability-specific provider contract，并注册到 `ModelProviderRegistry`。
+- 第三方 SDK 类型不得穿透 registry 成为 domain 或 IPC contract。
+- Provider adapter 不直接持久化 secret，不记录 request payload 或 provider 原始错误 body。

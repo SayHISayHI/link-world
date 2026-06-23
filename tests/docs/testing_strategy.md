@@ -93,6 +93,8 @@ Must cover:
 - browser DOM capture and fetched HTML use the same document parser and produce the same structural Markdown contract.
 - parsed title, author and language metadata are persisted when available.
 - AI enrich writes analysis and trace.
+- provider registry maps every supported API family and preserves typed auth/rate-limit/timeout/schema errors.
+- migration 0003 preserves old provider rows and defaults them to OpenAI Chat Completions.
 - evaluation writes run and artifacts.
 - delete creates tombstone and purge removes derived data.
 - FTS search uses parsed document and AI summary.
@@ -121,7 +123,7 @@ Component tests:
 - valid AI display hints apply only to their source parsed document; stale, invalid and low-confidence hints fall back to AST inference.
 - `AIAnalysisPanel` shows summary, score, risk and trace.
 - `EvaluationPanel` shows verdict, evidence and limitations.
-- `SettingsPanel` masks API key.
+- model provider settings load metadata without returning API keys, allow explicit protocol selection, mask key input and invalidate stale connection-test success after edits.
 - `PluginPermissionPanel` distinguishes required vs optional permissions.
 
 Interaction tests:
@@ -146,7 +148,7 @@ MVP smoke tests:
 7. Extension capture is `parsed` and preserves the same content boundaries and block structure as URL capture.
 8. A selected-text capture stores only the explicit selection and does not substitute the surrounding DOM article.
 9. Rebuild and Reindex leave the parsed document unchanged.
-10. Configure fake model provider.
+10. Configure and connection-test a fake model provider through the registry contract.
 11. AI analysis fixture response writes trace.
 12. Trigger evaluation fixture response writes verdict.
 13. Delete object.

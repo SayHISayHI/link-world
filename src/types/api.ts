@@ -5,6 +5,7 @@ export type IpcErrorCode =
   | "ERR_PARSE_FAILED"
   | "ERR_MODEL_AUTH"
   | "ERR_MODEL_RATE_LIMIT"
+  | "ERR_MODEL_NOT_FOUND"
   | "ERR_MODEL_OUTPUT_SCHEMA"
   | "ERR_POLICY_DENIED"
   | "ERR_PLUGIN_PERMISSION"
@@ -196,14 +197,34 @@ export interface AIAnalysis {
   createdAt: string;
 }
 
+export type ModelApiFamily =
+  | "openai_chat_completions"
+  | "openai_responses"
+  | "anthropic_messages"
+  | "google_generative_ai"
+  | "ollama";
+
 export interface ModelProviderConfig {
   provider: string;
+  apiFamily: ModelApiFamily;
   chatBaseUrl?: string;
   embeddingsBaseUrl?: string;
   apiKey?: string;
   defaultChatModel?: string;
   defaultEmbeddingModel?: string;
   capabilities: Array<"chat" | "embedding" | "rerank" | "vision" | string>;
+}
+
+export interface ModelProviderConfigView extends Omit<ModelProviderConfig, "apiKey"> {
+  hasApiKey: boolean;
+  enabled: boolean;
+}
+
+export interface ModelProviderTestResult {
+  provider: string;
+  apiFamily: ModelApiFamily;
+  model: string;
+  latencyMs: number;
 }
 
 export interface AIEnrichmentRunResult {

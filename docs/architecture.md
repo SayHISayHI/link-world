@@ -2,7 +2,7 @@
 
 版本: 0.1  
 状态: Draft  
-最后更新: 2026-06-15
+最后更新: 2026-06-23
 
 ## 1. Vision
 
@@ -932,15 +932,24 @@ interface EvaluatorPlugin {
 
 ### 10.4 ModelProvider
 
+模型品牌（`provider`）与线协议（`apiFamily`）必须分离。业务 service 只依赖能力契约，由 registry 按协议选择 adapter；供应商名称只用于配置、trace 和 OpenAI-compatible 的已知扩展。
+
 ```ts
-interface ModelProvider {
-  id: string;
-  listModels(): Promise<ModelInfo[]>;
-  chat(request: ChatRequest): Promise<ChatResponse>;
-  embed(request: EmbedRequest): Promise<EmbedResponse>;
-  estimateCost?(request: ChatRequest | EmbedRequest): Promise<CostEstimate>;
+type ModelApiFamily =
+  | 'openai_chat_completions'
+  | 'openai_responses'
+  | 'anthropic_messages'
+  | 'google_generative_ai'
+  | 'ollama';
+
+interface TextGenerationProvider {
+  implementationId: string;
+  supports(apiFamily: ModelApiFamily): boolean;
+  generate(request: TextGenerationRequest): Promise<TextGenerationResponse>;
 }
 ```
+
+当前内置 `genai` adapter 统一实现上述五种协议；OpenAI-compatible 自定义供应商通过 `provider + apiFamily + baseUrl + model` 配置，不在 AI enrichment service 中增加 vendor-specific HTTP 分支。Embedding、rerank、vision 后续使用独立 capability contract 与 registry，不能把所有能力塞进单一 chat 接口。
 
 ### 10.5 SyncProvider
 

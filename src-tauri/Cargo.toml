@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Local-first personal information asset system"
 authors = ["Link World"]
 edition = "2021"
-rust-version = "1.77"
+rust-version = "1.85"
 
 [lib]
 name = "link_world_lib"
@@ -16,7 +16,8 @@ tauri-build = { version = "2.4.0", features = [] }
 [dependencies]
 chrono = { version = "0.4", features = ["serde"] }
 ego-tree = "0.10"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+genai = { version = "0.6.5", default-features = false, features = ["rustls-tls"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json"] }
 scraper = "0.24"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

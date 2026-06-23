@@ -110,7 +110,7 @@ Rules:
 | Component | Purpose |
 | --- | --- |
 | `SettingsShell` | settings layout |
-| `ModelProviderSettings` | provider config |
+| `ModelProviderSettings` | provider + API protocol + base URL + model config and connection test |
 | `SecretInput` | API key input |
 | `PluginSettings` | plugin list and permissions |
 | `StorageSettings` | data paths and sizes |
@@ -120,6 +120,8 @@ Rules:
 Rules:
 
 - API key never displayed in full after save.
+- Provider 允许常见预设和自定义标识；protocol 必须显式可见，不能从品牌名隐式猜测后隐藏。
+- Base URL 输入 API 根路径，不包含具体 operation endpoint。
 - Provider test result must distinguish auth, network, model name and schema errors.
 - Plugin permissions show required vs optional.
 - Sensitive permissions require explicit confirmation.

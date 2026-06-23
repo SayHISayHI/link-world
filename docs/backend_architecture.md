@@ -376,7 +376,7 @@ Policy decision 必须写入 audit log 或 AI trace metadata。
 
 ## 13. Model Provider Runtime
 
-`ModelProvider` adapter 对外提供统一能力：
+Model runtime 使用 capability-specific contract；当前落地 `TextGenerationProvider`，后续分别增加 embedding、rerank、vision contract：
 
 - `chat`
 - `embed`
@@ -386,11 +386,16 @@ Policy decision 必须写入 audit log 或 AI trace metadata。
 Rules:
 
 - 业务层只依赖 capability，不依赖 vendor。
+- `provider` 是供应商品牌/配置 ID，`api_family` 是线协议；registry 必须优先按协议分发。
+- 内置 `genai` adapter 支持 `openai_chat_completions`、`openai_responses`、`anthropic_messages`、`google_generative_ai`、`ollama`。
+- OpenAI-compatible provider 通过配置扩展；业务 service 不拼 endpoint、不构造 vendor-specific payload。
+- Base URL 表示 API 根路径，例如 `https://api.openai.com/v1` 或 `http://127.0.0.1:11434`，不包含 `chat/completions`、`responses`、`messages` 等操作路径。
 - API key 通过 `SecretStore` 临时读取，不返回给调用者。
 - 请求 payload 日志必须脱敏。
 - Chat 输出 JSON 必须做 schema validation。
 - Embedding dimensions 必须写入 `vector_chunks_meta.embedding_dimensions`。
 - Provider 错误必须映射为 `AppError`。
+- Client 在 `AppState` 启动时构造并通过 `ModelProviderRegistry` 复用；请求 timeout 为 60 秒，可重试网络错误与 429/5xx，最多 3 次。
 
 ## 14. Plugin Runtime
 

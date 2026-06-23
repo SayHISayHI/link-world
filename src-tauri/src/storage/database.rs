@@ -97,5 +97,13 @@ mod tests {
         .await
         .expect("AI analysis migration should be queryable");
         assert_eq!(display_hints_column_count, 1);
+
+        let api_family_column_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM pragma_table_info('model_provider_configs') WHERE name = 'api_family'",
+        )
+        .fetch_one(database.pool())
+        .await
+        .expect("model provider protocol migration should be queryable");
+        assert_eq!(api_family_column_count, 1);
     }
 }

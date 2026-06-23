@@ -1,17 +1,19 @@
 use crate::domain::ai::{
     AIAnalysisSubmission, AIDisplayHintsV1, AIEnrichmentInput, AIEnrichmentRunResult,
-    AIModelAnalysisOutput, AITraceSubmission, ModelProviderConfig, StoredModelProviderConfig,
+    AIModelAnalysisOutput, AITraceSubmission, ModelProviderConfig, ModelProviderConfigView,
+    ModelProviderTestResult, StoredModelProviderConfig,
 };
 use crate::errors::{AppError, AppResult};
 use crate::repositories::ai::AIRepository;
+use crate::runtime::models::{
+    ChatOutputFormat, ModelProviderRegistry, TextGenerationRequest, TextGenerationResponse,
+};
 use crate::state::{AppState, SecretStore};
 use crate::storage::object_store::sha256_hex;
 use chrono::Utc;
 use reqwest::Url;
-use serde::Deserialize;
 use serde_json::{json, Value};
 use sqlx::SqlitePool;
-use std::time::Instant;
 use tauri::Emitter;
 use uuid::Uuid;
 
@@ -22,61 +24,114 @@ const MAX_MODEL_INPUT_CHARS: usize = 24_000;
 #[derive(Clone)]
 pub struct AIEnrichmentService {
     repository: AIRepository,
-    http_client: reqwest::Client,
+    model_registry: ModelProviderRegistry,
     secrets: SecretStore,
 }
 
-#[derive(Debug, Deserialize)]
-struct ChatCompletionResponse {
-    choices: Vec<ChatChoice>,
-    usage: Option<ChatUsage>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatChoice {
-    message: ChatMessage,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatMessage {
-    content: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatUsage {
-    prompt_tokens: Option<i64>,
-    completion_tokens: Option<i64>,
-}
-
-struct ChatModelOutput {
-    content: String,
-    prompt_tokens: Option<i64>,
-    completion_tokens: Option<i64>,
-    latency_ms: i64,
-}
-
 impl AIEnrichmentService {
-    pub fn new(pool: SqlitePool, secrets: SecretStore) -> Self {
-        Self {
+    pub fn new(pool: SqlitePool, secrets: SecretStore) -> AppResult<Self> {
+        Ok(Self {
             repository: AIRepository::new(pool),
-            http_client: reqwest::Client::new(),
+            model_registry: ModelProviderRegistry::new()?,
             secrets,
-        }
+        })
     }
 
     pub fn from_state(state: &AppState) -> AppResult<Self> {
-        Ok(Self::new(
-            state.database()?.pool().clone(),
-            state.secrets().clone(),
-        ))
+        Ok(Self {
+            repository: AIRepository::new(state.database()?.pool().clone()),
+            model_registry: state.model_registry().clone(),
+            secrets: state.secrets().clone(),
+        })
     }
 
     pub async fn update_model_provider_config(&self, config: ModelProviderConfig) -> AppResult<()> {
+        let config = normalize_model_provider_config(config);
         validate_model_provider_config(&config)?;
+        if !self.model_registry.supports(config.api_family) {
+            return Err(AppError::PolicyDenied(format!(
+                "model API family '{}' is not registered",
+                config.api_family.as_str()
+            )));
+        }
         let secret_ref = self.store_or_resolve_secret_ref(&config)?;
         self.repository
             .upsert_model_provider_config(&config, secret_ref.as_deref())
             .await
+    }
+
+    pub async fn get_model_provider_config(&self) -> AppResult<Option<ModelProviderConfigView>> {
+        let Some(config) = self.repository.get_latest_model_provider_config().await? else {
+            return Ok(None);
+        };
+        let has_api_key = self.resolve_api_key(&config)?.is_some();
+
+        Ok(Some(ModelProviderConfigView {
+            provider: config.provider,
+            api_family: config.api_family,
+            chat_base_url: config.chat_base_url,
+            embeddings_base_url: config.embeddings_base_url,
+            default_chat_model: config.default_chat_model,
+            default_embedding_model: config.default_embedding_model,
+            capabilities: config.capabilities,
+            has_api_key,
+            enabled: config.enabled,
+        }))
+    }
+
+    pub async fn test_model_provider_config(
+        &self,
+        config: ModelProviderConfig,
+    ) -> AppResult<ModelProviderTestResult> {
+        let config = normalize_model_provider_config(config);
+        validate_model_provider_config(&config)?;
+        if !self.model_registry.supports(config.api_family) {
+            return Err(AppError::PolicyDenied(format!(
+                "model API family '{}' is not registered",
+                config.api_family.as_str()
+            )));
+        }
+
+        let base_url = config
+            .chat_base_url
+            .clone()
+            .ok_or_else(|| AppError::PolicyDenied("chat base URL is required".to_string()))?;
+        let model = config
+            .default_chat_model
+            .clone()
+            .ok_or_else(|| AppError::PolicyDenied("default chat model is required".to_string()))?;
+        let api_key = self.resolve_api_key_for_candidate(&config).await?;
+        if api_key.is_none() && !is_local_base_url(&base_url) {
+            return Err(AppError::ModelAuth);
+        }
+
+        let response = self
+            .model_registry
+            .generate(TextGenerationRequest {
+                provider: config.provider.clone(),
+                api_family: config.api_family,
+                base_url,
+                api_key,
+                model: model.clone(),
+                system_prompt: "Return strict JSON only.".to_string(),
+                user_prompt: "Return exactly {\"status\":\"ok\"}.".to_string(),
+                temperature: Some(0.0),
+                output_format: ChatOutputFormat::JsonObject,
+            })
+            .await?;
+        let value = extract_json_value(&response.content)?;
+        if value.get("status").and_then(Value::as_str) != Some("ok") {
+            return Err(AppError::ModelOutputSchema(
+                "model connection test returned an unexpected JSON payload".to_string(),
+            ));
+        }
+
+        Ok(ModelProviderTestResult {
+            provider: config.provider,
+            api_family: config.api_family,
+            model,
+            latency_ms: response.latency_ms,
+        })
     }
 
     pub async fn run_auto_enrichment_for_object(
@@ -196,79 +251,37 @@ impl AIEnrichmentService {
         config: &StoredModelProviderConfig,
         model: &str,
         prompt: &str,
-    ) -> AppResult<ChatModelOutput> {
-        let endpoint = chat_completions_endpoint(config)?;
-        let mut request = self.http_client.post(endpoint).json(&json!({
-            "model": model,
-            "temperature": 0.2,
-            "response_format": { "type": "json_object" },
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "You analyze saved knowledge objects. Return strict JSON only."
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ]
-        }));
-
-        if let Some(secret_ref) = &config.secret_ref {
-            if let Some(api_key) = self.secrets.resolve(secret_ref)? {
-                request = request.bearer_auth(api_key);
-            } else if !is_local_model_config(config) {
-                return Err(AppError::ModelAuth);
-            }
-        } else if !is_local_model_config(config) {
+    ) -> AppResult<TextGenerationResponse> {
+        let base_url = config
+            .chat_base_url
+            .clone()
+            .ok_or_else(|| AppError::PolicyDenied("chat base URL is required".to_string()))?;
+        let api_key = self.resolve_api_key(config)?;
+        if api_key.is_none() && !is_local_model_config(config) {
             return Err(AppError::ModelAuth);
         }
 
-        let started_at = Instant::now();
-        let response = request.send().await.map_err(map_model_error)?;
-        let status = response.status();
-
-        if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
-            return Err(AppError::ModelAuth);
-        }
-
-        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-            return Err(AppError::ModelRateLimit);
-        }
-
-        if !status.is_success() {
-            return Err(AppError::Unknown(format!(
-                "model provider returned HTTP {status}"
-            )));
-        }
-
-        let body: ChatCompletionResponse = response.json().await.map_err(map_model_error)?;
-        let content = body
-            .choices
-            .into_iter()
-            .next()
-            .and_then(|choice| choice.message.content)
-            .ok_or_else(|| {
-                AppError::ModelOutputSchema("missing chat completion content".to_string())
-            })?;
-
-        Ok(ChatModelOutput {
-            content,
-            prompt_tokens: body.usage.as_ref().and_then(|usage| usage.prompt_tokens),
-            completion_tokens: body.usage.and_then(|usage| usage.completion_tokens),
-            latency_ms: started_at.elapsed().as_millis().min(i64::MAX as u128) as i64,
-        })
+        self.model_registry
+            .generate(TextGenerationRequest {
+                provider: config.provider.clone(),
+                api_family: config.api_family,
+                base_url,
+                api_key,
+                model: model.to_string(),
+                system_prompt: "You analyze saved knowledge objects. Return strict JSON only."
+                    .to_string(),
+                user_prompt: prompt.to_string(),
+                temperature: Some(0.2),
+                output_format: ChatOutputFormat::JsonObject,
+            })
+            .await
     }
 
     fn store_or_resolve_secret_ref(
         &self,
         config: &ModelProviderConfig,
     ) -> AppResult<Option<String>> {
-        let provider_id = config
-            .provider
-            .trim()
-            .to_ascii_lowercase()
-            .replace(' ', "_");
+        let provider_id = sha256_hex(config.provider.to_ascii_lowercase().as_bytes());
 
         if let Some(api_key) = config
             .api_key
@@ -281,14 +294,52 @@ impl AIEnrichmentService {
             return Ok(Some(secret_ref));
         }
 
-        if std::env::var("LINK_WORLD_OPENAI_API_KEY")
-            .ok()
-            .is_some_and(|value| !value.is_empty())
-        {
-            return Ok(Some("env:LINK_WORLD_OPENAI_API_KEY".to_string()));
+        for env_key in provider_env_keys(&config.provider) {
+            if std::env::var(&env_key)
+                .ok()
+                .is_some_and(|value| !value.is_empty())
+            {
+                return Ok(Some(format!("env:{env_key}")));
+            }
         }
 
         Ok(None)
+    }
+
+    fn resolve_api_key(&self, config: &StoredModelProviderConfig) -> AppResult<Option<String>> {
+        if let Some(secret_ref) = &config.secret_ref {
+            if let Some(value) = self.secrets.resolve(secret_ref)? {
+                return Ok(Some(value));
+            }
+        }
+
+        resolve_provider_env_api_key(&config.provider)
+    }
+
+    async fn resolve_api_key_for_candidate(
+        &self,
+        config: &ModelProviderConfig,
+    ) -> AppResult<Option<String>> {
+        if let Some(api_key) = config
+            .api_key
+            .as_ref()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+        {
+            return Ok(Some(api_key.to_string()));
+        }
+
+        if let Some(stored) = self
+            .repository
+            .get_model_provider_config(&config.provider)
+            .await?
+        {
+            if let Some(api_key) = self.resolve_api_key(&stored)? {
+                return Ok(Some(api_key));
+            }
+        }
+
+        resolve_provider_env_api_key(&config.provider)
     }
 }
 
@@ -338,14 +389,24 @@ fn validate_model_provider_config(config: &ModelProviderConfig) -> AppResult<()>
         ));
     }
 
-    if config
+    let parsed_url = config
         .chat_base_url
         .as_ref()
-        .map(|url| Url::parse(url.trim()).is_ok())
-        != Some(true)
+        .and_then(|url| Url::parse(url.trim()).ok());
+    if !parsed_url
+        .as_ref()
+        .is_some_and(|url| {
+            matches!(url.scheme(), "http" | "https")
+                && url.host_str().is_some()
+                && url.username().is_empty()
+                && url.password().is_none()
+                && url.query().is_none()
+                && url.fragment().is_none()
+        })
     {
         return Err(AppError::PolicyDenied(
-            "valid chat base URL is required".to_string(),
+            "valid HTTP(S) chat base URL without credentials, query, or fragment is required"
+                .to_string(),
         ));
     }
 
@@ -363,6 +424,67 @@ fn validate_model_provider_config(config: &ModelProviderConfig) -> AppResult<()>
     Ok(())
 }
 
+fn normalize_model_provider_config(mut config: ModelProviderConfig) -> ModelProviderConfig {
+    config.provider = config.provider.trim().to_string();
+    config.chat_base_url = trim_optional(config.chat_base_url);
+    config.embeddings_base_url = trim_optional(config.embeddings_base_url);
+    config.api_key = trim_optional(config.api_key);
+    config.default_chat_model = trim_optional(config.default_chat_model);
+    config.default_embedding_model = trim_optional(config.default_embedding_model);
+    config.capabilities = config
+        .capabilities
+        .into_iter()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+        .collect();
+    config.capabilities.sort();
+    config.capabilities.dedup();
+    config
+}
+
+fn trim_optional(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn normalized_provider_id(provider: &str) -> String {
+    provider
+        .trim()
+        .to_ascii_lowercase()
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+fn provider_env_keys(provider: &str) -> Vec<String> {
+    let provider_key = normalized_provider_id(provider).to_ascii_uppercase();
+    let mut keys = vec![format!("LINK_WORLD_{provider_key}_API_KEY")];
+    if matches!(provider_key.as_str(), "OPENAI" | "OPENAI_COMPATIBLE") {
+        keys.push("LINK_WORLD_OPENAI_API_KEY".to_string());
+    }
+    keys.sort();
+    keys.dedup();
+    keys
+}
+
+fn resolve_provider_env_api_key(provider: &str) -> AppResult<Option<String>> {
+    for env_key in provider_env_keys(provider) {
+        if let Ok(value) = std::env::var(&env_key) {
+            if !value.is_empty() {
+                return Ok(Some(value));
+            }
+        }
+    }
+    Ok(None)
+}
+
 fn enforce_privacy_policy(
     input: &AIEnrichmentInput,
     config: &StoredModelProviderConfig,
@@ -378,26 +500,16 @@ fn enforce_privacy_policy(
     Ok(())
 }
 
-fn chat_completions_endpoint(config: &StoredModelProviderConfig) -> AppResult<String> {
-    let base_url = config
-        .chat_base_url
-        .as_deref()
-        .ok_or_else(|| AppError::PolicyDenied("chat base URL is required".to_string()))?
-        .trim()
-        .trim_end_matches('/');
-
-    if base_url.ends_with("/chat/completions") {
-        return Ok(base_url.to_string());
-    }
-
-    Ok(format!("{base_url}/chat/completions"))
-}
-
 fn is_local_model_config(config: &StoredModelProviderConfig) -> bool {
     config
         .chat_base_url
         .as_deref()
-        .and_then(|base_url| Url::parse(base_url).ok())
+        .is_some_and(is_local_base_url)
+}
+
+fn is_local_base_url(base_url: &str) -> bool {
+    Url::parse(base_url)
+        .ok()
         .and_then(|url| url.host_str().map(ToOwned::to_owned))
         .is_some_and(|host| matches!(host.as_str(), "localhost" | "127.0.0.1" | "::1"))
 }
@@ -516,21 +628,13 @@ fn truncate_chars(text: &str, max_chars: usize) -> String {
     text.chars().take(max_chars).collect()
 }
 
-fn map_model_error(error: reqwest::Error) -> AppError {
-    if error.is_timeout() {
-        AppError::NetworkTimeout
-    } else {
-        AppError::Unknown(error.to_string())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
         build_general_enrichment_prompt, normalize_display_hints, parse_analysis_output,
-        AIEnrichmentService,
+        validate_model_provider_config, AIEnrichmentService,
     };
-    use crate::domain::ai::AIEnrichmentInput;
+    use crate::domain::ai::{AIEnrichmentInput, ModelApiFamily, ModelProviderConfig};
     use crate::state::SecretStore;
     use crate::storage::database::Database;
 
@@ -590,12 +694,32 @@ mod tests {
         assert!(prompt.contains("code-heavy"));
     }
 
+    #[test]
+    fn validates_provider_config_without_allowing_credentials_in_base_url() {
+        let mut config = ModelProviderConfig {
+            provider: "custom".to_string(),
+            api_family: ModelApiFamily::OpenAiChatCompletions,
+            chat_base_url: Some("https://api.example.com/v1".to_string()),
+            embeddings_base_url: None,
+            api_key: None,
+            default_chat_model: Some("test-model".to_string()),
+            default_embedding_model: None,
+            capabilities: vec!["chat".to_string()],
+        };
+
+        validate_model_provider_config(&config).expect("valid provider config should pass");
+
+        config.chat_base_url = Some("https://user:secret@api.example.com/v1?key=secret".to_string());
+        assert!(validate_model_provider_config(&config).is_err());
+    }
+
     #[tokio::test]
     async fn auto_enrichment_skips_without_chat_config_and_does_not_create_job() {
         let database = Database::initialize_in_memory()
             .await
             .expect("database should initialize");
-        let service = AIEnrichmentService::new(database.pool().clone(), SecretStore::default());
+        let service = AIEnrichmentService::new(database.pool().clone(), SecretStore::default())
+            .expect("AI service should initialize");
 
         let run = service
             .run_auto_enrichment_for_object("missing-object")

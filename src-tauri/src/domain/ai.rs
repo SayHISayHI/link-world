@@ -1,10 +1,46 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelApiFamily {
+    #[default]
+    OpenAiChatCompletions,
+    OpenAiResponses,
+    AnthropicMessages,
+    GoogleGenerativeAi,
+    Ollama,
+}
+
+impl ModelApiFamily {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::OpenAiChatCompletions => "openai_chat_completions",
+            Self::OpenAiResponses => "openai_responses",
+            Self::AnthropicMessages => "anthropic_messages",
+            Self::GoogleGenerativeAi => "google_generative_ai",
+            Self::Ollama => "ollama",
+        }
+    }
+
+    pub fn from_storage_value(value: &str) -> Option<Self> {
+        match value {
+            "openai_chat_completions" => Some(Self::OpenAiChatCompletions),
+            "openai_responses" => Some(Self::OpenAiResponses),
+            "anthropic_messages" => Some(Self::AnthropicMessages),
+            "google_generative_ai" => Some(Self::GoogleGenerativeAi),
+            "ollama" => Some(Self::Ollama),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelProviderConfig {
     pub provider: String,
+    #[serde(default)]
+    pub api_family: ModelApiFamily,
     pub chat_base_url: Option<String>,
     pub embeddings_base_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -19,6 +55,7 @@ pub struct ModelProviderConfig {
 pub struct StoredModelProviderConfig {
     pub id: String,
     pub provider: String,
+    pub api_family: ModelApiFamily,
     pub chat_base_url: Option<String>,
     pub embeddings_base_url: Option<String>,
     pub default_chat_model: Option<String>,
@@ -26,6 +63,29 @@ pub struct StoredModelProviderConfig {
     pub capabilities: Vec<String>,
     pub secret_ref: Option<String>,
     pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelProviderConfigView {
+    pub provider: String,
+    pub api_family: ModelApiFamily,
+    pub chat_base_url: Option<String>,
+    pub embeddings_base_url: Option<String>,
+    pub default_chat_model: Option<String>,
+    pub default_embedding_model: Option<String>,
+    pub capabilities: Vec<String>,
+    pub has_api_key: bool,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelProviderTestResult {
+    pub provider: String,
+    pub api_family: ModelApiFamily,
+    pub model: String,
+    pub latency_ms: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]

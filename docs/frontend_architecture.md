@@ -136,9 +136,9 @@ Rules:
 
 ### 3.5 Settings and plugins state
 
-`settingsStore` 和 `pluginStore` 管理：
+Provider 配置属于后端 server state，通过 command hooks 读取和修改。MVP 中编辑草稿由 container 本地 state 管理；独立设置页落地后可迁入 `settingsStore`。`pluginStore` 管理插件状态：
 
-- provider config metadata。
+- provider config metadata，包括 provider、API protocol、base URL、model 和 `hasApiKey`。
 - connection test result。
 - plugin manifests。
 - plugin permissions。
@@ -148,6 +148,8 @@ Rules:
 - 存 API key 明文。
 - 在 localStorage 持久化 secret。
 - 回显完整 key。
+- 后端配置加载完成后覆盖用户已经开始编辑的 draft。
+- 配置字段变化后继续展示旧 connection test 的成功状态。
 
 ## 4. Server State and Command Hooks
 
@@ -175,6 +177,8 @@ Hook examples:
 - `useTriggerEvaluation`
 - `useObjectJobs`
 - `useModelProviderConfig`
+- `useGetModelProviderConfig`
+- `useTestModelProviderConfig`
 - `usePluginPermissions`
 
 Rules:

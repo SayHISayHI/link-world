@@ -1,4 +1,6 @@
-use crate::domain::ai::{AIEnrichmentRunResult, ModelProviderConfig};
+use crate::domain::ai::{
+    AIEnrichmentRunResult, ModelProviderConfig, ModelProviderConfigView, ModelProviderTestResult,
+};
 use crate::errors::{map_ipc_result, IpcResponse};
 use crate::services::ai::AIEnrichmentService;
 use crate::state::AppState;
@@ -14,6 +16,33 @@ pub async fn update_model_provider_config(
 
         service.update_model_provider_config(config).await?;
         Ok(true)
+    }
+    .await;
+
+    Ok(map_ipc_result(result))
+}
+
+#[tauri::command]
+pub async fn get_model_provider_config(
+    state: tauri::State<'_, AppState>,
+) -> Result<IpcResponse<Option<ModelProviderConfigView>>, String> {
+    let result = async {
+        let service = AIEnrichmentService::from_state(state.inner())?;
+        service.get_model_provider_config().await
+    }
+    .await;
+
+    Ok(map_ipc_result(result))
+}
+
+#[tauri::command]
+pub async fn test_model_provider_config(
+    state: tauri::State<'_, AppState>,
+    config: ModelProviderConfig,
+) -> Result<IpcResponse<ModelProviderTestResult>, String> {
+    let result = async {
+        let service = AIEnrichmentService::from_state(state.inner())?;
+        service.test_model_provider_config(config).await
     }
     .await;
 

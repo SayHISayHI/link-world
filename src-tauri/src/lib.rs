@@ -34,6 +34,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::system::ping,
+            commands::ai::get_model_provider_config,
+            commands::ai::test_model_provider_config,
             commands::ai::update_model_provider_config,
             commands::ai::trigger_ai_enrichment,
             commands::capture::submit_capture,

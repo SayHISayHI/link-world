@@ -47,10 +47,11 @@ Link World 采用 **桌面端 Local-first** 的架构。底层由 Rust 驱动 (T
 ### 2.3 大模型与 AI 集成 (LLM & AI)
 遵守 BYO API (Bring Your Own API) 原则。
 
-- **Model Provider Interface**: 默认兼容 OpenAI 风格的 Chat 与 Embeddings API
+- **Model Provider Runtime**: 项目自有 capability contract + registry，首个 Rust adapter 使用 `genai 0.6.x`
   - Chat 能力用于摘要、分类、评估计划和 Agent 回答。
   - Embeddings 能力用于向量索引、语义搜索和相关内容召回。
-  - Ollama、LM Studio、OpenAI、Anthropic 兼容网关等都必须通过 `ModelProvider` adapter 接入，业务层不得写供应商专用逻辑。
+  - 当前文本生成支持 OpenAI Chat Completions、OpenAI Responses、Anthropic Messages、Google Generative AI、Ollama 和 OpenAI-compatible base URL。
+  - `provider` 与 `apiFamily` 分离；Ollama、LM Studio、OpenAI、Anthropic、Gemini 及兼容网关都必须通过 registry adapter 接入，业务层不得写供应商专用 HTTP 逻辑。
   - 不允许把模型接口简化为单一 `Chat Completions`，否则会阻塞 embedding、rerank、vision 等后续能力。
 - **凭据存储**: API Key 必须保存到 OS keychain、Tauri 安全存储或本地加密 secret store。
   - 禁止将 API Key 明文写入普通 SQLite 配置表、日志或前端状态持久化。

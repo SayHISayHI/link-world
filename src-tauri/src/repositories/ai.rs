@@ -1,6 +1,6 @@
 use crate::domain::ai::{
-    AIAnalysisSubmission, AIEnrichmentInput, AITraceSubmission, ModelProviderConfig,
-    StoredModelProviderConfig,
+    AIAnalysisSubmission, AIEnrichmentInput, AITraceSubmission, ModelApiFamily,
+    ModelProviderConfig, StoredModelProviderConfig,
 };
 use crate::errors::{AppError, AppResult};
 use crate::repositories::search::SearchRepository;
@@ -38,6 +38,7 @@ impl AIRepository {
             INSERT INTO model_provider_configs (
                 id,
                 provider,
+                api_family,
                 chat_base_url,
                 embeddings_base_url,
                 default_chat_model,
@@ -47,9 +48,10 @@ impl AIRepository {
                 enabled,
                 created_at,
                 updated_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, ?9, ?9)
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 1, ?10, ?10)
             ON CONFLICT(id) DO UPDATE SET
                 provider = excluded.provider,
+                api_family = excluded.api_family,
                 chat_base_url = excluded.chat_base_url,
                 embeddings_base_url = excluded.embeddings_base_url,
                 default_chat_model = excluded.default_chat_model,
@@ -62,6 +64,7 @@ impl AIRepository {
         )
         .bind(&config_id)
         .bind(config.provider.trim())
+        .bind(config.api_family.as_str())
         .bind(config.chat_base_url.as_deref().map(str::trim))
         .bind(config.embeddings_base_url.as_deref().map(str::trim))
         .bind(config.default_chat_model.as_deref().map(str::trim))
@@ -81,6 +84,7 @@ impl AIRepository {
             SELECT
                 id,
                 provider,
+                api_family,
                 chat_base_url,
                 embeddings_base_url,
                 default_chat_model,
@@ -105,6 +109,63 @@ impl AIRepository {
                     .iter()
                     .any(|capability| capability == "chat")
             }))
+    }
+
+    pub async fn get_latest_model_provider_config(
+        &self,
+    ) -> AppResult<Option<StoredModelProviderConfig>> {
+        let row = sqlx::query(
+            r#"
+            SELECT
+                id,
+                provider,
+                api_family,
+                chat_base_url,
+                embeddings_base_url,
+                default_chat_model,
+                default_embedding_model,
+                capabilities_json,
+                secret_ref,
+                enabled
+            FROM model_provider_configs
+            ORDER BY updated_at DESC
+            LIMIT 1
+            "#,
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(stored_model_config_from_row))
+    }
+
+    pub async fn get_model_provider_config(
+        &self,
+        provider: &str,
+    ) -> AppResult<Option<StoredModelProviderConfig>> {
+        let config_id = normalize_provider_id(provider)?;
+        let row = sqlx::query(
+            r#"
+            SELECT
+                id,
+                provider,
+                api_family,
+                chat_base_url,
+                embeddings_base_url,
+                default_chat_model,
+                default_embedding_model,
+                capabilities_json,
+                secret_ref,
+                enabled
+            FROM model_provider_configs
+            WHERE id = ?1
+            LIMIT 1
+            "#,
+        )
+        .bind(config_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(stored_model_config_from_row))
     }
 
     pub async fn get_enrichment_input(&self, object_id: &str) -> AppResult<AIEnrichmentInput> {
@@ -337,6 +398,8 @@ fn stored_model_config_from_row(row: SqliteRow) -> StoredModelProviderConfig {
     StoredModelProviderConfig {
         id: row.get("id"),
         provider: row.get("provider"),
+        api_family: ModelApiFamily::from_storage_value(row.get::<String, _>("api_family").as_str())
+            .unwrap_or_default(),
         chat_base_url: row.get("chat_base_url"),
         embeddings_base_url: row.get("embeddings_base_url"),
         default_chat_model: row.get("default_chat_model"),
@@ -377,7 +440,9 @@ fn truncate_failure_reason(reason: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::AIRepository;
-    use crate::domain::ai::{AIAnalysisSubmission, AITraceSubmission, ModelProviderConfig};
+    use crate::domain::ai::{
+        AIAnalysisSubmission, AITraceSubmission, ModelApiFamily, ModelProviderConfig,
+    };
     use crate::repositories::search::SearchRepository;
     use crate::storage::database::Database;
 
@@ -392,6 +457,7 @@ mod tests {
             .upsert_model_provider_config(
                 &ModelProviderConfig {
                     provider: "openai-compatible".to_string(),
+                    api_family: ModelApiFamily::OpenAiChatCompletions,
                     chat_base_url: Some("https://api.openai.com/v1".to_string()),
                     embeddings_base_url: None,
                     api_key: Some("sk-secret".to_string()),

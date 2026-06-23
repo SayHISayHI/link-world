@@ -24,6 +24,8 @@ pub enum AppError {
     ModelAuth,
     #[error("model rate limit")]
     ModelRateLimit,
+    #[error("model or provider endpoint not found")]
+    ModelNotFound,
     #[error("model output schema invalid: {0}")]
     ModelOutputSchema(String),
     #[error("policy denied: {0}")]
@@ -45,6 +47,7 @@ pub enum IpcErrorCode {
     ErrParseFailed,
     ErrModelAuth,
     ErrModelRateLimit,
+    ErrModelNotFound,
     ErrModelOutputSchema,
     ErrPolicyDenied,
     ErrPluginPermission,
@@ -100,6 +103,7 @@ impl From<AppError> for IpcError {
             AppError::ParseFailed(_) => IpcErrorCode::ErrParseFailed,
             AppError::ModelAuth => IpcErrorCode::ErrModelAuth,
             AppError::ModelRateLimit => IpcErrorCode::ErrModelRateLimit,
+            AppError::ModelNotFound => IpcErrorCode::ErrModelNotFound,
             AppError::ModelOutputSchema(_) => IpcErrorCode::ErrModelOutputSchema,
             AppError::PolicyDenied(_) => IpcErrorCode::ErrPolicyDenied,
             AppError::PluginPermission(_) => IpcErrorCode::ErrPluginPermission,

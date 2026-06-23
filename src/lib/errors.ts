@@ -43,6 +43,30 @@ export function toAppUiError(error?: IpcError): AppUiError {
         retryable: false,
         action: "open_settings",
       };
+    case "ERR_MODEL_RATE_LIMIT":
+      return {
+        code: error.code,
+        title: "Model rate limit reached",
+        message: error.message,
+        retryable: true,
+        action: "retry",
+      };
+    case "ERR_MODEL_NOT_FOUND":
+      return {
+        code: error.code,
+        title: "Model not found",
+        message: error.message,
+        retryable: false,
+        action: "open_settings",
+      };
+    case "ERR_MODEL_OUTPUT_SCHEMA":
+      return {
+        code: error.code,
+        title: "Invalid model response",
+        message: error.message,
+        retryable: true,
+        action: "retry",
+      };
     default:
       return {
         code: error.code,
@@ -53,4 +77,3 @@ export function toAppUiError(error?: IpcError): AppUiError {
       };
   }
 }
-

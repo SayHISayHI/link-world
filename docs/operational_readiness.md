@@ -22,7 +22,7 @@ MVP 主支持：
 - Windows 11。
 - Tauri v2。
 - SQLite + FTS5。
-- OpenAI-compatible Chat provider。
+- OpenAI Chat Completions/Responses、Anthropic Messages、Google Generative AI、OpenAI-compatible 和 Ollama Chat provider。
 
 兼容目标：
 
@@ -46,6 +46,7 @@ MVP 主支持：
 - 后台任务队列深度。
 - 最近失败任务。
 - 模型 provider 连接测试结果。
+- 当前 provider、API protocol、base URL、model 与凭据是否已配置；不得显示 secret 内容。
 - 插件列表和权限状态。
 
 ### 3.2 Logs
