@@ -89,5 +89,13 @@ mod tests {
         .expect("schema query should succeed");
 
         assert_eq!(table_count, 1);
+
+        let display_hints_column_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM pragma_table_info('ai_analysis') WHERE name = 'display_hints_json'",
+        )
+        .fetch_one(database.pool())
+        .await
+        .expect("AI analysis migration should be queryable");
+        assert_eq!(display_hints_column_count, 1);
     }
 }

@@ -34,6 +34,28 @@
       "allowedForThirdPartyAI": true
     }
   },
+  "browser_dom_article": {
+    "sourceType": "dom",
+    "sourcePlatform": "example.com",
+    "sourceUrl": "https://example.com/guides/safe-rendering",
+    "canonicalUrl": "https://example.com/guides/safe-rendering",
+    "title": "Safe Rendering Guide",
+    "author": "Example Author",
+    "rawHtml": "<article itemprop=\"articleBody\"><h2>Prepare</h2><p>Keep parsing separate from presentation.</p><h2>Render</h2><blockquote><p>[!NOTE] Sanitize before adding trusted project metadata.</p></blockquote><pre><code class=\"language-js\">const safe = true;</code></pre></article>",
+    "rawText": "Prepare Keep parsing separate from presentation. Render Sanitize before adding trusted project metadata. const safe = true;",
+    "metadata": {
+      "fixture": true,
+      "captureMethod": "browser_extension",
+      "language": "en"
+    },
+    "privacyLevel": "personal",
+    "permissionContext": {
+      "acquisitionMode": "user_action",
+      "userConfirmed": true,
+      "allowedForCloudProcessing": false,
+      "allowedForThirdPartyAI": false
+    }
+  },
   "blocked_page": {
     "sourceType": "url",
     "sourcePlatform": "web",

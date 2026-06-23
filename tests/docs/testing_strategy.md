@@ -1,11 +1,23 @@
 # Link World 测试规范
 
 状态: Draft  
-适用范围: Rust backend、React frontend、Tauri IPC、AI prompts、evaluators、database migrations
+适用范围: Rust backend、React frontend、Tauri IPC、浏览器扩展、Loopback Capture、文档解析器、AI prompts、evaluators、database migrations
 
 ## 1. Purpose
 
-本文档定义 Link World 的测试分层、最低覆盖要求、fixtures 规范和评测数据管理。目标是保证 Local-first、AI trace、Evaluation Engine、隐私策略、迁移和 UI 状态在持续迭代中不退化。
+本文档定义 Link World 的测试分层、最低覆盖要求、fixtures 规范和评测数据管理。目标是保证 Local-first、捕获与解析边界、AI trace、Evaluation Engine、隐私策略、迁移和 UI 状态在持续迭代中不退化。
+
+文章处理链路必须保持以下职责边界：
+
+```text
+Browser extension -> sanitized DOM snapshot --\
+                                              +-> Rust document parser -> normalized text and Markdown
+URL capture       -> fetched HTML snapshot ----/                            |
+                                                                              v
+                                                                    React safe renderer
+```
+
+浏览器扩展不得承担网站特定的 Markdown 序列化或正文排版；URL 抓取和扩展 DOM 捕获必须复用同一 Rust 文档解析器。AI 可以作为后续增强能力，但不得成为基础正文解析和显示正确性的必要条件。
 
 ## 2. Test Pyramid
 
@@ -37,6 +49,8 @@ Required:
 - Frontend lint.
 - Rust fmt.
 - Rust clippy.
+- Browser extension JavaScript syntax check.
+- Browser extension manifest JSON validation.
 - Secret scanning.
 - SQL migration syntax check.
 
@@ -44,6 +58,7 @@ Failure is release-blocking for:
 
 - type errors.
 - clippy high-confidence warnings.
+- invalid browser extension scripts or manifest.
 - detected secret.
 - migration failure.
 
@@ -60,6 +75,11 @@ Must cover:
 - plugin permission checks.
 - object store path canonicalization.
 - AI output schema validation.
+- document parser root selection without platform-specific assumptions.
+- document parser preserves headings, paragraphs, lists, blockquotes, code blocks and tables.
+- document parser removes duplicate leading titles and ignores script, style and navigation noise.
+- verification-page detection rejects real challenges without rejecting substantive articles that discuss authentication or CAPTCHA topics.
+- document parser rejects unsafe link and image protocols in generated Markdown.
 
 ### 4.2 Integration tests
 
@@ -67,8 +87,11 @@ Must cover:
 
 - empty DB migration.
 - previous DB migration.
-- capture submit creates object, event and job.
-- parse writes source snapshot and parsed document.
+- URL capture submit creates object, event and fetch job.
+- fetched HTML parse writes source snapshot and parsed document with parser ID and version.
+- browser extension Loopback payload maps sanitized DOM and metadata into a confirmed capture item.
+- browser DOM capture and fetched HTML use the same document parser and produce the same structural Markdown contract.
+- parsed title, author and language metadata are persisted when available.
 - AI enrich writes analysis and trace.
 - evaluation writes run and artifacts.
 - delete creates tombstone and purge removes derived data.
@@ -89,6 +112,13 @@ Component tests:
 
 - `ObjectListItem` renders all lifecycle states.
 - `ObjectDetail` handles loading, empty, failed and deleted.
+- `ObjectDetail` renders Markdown when available and falls back to parsed plain text.
+- `MarkdownDocumentView` renders headings, lists, blockquotes, fenced code and GFM tables.
+- `MarkdownDocumentView` does not render raw HTML and rejects unsafe link or image protocols.
+- `MarkdownDocumentView` keeps remote images lazy, prevents referrer leakage and disables task-list inputs.
+- Markdown AST analysis produces stable heading IDs, a bounded table of contents and deterministic display modes.
+- long code blocks support copy and collapse interactions without loading a syntax-highlighting engine.
+- valid AI display hints apply only to their source parsed document; stale, invalid and low-confidence hints fall back to AST inference.
 - `AIAnalysisPanel` shows summary, score, risk and trace.
 - `EvaluationPanel` shows verdict, evidence and limitations.
 - `SettingsPanel` masks API key.
@@ -101,21 +131,28 @@ Interaction tests:
 - Trigger evaluation.
 - Retry failed job.
 - Delete object confirm.
+- Rebuild and Reindex update search state without changing parsed document content.
 
 ## 6. E2E Smoke Tests
 
 MVP smoke tests:
 
 1. App starts on clean profile.
-2. User adds URL.
+2. User adds a URL through the desktop capture bar.
 3. Object appears as `captured` then `parsed`.
-4. Detail shows parsed document.
-5. Search finds object by title/body.
-6. Configure fake model provider.
-7. AI analysis fixture response writes trace.
-8. Trigger evaluation fixture response writes verdict.
-9. Delete object.
-10. Search no longer returns object.
+4. Detail shows structured Markdown without a duplicated title.
+5. Search finds the object by title and body.
+6. User captures the same synthetic article through the browser extension.
+7. Extension capture is `parsed` and preserves the same content boundaries and block structure as URL capture.
+8. A selected-text capture stores only the explicit selection and does not substitute the surrounding DOM article.
+9. Rebuild and Reindex leave the parsed document unchanged.
+10. Configure fake model provider.
+11. AI analysis fixture response writes trace.
+12. Trigger evaluation fixture response writes verdict.
+13. Delete object.
+14. Search no longer returns object.
+
+If CI cannot automate an installed browser extension, steps 6-8 must be covered by Loopback contract integration tests and repeated as a manual Chrome smoke test before release.
 
 ## 7. Fixtures Policy
 
@@ -129,15 +166,33 @@ Rules:
 - Prefer small deterministic samples.
 - Include both successful and failed cases.
 - Include sensitive/secret examples using fake content.
+- Generalize a real-site regression into the smallest synthetic HTML structure that reproduces the bug.
+- Do not add a platform-specific selector unless a standards-based or structural heuristic cannot represent the case.
+- Real pages may be used for local manual verification, but their full HTML must not be committed.
 
 Fixture categories:
 
 - capture payloads.
+- sanitized browser DOM payloads.
+- semantic article HTML with expected plain text and Markdown.
+- malformed, noisy and verification-page HTML.
 - parsed documents.
 - AI model responses.
 - evaluation results.
 - database seed records.
 - external API error responses.
+
+Parser fixtures should cover at least:
+
+- schema.org `articleBody` content.
+- generic `article` and `main` content.
+- duplicate page title and article heading.
+- nested lists, blockquotes, fenced code and tables.
+- script/style/navigation noise.
+- short verification pages and long legitimate articles mentioning verification terms.
+- safe and unsafe link/image protocols.
+
+Expected parser results must assert both normalized `textContent` and `markdownContent`. When parser behavior intentionally changes, update the parser version and fixture expectations in the same change.
 
 ## 8. AI Evaluation Tests
 
@@ -170,6 +225,13 @@ Every fixed bug should add one of:
 - eval sample.
 - documented manual regression step if automation is impractical.
 
+Capture and rendering regressions require route-specific coverage:
+
+- parser bugs: assert both URL HTML and browser DOM routes where applicable.
+- renderer bugs: add a component test using deterministic Markdown.
+- extension transport bugs: add a Loopback payload contract test.
+- site-specific reports: encode the structural cause in a synthetic fixture instead of storing the original article.
+
 ## 10. Test Data Refresh
 
 When schema changes:
@@ -185,6 +247,31 @@ When prompt changes:
 - run JSON validity check.
 - compare verdict distribution.
 
+When the document parser changes:
+
+- update parser ID/version when persisted output semantics change.
+- update expected text and Markdown fixtures.
+- run URL and browser DOM parity tests.
+- verify existing records are not assumed to be reparsed by Rebuild or Reindex.
+
+When AI display hints change:
+
+- increment the AI analysis and prompt schema versions when persisted semantics change.
+- verify old analyses without `displayHints` still deserialize.
+- verify invalid optional hints never fail the main summary analysis.
+- verify AI hints cannot alter Markdown content or renderer security policy.
+
+When the browser capture payload changes:
+
+- update capture DTO fixtures and Loopback contract tests.
+- verify payload byte limits and UTF-8 truncation.
+- reload the unpacked extension and run the manual Chrome smoke test.
+
+When the Markdown renderer or its dependencies change:
+
+- run component tests for GFM structure and plain-text fallback.
+- repeat unsafe HTML, URL protocol and remote-image privacy checks.
+
 ## 11. Release Test Checklist
 
 Before release:
@@ -192,8 +279,13 @@ Before release:
 - static checks pass.
 - Rust tests pass.
 - frontend tests pass.
+- frontend production build passes.
+- browser extension scripts and manifest pass static validation.
 - migration tests pass.
 - E2E smoke pass.
+- direct URL and browser extension captures pass against the same synthetic structured article.
+- Markdown safety regression checks pass.
 - AI eval JSON validity pass.
 - no secret scan findings.
 - manual Windows package smoke pass.
+- manual Chrome unpacked-extension capture smoke pass when extension automation is unavailable.

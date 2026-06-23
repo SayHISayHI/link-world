@@ -47,6 +47,8 @@ Link World 处理的是用户长期积累的信息资产，其中可能包含私
 | 云端代登录第三方平台 | 账号封禁和合规风险 | 默认禁止 |
 | 向量泄漏语义信息 | 内容反推风险 | 跟随 privacy/sync policy |
 | 日志记录正文或 token | 本地或云端泄漏 | structured redaction |
+| Markdown 原始 HTML 或危险 URL 被执行 | 脚本执行、跟踪或数据泄漏 | skip raw HTML + protocol allowlist + sanitize |
+| AI 展示提示越权修改内容或安全策略 | 内容失真或绕过安全边界 | advisory-only schema + parsed document binding + deterministic fallback |
 
 ## 3. Privacy Levels
 
@@ -116,6 +118,15 @@ AI 输出展示规则：
 - 低置信度结论必须标注。
 - 高风险建议必须要求用户确认。
 - 模型输出 JSON 解析失败时，不得静默降级为“成功”。
+- 可选 `displayHints` 只允许选择版本化的文档级展示模式；无效提示不影响主体分析，并回退到 Markdown AST 推断。
+- 只有绑定当前 parsed document 且置信度至少为 `0.75` 的提示可以应用；提示不得改变正文、Markdown、AST 或渲染安全策略。
+
+文档渲染规则：
+
+- Markdown 是稳定的展示存储格式，阅读 AST 只在前端临时派生，不持久化。
+- 原始 HTML 必须跳过，链接和图片 URL 使用协议 allowlist。
+- 远程图片必须启用 lazy loading、async decoding 和 `no-referrer`。
+- Callout 等渲染扩展使用项目内固定插件管线，不开放运行时第三方插件执行。
 
 ## 7. Deletion and Data Portability
 
@@ -160,3 +171,4 @@ AI 数据策略：
 - 删除对象后，搜索和向量检索无法命中该对象。
 - crash log 中不包含 API key、token、cookie、正文。
 - 模型调用都能在 UI 中追踪到 provider、model 和时间。
+- 恶意 Markdown、危险 URL 和无效 AI display hints 的安全回归测试通过。

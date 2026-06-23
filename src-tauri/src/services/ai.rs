@@ -1,6 +1,6 @@
 use crate::domain::ai::{
-    AIAnalysisSubmission, AIEnrichmentInput, AIEnrichmentRunResult, AIModelAnalysisOutput,
-    AITraceSubmission, ModelProviderConfig, StoredModelProviderConfig,
+    AIAnalysisSubmission, AIDisplayHintsV1, AIEnrichmentInput, AIEnrichmentRunResult,
+    AIModelAnalysisOutput, AITraceSubmission, ModelProviderConfig, StoredModelProviderConfig,
 };
 use crate::errors::{AppError, AppResult};
 use crate::repositories::ai::AIRepository;
@@ -16,7 +16,7 @@ use tauri::Emitter;
 use uuid::Uuid;
 
 const GENERAL_ENRICHMENT_PROMPT_ID: &str = "builtin.general_enrichment";
-const GENERAL_ENRICHMENT_PROMPT_VERSION: &str = "0.1.0";
+const GENERAL_ENRICHMENT_PROMPT_VERSION: &str = "0.2.0";
 const MAX_MODEL_INPUT_CHARS: usize = 24_000;
 
 #[derive(Clone)]
@@ -139,6 +139,9 @@ impl AIEnrichmentService {
         let prompt = build_general_enrichment_prompt(&input);
         let model_output = self.call_chat_model(&config, &model, &prompt).await?;
         let analysis_output = parse_analysis_output(&model_output.content)?;
+        let display_hints_json = normalize_display_hints(analysis_output.display_hints.as_ref())
+            .map(|hints| serialize_json(&hints))
+            .transpose()?;
         let now = Utc::now().to_rfc3339();
         let analysis_id = Uuid::new_v4().to_string();
         let output_hash = sha256_hex(model_output.content.as_bytes());
@@ -148,7 +151,7 @@ impl AIEnrichmentService {
             object_id: input.object_id.clone(),
             parsed_document_id: input.parsed_document_id.clone(),
             analysis_type: "general_summary".to_string(),
-            schema_version: 1,
+            schema_version: 2,
             summary: analysis_output.summary,
             category: analysis_output.category,
             tags_json: serialize_json(&analysis_output.tags)?,
@@ -158,6 +161,7 @@ impl AIEnrichmentService {
             risks_json: serialize_json(&analysis_output.risks)?,
             quality_score: analysis_output.quality_score,
             confidence: analysis_output.confidence,
+            display_hints_json,
             created_at: now.clone(),
         };
         let trace = AITraceSubmission {
@@ -411,8 +415,17 @@ fn build_general_enrichment_prompt(input: &AIEnrichmentInput) -> String {
   "actionItems": ["concrete next action"],
   "risks": ["risk or limitation"],
   "qualityScore": 0.0,
-  "confidence": 0.0
+  "confidence": 0.0,
+  "displayHints": {{
+    "schemaVersion": 1,
+    "mode": "article | tutorial | reference | code-heavy",
+    "confidence": 0.0,
+    "reason": "short reason for the suggested reading layout"
+  }}
 }}
+
+Choose exactly one display mode: article for narrative prose, tutorial for step-by-step guidance,
+reference for lookup-oriented specifications or tables, and code-heavy when code is the main content.
 
 Object type: {}
 Title: {}
@@ -439,6 +452,37 @@ fn parse_analysis_output(content: &str) -> AppResult<AIModelAnalysisOutput> {
     }
 
     Ok(output)
+}
+
+fn normalize_display_hints(value: Option<&Value>) -> Option<AIDisplayHintsV1> {
+    let object = value?.as_object()?;
+    if object.get("schemaVersion")?.as_i64()? != 1 {
+        return None;
+    }
+
+    let mode = object.get("mode")?.as_str()?.trim();
+    if !matches!(mode, "article" | "tutorial" | "reference" | "code-heavy") {
+        return None;
+    }
+
+    let confidence = object.get("confidence")?.as_f64()?;
+    if !confidence.is_finite() || !(0.0..=1.0).contains(&confidence) {
+        return None;
+    }
+
+    let reason = object
+        .get("reason")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|reason| !reason.is_empty())
+        .map(|reason| truncate_chars(reason, 160));
+
+    Some(AIDisplayHintsV1 {
+        schema_version: 1,
+        mode: mode.to_string(),
+        confidence,
+        reason,
+    })
 }
 
 fn extract_json_value(content: &str) -> AppResult<Value> {
@@ -482,7 +526,10 @@ fn map_model_error(error: reqwest::Error) -> AppError {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_general_enrichment_prompt, parse_analysis_output, AIEnrichmentService};
+    use super::{
+        build_general_enrichment_prompt, normalize_display_hints, parse_analysis_output,
+        AIEnrichmentService,
+    };
     use crate::domain::ai::AIEnrichmentInput;
     use crate::state::SecretStore;
     use crate::storage::database::Database;
@@ -497,6 +544,29 @@ mod tests {
         assert_eq!(output.summary, "Useful technique.");
         assert_eq!(output.tags, vec!["rust"]);
         assert_eq!(output.quality_score, Some(0.8));
+    }
+
+    #[test]
+    fn accepts_valid_display_hints_and_drops_invalid_hints_without_failing_analysis() {
+        let valid = parse_analysis_output(
+            r#"{"summary":"Useful technique.","displayHints":{"schemaVersion":1,"mode":"tutorial","confidence":0.9,"reason":"Step-by-step content"}}"#,
+        )
+        .expect("valid analysis should parse");
+        let normalized = normalize_display_hints(valid.display_hints.as_ref())
+            .expect("valid display hints should normalize");
+        assert_eq!(normalized.mode, "tutorial");
+        assert_eq!(normalized.confidence, 0.9);
+
+        let invalid = parse_analysis_output(
+            r#"{"summary":"Still useful.","displayHints":{"schemaVersion":1,"mode":"magazine","confidence":4}}"#,
+        )
+        .expect("invalid optional hints must not fail the main analysis");
+        assert!(normalize_display_hints(invalid.display_hints.as_ref()).is_none());
+
+        let malformed =
+            parse_analysis_output(r#"{"summary":"Still useful.","displayHints":"not-an-object"}"#)
+                .expect("malformed optional hints must not fail the main analysis");
+        assert!(normalize_display_hints(malformed.display_hints.as_ref()).is_none());
     }
 
     #[test]
@@ -516,6 +586,8 @@ mod tests {
         assert!(prompt.contains("A title"));
         assert!(prompt.contains("https://example.com"));
         assert!(prompt.contains("A useful paragraph"));
+        assert!(prompt.contains("displayHints"));
+        assert!(prompt.contains("code-heavy"));
     }
 
     #[tokio::test]

@@ -124,21 +124,32 @@ export interface ParsedDocument {
   createdAt: string;
 }
 
+export type DocumentDisplayMode = 'article' | 'tutorial' | 'reference' | 'code-heavy';
+
+export interface AIDisplayHintsV1 {
+  schemaVersion: 1;
+  mode: DocumentDisplayMode;
+  confidence: number;
+  reason?: string; // normalized to at most 160 characters by the backend
+}
+
 export interface AIAnalysis {
   id: string;
   objectId: string;
-  analysisType: 'general_summary' | 'repo_analysis' | 'prompt_analysis' | 'claim_analysis';
+  parsedDocumentId?: string;
+  analysisType: string;
   schemaVersion: number;
   summary?: string;
   category?: string;
-  tags?: string[];
-  keyPoints?: string[];
-  claims?: unknown[];
-  actionItems?: unknown[];
-  risks?: unknown[];
+  tags: string[];
+  keyPoints: unknown[];
+  claims: unknown[];
+  actionItems: unknown[];
+  risks: unknown[];
   qualityScore?: number;
   confidence?: number;
-  trace: AITrace;
+  displayHints?: AIDisplayHintsV1;
+  trace?: AITrace;
   createdAt: string;
 }
 

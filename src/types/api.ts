@@ -167,6 +167,15 @@ export interface AITrace {
   latencyMs?: number;
 }
 
+export type DocumentDisplayMode = "article" | "tutorial" | "reference" | "code-heavy";
+
+export interface AIDisplayHintsV1 {
+  schemaVersion: 1;
+  mode: DocumentDisplayMode;
+  confidence: number;
+  reason?: string;
+}
+
 export interface AIAnalysis {
   id: string;
   objectId: string;
@@ -182,6 +191,7 @@ export interface AIAnalysis {
   risks: unknown[];
   qualityScore?: number;
   confidence?: number;
+  displayHints?: AIDisplayHintsV1;
   trace?: AITrace;
   createdAt: string;
 }

@@ -22,6 +22,12 @@
     "risks": [],
     "quality_score": 8.2,
     "confidence": 0.88,
+    "displayHints": {
+      "schemaVersion": 1,
+      "mode": "article",
+      "confidence": 0.91,
+      "reason": "Narrative prose with a small number of sections."
+    },
     "recommendedNextAction": "schedule_review"
   },
   "repo_evaluation_success": {

@@ -192,8 +192,9 @@ impl AIRepository {
                 risks_json,
                 quality_score,
                 confidence,
+                display_hints_json,
                 created_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
             "#,
         )
         .bind(&analysis.id)
@@ -210,6 +211,7 @@ impl AIRepository {
         .bind(&analysis.risks_json)
         .bind(analysis.quality_score)
         .bind(analysis.confidence)
+        .bind(&analysis.display_hints_json)
         .bind(&analysis.created_at)
         .execute(&mut *tx)
         .await?;
@@ -478,6 +480,9 @@ mod tests {
             risks_json: "[]".to_string(),
             quality_score: Some(0.8),
             confidence: Some(0.7),
+            display_hints_json: Some(
+                r#"{"schemaVersion":1,"mode":"reference","confidence":0.9}"#.to_string(),
+            ),
             created_at: "2026-06-17T00:00:01Z".to_string(),
         };
         let trace = AITraceSubmission {
@@ -504,6 +509,14 @@ mod tests {
             .complete_enrichment_job(&job_id, &analysis, &trace)
             .await
             .expect("job should complete");
+
+        let stored_display_hints: Option<String> = sqlx::query_scalar(
+            "SELECT display_hints_json FROM ai_analysis WHERE id = 'analysis-ai-search'",
+        )
+        .fetch_one(database.pool())
+        .await
+        .expect("display hints should be readable");
+        assert_eq!(stored_display_hints, analysis.display_hints_json);
 
         let search_results = SearchRepository::new(database.pool().clone())
             .search_hybrid("Searchable summary", Some(10))

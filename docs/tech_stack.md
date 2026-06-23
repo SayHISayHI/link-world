@@ -37,6 +37,12 @@ Link World 采用 **桌面端 Local-first** 的架构。底层由 Rust 驱动 (T
 - **全局状态管理**: [Zustand](https://github.com/pmndrs/zustand)
   - 原因: 极度轻量，无需包裹 Provider，适合处理 Tauri IPC 触发的全局状态。
 - **表单与校验**: react-hook-form + zod
+- **Markdown / AST 阅读器**:
+  - `react-markdown` + `remark-gfm` 负责 React 渲染和 GFM。
+  - `unified` + `remark-parse` + `mdast-util-to-string` 负责临时 AST 分析和目录模型。
+  - `rehype-sanitize` + `rehype-slug` 负责安全清洗和稳定标题锚点。
+  - `unist-util-visit` 用于受信任的项目级 Callout 插件。
+  - AST 不持久化；禁止引入 `rehype-raw`；重型语法高亮引擎不属于 MVP。
 
 ### 2.3 大模型与 AI 集成 (LLM & AI)
 遵守 BYO API (Bring Your Own API) 原则。
@@ -48,7 +54,7 @@ Link World 采用 **桌面端 Local-first** 的架构。底层由 Rust 驱动 (T
   - 不允许把模型接口简化为单一 `Chat Completions`，否则会阻塞 embedding、rerank、vision 等后续能力。
 - **凭据存储**: API Key 必须保存到 OS keychain、Tauri 安全存储或本地加密 secret store。
   - 禁止将 API Key 明文写入普通 SQLite 配置表、日志或前端状态持久化。
-- **Markdown / 文本解析**: remark / rehype 生态 (如需在前端渲染高复杂度的 AI 返回内容)。
+- **AI 展示提示**: 作为 `ai_analysis` 上版本化、可选的结构化 sidecar 保存。模型只能建议文档级显示模式，不参与基础 Markdown 解析或安全决策。
 
 ## 3. 目录架构约定 (Directory Structure)
 

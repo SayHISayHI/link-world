@@ -94,10 +94,14 @@ CREATE TABLE IF NOT EXISTS ai_analysis (
     risks_json TEXT,
     quality_score REAL,
     confidence REAL,
+    display_hints_json TEXT,            -- nullable AIDisplayHintsV1 sidecar; added by migration 0002
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (object_id) REFERENCES knowledge_objects(id) ON DELETE CASCADE,
     FOREIGN KEY (parsed_document_id) REFERENCES parsed_documents(id) ON DELETE SET NULL
 );
+
+-- 新分析使用 schema_version = 2，并可写入 display_hints_json。
+-- 旧 schema_version = 1 记录保持 NULL，不执行数据回填。
 
 CREATE INDEX IF NOT EXISTS idx_ai_analysis_object_created
     ON ai_analysis(object_id, created_at);

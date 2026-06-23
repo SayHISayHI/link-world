@@ -21,7 +21,7 @@ MVP 不做云端代登录和后台批量抓取。所有采集都必须来自用�
   - 每个列表项显示标题、来源图标、AI 一句话摘要、生命周期状态、标签和失败提示。
 - **右侧详情区 (Detail View)**
   - 顶部操作栏：来源链接、重新解析、重新评估、删除。
-  - 主视图：左侧显示 `parsed_documents` 中的正文 / Markdown；右侧显示 AI Analysis 和 Evaluation 模块。
+  - 主视图：左侧使用安全 Markdown 阅读器显示 `parsed_documents` 正文，包括目录、标题锚点、Callout、表格和长代码折叠；右侧显示 AI Analysis 和 Evaluation 模块。
   - AI Analysis 显示摘要、质量初评分、关键行动点、风险、置信度和 trace 摘要。
   - Evaluation 显示 verdict、score、维度评分、evidence、limitations 和 artifacts。
 
@@ -38,15 +38,17 @@ MVP 不做云端代登录和后台批量抓取。所有采集都必须来自用�
 - **US 2.1**: 作为用户，我可以在应用界面点击 Add，粘贴一个包含文章或 GitHub Repo 的 URL。
 - **US 2.2**: 系统接收到 URL 后，前端调用 Tauri Command 传递给 Rust。Rust 后端立刻创建 `captured` 状态对象，并异步拉取用户提交的 URL。
 - **US 2.3**: 拉取完成后，系统通过 Parser 提取正文文本并转换为 Markdown。原始快照写入 `source_snapshots`，解析后正文写入 `parsed_documents`，对象状态变更为 `parsed`。
-- **US 2.4**: 作为用户，我可以通过浏览器扩展保存当前页面的 URL、标题、选中文本和可访问 DOM 片段。扩展只保存用户正在查看并主动提交的页面，不进行后台批量抓取。
+- **US 2.4**: 作为用户，我可以通过浏览器扩展保存当前页面的 URL、标题、选中文本和清理后的可访问 DOM 片段。扩展只负责安全采集，不生成 Markdown 或实现网站特定排版；URL HTML 和扩展 DOM 统一交给 Rust Parser。
 - **US 2.5**: 如果解析失败，系统必须把对象状态标记为 `failed`，记录 `failure_reason`，并允许用户重新尝试或改用浏览器扩展采集当前页面。
+- **US 2.6**: 即使没有配置 AI，系统也必须通过 Markdown AST 结构分析提供稳定、安全、可读的基础展示，不依赖模型完成正文排版。
 
 ### Epic 3: AI 增强与总结 (AI Enrichment)
 
 - **US 3.1**: 对象进入 `parsed` 状态后，Rust 后台任务从 `parsed_documents` 读取正文，拼接内部 Prompt 模板，并发送给配置好的本地或云端模型。
-- **US 3.2**: 获得结构化响应后，系统自动写入 `ai_analysis`，包括 `summary`、`tags`、`key_points`、`risks`、`action_items`、`quality_score` 和 `confidence`。
+- **US 3.2**: 获得结构化响应后，系统自动写入 `ai_analysis`，包括 `summary`、`tags`、`key_points`、`risks`、`action_items`、`quality_score`、`confidence` 和可选、版本化的 `display_hints_json`。
 - **US 3.3**: 每次 AI 调用必须写入 `ai_traces`，记录 provider、model、capability、prompt template、input hash、output hash、tokens、成本和耗时。
 - **US 3.4**: 如果 AI 调用失败，对象保持 `parsed`，错误写入日志和用户可见提示，不允许阻塞后续队列。
+- **US 3.5**: AI 展示提示只能在匹配当前 `parsed_document` 且置信度达到门槛时建议文档级布局；它不得修改 Markdown、AST、链接/图片策略或其他安全规则。提示缺失、无效或过期时自动回退到确定性 AST 推断。
 
 ### Epic 4: 评估验证 (Evaluation)
 

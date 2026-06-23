@@ -94,7 +94,18 @@ Browser extension must not:
 - bypass paywalls or login walls.
 - silently capture without user action.
 
-## 7. Diagnostics Policy
+扩展提交的 DOM 必须先做采集侧清洗，再由桌面端 Rust parser 统一解析。扩展不得生成 Markdown、注入站点专用展示规则或把第三方页面脚本带入阅读器。
+
+## 7. Document Rendering and AI Display Policy
+
+- Markdown 阅读器必须跳过原始 HTML，禁止启用 `rehype-raw` 或等效的任意 HTML 执行路径。
+- 链接只允许 `http`、`https`、`mailto`；图片只允许 `http`、`https`，并强制 lazy loading、async decoding 和 `no-referrer`。
+- Callout 等项目扩展只允许编译期固定插件，禁止运行时安装或执行不受信任的渲染插件。
+- AI display hints 只建议文档级展示模式，不得修改 Markdown、AST、URL、图片属性、组件映射或清洗策略。
+- 仅应用绑定当前 parsed document 且置信度至少为 `0.75` 的合法提示；缺失、未知 mode、越界 confidence 和过期提示必须忽略。
+- display hints 解析失败不得让主体 AI analysis 失败，必须回退到确定性的 AST 展示模式。
+
+## 8. Diagnostics Policy
 
 Diagnostics package may contain:
 
@@ -115,7 +126,7 @@ Diagnostics package must not contain:
 - tokens/cookies/sessions.
 - embeddings.
 
-## 8. Deletion Policy
+## 9. Deletion Policy
 
 Deletion must enqueue purge and remove:
 
@@ -134,7 +145,7 @@ Deletion must enqueue purge and remove:
 
 Failures must be visible in diagnostics and retryable.
 
-## 9. Security Review Checklist
+## 10. Security Review Checklist
 
 Before shipping a feature:
 

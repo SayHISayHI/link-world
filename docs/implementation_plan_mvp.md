@@ -77,7 +77,7 @@
 3. 写入 `domain_events(capture.submitted)` 并创建 `background_jobs(capture.fetch_url)`。
 4. Job runner 使用 `reqwest` 拉取用户主动提交的 URL，不做云端代登录和后台批量抓取。
 5. 保存原始 HTML 到对象存储，并写入 `source_snapshots`。
-6. 使用 Rust HTML 解析器提取 `title`, `meta`, 正文纯文本和 Markdown；重型解析使用 `spawn_blocking`。
+6. 使用共享 Rust `document_parser` 提取 `title`, `meta`, 正文纯文本和 Markdown；URL HTML 与扩展 DOM 使用相同解析管线，记录 parser id/version，重型解析使用 `spawn_blocking`。
 7. 将解析后正文写入 `parsed_documents`，更新对象状态为 `parsed`，写入 `object.parsed` 事件，并触发 Tauri Event 推送前端更新。
 8. 如果拉取或解析失败，更新对象状态为 `failed`，写入 `failure_reason`，job 标记失败，不阻塞队列。
 9. 验证标准：输入普通博客文章 URL 后，列表出现文章标题，详情页显示 `parsed_documents` 中的正文；输入受限页面时出现 `failed` 状态和可读失败原因。
@@ -87,10 +87,10 @@
 目标：让 MVP 覆盖真实使用场景，而不是只支持手动粘贴 URL。
 
 1. 定义浏览器扩展与桌面端通信方式，优先采用本地 loopback capture endpoint 或系统 deep link。
-2. 浏览器扩展 MVP 只实现“保存当前页”，提交 URL、标题、选中文本和可访问 DOM 片段。
+2. 浏览器扩展 MVP 只实现“保存当前页”，提交 URL、标题、选中文本和已清洗的可访问 DOM 片段；扩展不生成 Markdown，也不包含站点专用排版逻辑。
 3. 扩展不得后台批量抓取，不读取非当前页内容，不托管第三方平台 cookie。
-4. 桌面端将扩展提交内容转换为 `RawCaptureItem`，复用 Phase 4 的 pipeline。
-5. 验证标准：用户在普通网页点击扩展按钮后，桌面端出现新的 Knowledge Object，并能展示扩展提交的内容。
+4. 桌面端验证 loopback 请求来源、URL scheme、payload 大小和 DOM 结构，将扩展内容转换为 `RawCaptureItem`，并复用 Phase 4 的 Rust parser。
+5. 验证标准：用户在普通网页点击扩展按钮后，桌面端出现新的 Knowledge Object；同一合成页面经 URL HTML 与扩展 DOM 解析后，标题、段落、列表、代码和表格结构保持一致。
 
 ## Phase 6: AI Enrichment 与模型配置 (AI Integration)
 
@@ -99,10 +99,10 @@
 1. 设置面板允许配置 `ModelProviderConfig`，包括 Chat Base URL、Embedding Base URL、默认模型和能力列表。
 2. API Key 只能保存到系统安全凭据存储或本地加密 secret store，禁止写入普通配置表。
 3. Rust 端实现 `ModelProvider` adapter，至少支持 OpenAI-compatible Chat；Embedding adapter 可作为同一接口的可选能力。
-4. 当对象进入 `parsed` 状态后，从 `parsed_documents` 读取正文，拼接 prompt template，发送 Chat 请求。
-5. 解析 LLM 返回 JSON，写入 `ai_analysis`，同时写入 `ai_traces`。
+4. 当对象进入 `parsed` 状态后，从 `parsed_documents` 读取正文，使用 `builtin.general_enrichment` prompt `0.2.0` 拼接输入并发送 Chat 请求。
+5. 解析 schema version 2 的 LLM JSON，写入 `ai_analysis` 和可选的版本化 `display_hints_json`，同时写入 `ai_traces`；无效展示提示不得让主体分析失败。
 6. AI 调用失败时对象保持 `parsed`，记录错误，不允许后台任务崩溃。
-7. 验证标准：文章详情页在数秒后出现 AI 摘要、分数、行动项和 trace 摘要；关闭模型配置时不影响基础解析。
+7. 验证标准：文章详情页在数秒后出现 AI 摘要、分数、行动项和 trace 摘要；只对当前 parsed document 的高置信度提示显示低干扰 AI layout 标识；关闭模型配置、提示无效或记录过期时仍使用 Markdown AST 推断完成基础阅读展示。
 
 ## Phase 7: Evaluation Engine 最小闭环
 

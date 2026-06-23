@@ -1967,6 +1967,7 @@ name = "link-world"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "ego-tree",
  "reqwest 0.12.28",
  "scraper",
  "serde",

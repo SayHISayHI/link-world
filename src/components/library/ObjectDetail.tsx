@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Activity, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "../ui/button";
 import type {
@@ -10,6 +11,13 @@ import type { AppUiError } from "../../lib/errors";
 import { formatRelativeStatus } from "../../lib/formatting";
 import { AIAnalysisPanel } from "../analysis/AIAnalysisPanel";
 import { EvaluationPanel } from "../evaluation/EvaluationPanel";
+import { selectCurrentDisplayHints } from "./displayHints";
+
+const MarkdownDocumentView = lazy(() =>
+  import("./MarkdownDocumentView").then((module) => ({
+    default: module.MarkdownDocumentView,
+  })),
+);
 
 interface ObjectDetailProps {
   object?: KnowledgeObject;
@@ -93,6 +101,9 @@ export function ObjectDetail({
   const title = object.title ?? object.canonicalUrl ?? object.id;
   const parsedDocument = detail?.parsedDocument;
   const latestAnalysis = detail?.aiAnalyses[0];
+  const displayHints = parsedDocument
+    ? selectCurrentDisplayHints(parsedDocument.id, detail?.aiAnalyses ?? [])
+    : undefined;
   const latestEvaluation = detail?.evaluations[0];
   const statusText = formatRelativeStatus(object.lifecycleStatus);
 
@@ -123,7 +134,7 @@ export function ObjectDetail({
       </header>
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_320px]">
         <article className="overflow-y-auto p-6">
-          <div className="max-w-3xl">
+          <div className="max-w-4xl">
             <div className="mb-4 flex items-center gap-2 text-xs text-muted-foreground">
               <Activity className="h-4 w-4" aria-hidden="true" />
               {statusText}
@@ -175,7 +186,15 @@ export function ObjectDetail({
               <>
                 <h3 className="text-lg font-semibold">{parsedDocument?.title ?? "Parsed document preview"}</h3>
                 {parsedDocument ? (
-                  <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-foreground">{parsedDocument.text}</p>
+                  <Suspense fallback={<p className="mt-4 text-sm text-muted-foreground">Formatting document...</p>}>
+                    <MarkdownDocumentView
+                      documentId={parsedDocument.id}
+                      markdown={parsedDocument.markdown}
+                      text={parsedDocument.text}
+                      sourceUrl={object.canonicalUrl}
+                      displayHints={displayHints}
+                    />
+                  </Suspense>
                 ) : (
                   <p className="mt-3 text-sm leading-6 text-muted-foreground">
                     No parsed document has been produced for this object yet.

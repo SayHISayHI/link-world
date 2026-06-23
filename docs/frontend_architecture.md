@@ -230,9 +230,35 @@ LibraryShellContainer
        -> ObjectListItem
   -> ObjectDetailContainer
        -> ObjectDetail
+       -> MarkdownDocumentView (lazy)
        -> AIAnalysisPanel
        -> EvaluationPanel
 ```
+
+### 6.1 Document rendering pipeline
+
+`parsed_documents.markdown_content` 是持久化展示格式；前端 AST 只在渲染时临时派生，不写入数据库或全局 store。
+
+```text
+Markdown
+  -> unified + remark-parse + remark-gfm
+  -> AST summary (TOC, structure metrics, inferred display mode)
+  -> rehype-sanitize -> rehype-slug -> trusted Link World Callout plugin
+  -> stable React component map
+```
+
+Rules:
+
+- 禁止 `rehype-raw`，并保持 `skipHtml`，原始 HTML 不进入 React DOM。
+- 固定项目插件在编译期注册，不提供运行时第三方渲染插件安装接口。
+- 目录只收录 `h2-h4`，至少三个条目时显示；标题 ID 使用稳定 GitHub slug 规则。
+- 相对链接和图片以对象 canonical URL 为基准解析；链接只允许 `http`、`https`、`mailto`，图片只允许 `http`、`https`。
+- 图片必须使用 lazy loading、async decoding 和 `no-referrer`。
+- 超过 40 行的代码块支持折叠和复制；复制失败必须显示明确状态。
+- 文档模式限定为 `article`、`tutorial`、`reference`、`code-heavy`，默认由 AST 结构确定。
+- AST 推断顺序固定：代码字符占比至少 30% 或代码块至少 4 个为 `code-heavy`；表格至少 2 个，或至少 6 个且平均不足 600 字符的短章节为 `reference`；至少 2 个标题且有 4 个有序列表项为 `tutorial`；其余为 `article`。
+- 只读取匹配当前 `parsedDocumentId` 的最新 AI analysis；`displayHints` 版本合法且 confidence `>= 0.75` 时才覆盖 AST 模式。
+- AI 只能选择文档级展示模式，不能修改正文、AST、组件注册表或安全策略。
 
 ## 7. Three-Pane Layout
 
@@ -354,6 +380,8 @@ Rules:
 
 - 大列表必须支持 pagination 或 virtualization。
 - Markdown 渲染对大正文要 lazy。
+- AST 分析必须按 Markdown 内容 memoize；动态展示策略通过稳定 Context 传递，组件映射不得在 render 内创建。
+- Markdown/AST 依赖必须保留在独立 lazy chunk，不能进入应用主入口。
 - 搜索输入 debounce 150-250ms。
 - 避免把完整正文放入全局 store。
 - AI / evaluation panels 可以独立 suspense/loading。
@@ -376,6 +404,8 @@ Minimum frontend tests:
 
 - `ObjectList` renders lifecycle states。
 - `ObjectDetail` renders parsed document, AI analysis, evaluation。
+- `MarkdownDocumentView` renders TOC, heading anchors, GFM tables, Callout and long-code controls。
+- unsafe HTML/URL、纯文本 fallback、AI hint 失效和 clipboard fallback 必须有组件测试。
 - `SearchCommand` handles loading, empty, failed, keyboard navigation。
 - `SettingsPanel` masks API key。
 - `PluginPermissionPanel` displays required vs optional permissions。

@@ -1,3 +1,4 @@
+use crate::domain::ai::AIDisplayHintsV1;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -121,6 +122,7 @@ pub struct AIAnalysis {
     pub risks: Vec<Value>,
     pub quality_score: Option<f64>,
     pub confidence: Option<f64>,
+    pub display_hints: Option<AIDisplayHintsV1>,
     pub trace: Option<AITrace>,
     pub created_at: String,
 }

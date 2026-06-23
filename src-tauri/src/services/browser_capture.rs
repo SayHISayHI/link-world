@@ -24,7 +24,12 @@ const MAX_RAW_HTML_CHARS: usize = 180_000;
 #[serde(rename_all = "camelCase")]
 struct BrowserCapturePayload {
     url: String,
+    canonical_url: Option<String>,
     title: Option<String>,
+    author: Option<String>,
+    description: Option<String>,
+    published_at: Option<String>,
+    language: Option<String>,
     selected_text: Option<String>,
     dom_text: Option<String>,
     dom_html: Option<String>,
@@ -47,6 +52,14 @@ struct HttpResponse {
     content_type: &'static str,
     body: Vec<u8>,
     cors_origin: Option<String>,
+}
+
+struct ParsedHttpHead {
+    method: String,
+    path: String,
+    headers: HashMap<String, String>,
+    body_start: usize,
+    content_length: usize,
 }
 
 pub fn spawn_loopback_capture_server(
@@ -221,6 +234,9 @@ async fn submit_browser_capture(
 impl BrowserCapturePayload {
     fn into_raw_capture_item(self) -> AppResult<RawCaptureItem> {
         let url = validate_browser_capture_url(&self.url)?;
+        let canonical_url = normalize_optional_text(self.canonical_url)
+            .and_then(|candidate| validate_browser_capture_url(&candidate).ok())
+            .unwrap_or_else(|| url.clone());
         let selected_text = normalize_optional_text(self.selected_text)
             .map(|text| truncate_chars(&text, MAX_RAW_TEXT_CHARS));
         let dom_text = normalize_optional_text(self.dom_text)
@@ -245,9 +261,9 @@ impl BrowserCapturePayload {
             source_platform: normalize_optional_text(self.source_platform)
                 .or_else(|| url.host_str().map(ToOwned::to_owned)),
             source_url: Some(url.as_str().to_string()),
-            canonical_url: Some(url.as_str().to_string()),
+            canonical_url: Some(canonical_url.as_str().to_string()),
             title: normalize_optional_text(self.title),
-            author: None,
+            author: normalize_optional_text(self.author),
             captured_at: normalize_optional_text(self.captured_at),
             raw_html,
             raw_text,
@@ -256,6 +272,9 @@ impl BrowserCapturePayload {
                 "objectType": "article",
                 "captureMethod": "browser_extension",
                 "captureTransport": "loopback",
+                "description": normalize_optional_text(self.description),
+                "publishedAt": normalize_optional_text(self.published_at),
+                "language": normalize_optional_text(self.language),
             }),
             privacy_level: "personal".to_string(),
             permission_context: PermissionContext {
@@ -271,7 +290,7 @@ impl BrowserCapturePayload {
 
 async fn read_http_request(socket: &mut TcpStream) -> AppResult<HttpRequest> {
     let mut buffer = Vec::with_capacity(4096);
-    let mut parsed_head: Option<(String, String, HashMap<String, String>, usize, usize)> = None;
+    let mut parsed_head: Option<ParsedHttpHead> = None;
 
     loop {
         let mut chunk = [0_u8; 1024];
@@ -305,34 +324,40 @@ async fn read_http_request(socket: &mut TcpStream) -> AppResult<HttpRequest> {
                     ));
                 }
 
-                parsed_head = Some((method, path, headers, header_end + 4, content_length));
+                parsed_head = Some(ParsedHttpHead {
+                    method,
+                    path,
+                    headers,
+                    body_start: header_end + 4,
+                    content_length,
+                });
             }
         }
 
-        if let Some((_, _, _, body_start, content_length)) = &parsed_head {
-            if buffer.len() >= body_start + content_length {
+        if let Some(head) = &parsed_head {
+            if buffer.len() >= head.body_start + head.content_length {
                 break;
             }
         }
     }
 
-    let Some((method, path, headers, body_start, content_length)) = parsed_head else {
+    let Some(head) = parsed_head else {
         return Err(AppError::ParseFailed(
             "browser capture request did not contain complete HTTP headers".to_string(),
         ));
     };
 
-    if buffer.len() < body_start + content_length {
+    if buffer.len() < head.body_start + head.content_length {
         return Err(AppError::ParseFailed(
             "browser capture request body ended before content-length".to_string(),
         ));
     }
 
     Ok(HttpRequest {
-        method,
-        path,
-        headers,
-        body: buffer[body_start..body_start + content_length].to_vec(),
+        method: head.method,
+        path: head.path,
+        headers: head.headers,
+        body: buffer[head.body_start..head.body_start + head.content_length].to_vec(),
     })
 }
 
@@ -494,8 +519,13 @@ mod tests {
     #[test]
     fn browser_payload_maps_to_confirmed_raw_capture_item() {
         let item = BrowserCapturePayload {
-            url: "https://example.com/article".to_string(),
+            url: "https://example.com/article?tracking=1".to_string(),
+            canonical_url: Some("https://example.com/article".to_string()),
             title: Some("Example Article".to_string()),
+            author: Some("Example Author".to_string()),
+            description: Some("Example description".to_string()),
+            published_at: Some("2026-06-16T00:00:00Z".to_string()),
+            language: Some("en".to_string()),
             selected_text: Some("Selected useful paragraph".to_string()),
             dom_text: Some("Visible page text".to_string()),
             dom_html: Some("<main><p>Visible page text</p></main>".to_string()),
@@ -509,10 +539,16 @@ mod tests {
         assert_eq!(item.source_platform.as_deref(), Some("example.com"));
         assert_eq!(
             item.source_url.as_deref(),
+            Some("https://example.com/article?tracking=1")
+        );
+        assert_eq!(
+            item.canonical_url.as_deref(),
             Some("https://example.com/article")
         );
         assert_eq!(item.title.as_deref(), Some("Example Article"));
+        assert_eq!(item.author.as_deref(), Some("Example Author"));
         assert_eq!(item.raw_text.as_deref(), Some("Selected useful paragraph"));
+        assert_eq!(item.metadata["language"], "en");
         assert!(item.raw_html.is_some());
         assert!(item.permission_context.user_confirmed);
         assert_eq!(item.permission_context.acquisition_mode, "user_action");
@@ -524,7 +560,12 @@ mod tests {
     fn browser_payload_rejects_non_http_url() {
         let error = BrowserCapturePayload {
             url: "file:///C:/secret.txt".to_string(),
+            canonical_url: None,
             title: None,
+            author: None,
+            description: None,
+            published_at: None,
+            language: None,
             selected_text: None,
             dom_text: None,
             dom_html: None,
@@ -543,7 +584,12 @@ mod tests {
     fn browser_payload_without_selection_uses_dom_source_type() {
         let item = BrowserCapturePayload {
             url: "https://example.com/article".to_string(),
+            canonical_url: None,
             title: Some("Example Article".to_string()),
+            author: None,
+            description: None,
+            published_at: None,
+            language: None,
             selected_text: None,
             dom_text: Some("Visible page text".to_string()),
             dom_html: Some("<main><p>Visible page text</p></main>".to_string()),

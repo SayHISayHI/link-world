@@ -9,6 +9,18 @@ use sqlx::{Row, Sqlite, Transaction};
 
 pub struct CaptureRepository;
 
+pub struct CaptureFetchCompletion<'a> {
+    pub job_id: &'a str,
+    pub object_id: &'a str,
+    pub user_id: &'a str,
+    pub title: Option<&'a str>,
+    pub author: Option<&'a str>,
+    pub snapshot: &'a CaptureSnapshotSubmission,
+    pub parsed_document: &'a CaptureParsedDocumentSubmission,
+    pub events: &'a [CaptureDomainEventSubmission],
+    pub now: &'a str,
+}
+
 impl CaptureRepository {
     pub async fn insert_submission(
         tx: &mut Transaction<'_, Sqlite>,
@@ -93,36 +105,37 @@ impl CaptureRepository {
 
     pub async fn complete_fetch_job(
         tx: &mut Transaction<'_, Sqlite>,
-        job_id: &str,
-        object_id: &str,
-        user_id: &str,
-        title: Option<&str>,
-        snapshot: &CaptureSnapshotSubmission,
-        parsed_document: &CaptureParsedDocumentSubmission,
-        events: &[CaptureDomainEventSubmission],
-        now: &str,
+        completion: CaptureFetchCompletion<'_>,
     ) -> AppResult<()> {
-        insert_source_snapshot(tx, object_id, snapshot).await?;
-        insert_parsed_document(tx, object_id, &snapshot.id, parsed_document).await?;
+        insert_source_snapshot(tx, completion.object_id, completion.snapshot).await?;
+        insert_parsed_document(
+            tx,
+            completion.object_id,
+            &completion.snapshot.id,
+            completion.parsed_document,
+        )
+        .await?;
 
         sqlx::query(
             r#"
             UPDATE knowledge_objects
             SET
                 title = COALESCE(NULLIF(title, ''), ?1),
+                author = COALESCE(NULLIF(author, ''), ?2),
                 lifecycle_status = 'parsed',
                 failure_reason = NULL,
-                updated_at = ?2
-            WHERE id = ?3
+                updated_at = ?3
+            WHERE id = ?4
             "#,
         )
-        .bind(title)
-        .bind(now)
-        .bind(object_id)
+        .bind(completion.title)
+        .bind(completion.author)
+        .bind(completion.now)
+        .bind(completion.object_id)
         .execute(&mut **tx)
         .await?;
 
-        SearchRepository::reindex_object(tx, object_id).await?;
+        SearchRepository::reindex_object(tx, completion.object_id).await?;
 
         sqlx::query(
             r#"
@@ -136,16 +149,23 @@ impl CaptureRepository {
             WHERE id = ?1
             "#,
         )
-        .bind(job_id)
-        .bind(now)
+        .bind(completion.job_id)
+        .bind(completion.now)
         .execute(&mut **tx)
         .await?;
 
-        for event in events {
-            insert_domain_event(tx, object_id, event).await?;
+        for event in completion.events {
+            insert_domain_event(tx, completion.object_id, event).await?;
         }
 
-        insert_audit_log(tx, user_id, "capture.fetch_url.succeeded", object_id, now).await?;
+        insert_audit_log(
+            tx,
+            completion.user_id,
+            "capture.fetch_url.succeeded",
+            completion.object_id,
+            completion.now,
+        )
+        .await?;
 
         Ok(())
     }

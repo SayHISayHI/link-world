@@ -23,8 +23,7 @@ Migration 文件命名：
 ```text
 src-tauri/migrations/
 ├── 0001_initial_schema.sql
-├── 0002_add_background_jobs.sql
-├── 0003_add_plugin_permissions.sql
+├── 0002_ai_display_hints.sql
 └── ...
 ```
 
@@ -105,6 +104,9 @@ Unknown values:
 Old data:
 
 - Old `ai_analysis` remains visible.
+- Migration `0002_ai_display_hints.sql` only adds nullable `ai_analysis.display_hints_json`; it does not backfill or rewrite existing analysis rows.
+- Analysis schema version 1 with `display_hints_json IS NULL` must deserialize as `displayHints: undefined` and use deterministic Markdown AST layout inference.
+- Newly generated general analyses use analysis schema version 2; the nested display hint has its own independent schema version 1.
 - Old `evaluation_runs` remain visible.
 - New prompt schema does not overwrite old output.
 
@@ -119,6 +121,8 @@ Every migration must be tested against:
 - DB with sensitive object.
 - DB with parsed documents.
 - DB with AI traces.
+- previous release DB with schema version 1 AI analyses and no display hint column.
+- upgraded DB containing both legacy analyses without display hints and schema version 2 analyses with valid or invalid hints.
 - DB with evaluation artifacts.
 - DB with tombstones.
 

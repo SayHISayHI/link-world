@@ -546,6 +546,8 @@ sequenceDiagram
 
 2. Parse
    - 抽取正文、标题、作者、发布时间、图片、链接和元数据。
+   - URL 拉取的 HTML 与浏览器扩展提交的已清洗 DOM 复用同一 Rust parser，统一生成正文纯文本和 Markdown。
+   - Markdown 是稳定展示格式；前端阅读 AST 只在渲染时派生，不作为后端数据模型持久化。
    - 对 GitHub repo 抽取 README、license、语言、依赖、活跃度。
    - 对 prompt 抽取任务、变量、输入要求、输出格式和使用场景。
 
@@ -561,6 +563,7 @@ sequenceDiagram
    - 抽取关键结论、行动项、风险点、引用和 claim。
    - 关联旧收藏。
    - 生成质量初评分。
+   - 可选生成版本化的文档级展示提示；提示只建议展示模式，不修改正文、Markdown 或安全策略。
 
 5. Evaluate
    - 根据对象类型选择 evaluator。
@@ -593,6 +596,12 @@ interface AIAnalysisOutput {
   relatedObjectIds: string[];
   qualityScore: number;
   confidence: number;
+  displayHints?: {
+    schemaVersion: 1;
+    mode: "article" | "tutorial" | "reference" | "code-heavy";
+    confidence: number;
+    reason?: string;
+  };
   recommendedNextAction:
     | "read_now"
     | "archive"
@@ -621,6 +630,8 @@ interface RiskItem {
   detail: string;
 }
 ```
+
+文档阅读模式由前端 Markdown AST 的确定性规则推断。仅当 AI analysis 绑定当前 `parsedDocumentId`、提示 schema 合法且置信度至少为 `0.75` 时，才允许覆盖该模式。AI 提示缺失、过期或无效时必须回退到 AST 推断；提示永远不能改变 HTML 清洗、URL 协议、图片隐私属性或组件安全边界。
 
 ## 7. Evaluation Engine
 

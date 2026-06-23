@@ -187,7 +187,7 @@ Recommended repositories:
 - 创建 `KnowledgeObject` + `domain_events`。
 - 写入 `source_snapshots` + 更新 lifecycle。
 - 写入 `parsed_documents` + 更新 lifecycle + FTS enqueue event。
-- 写入 `ai_analysis` + `ai_traces` + 更新 lifecycle。
+- 写入 `ai_analysis`（包括可选 `display_hints_json`）+ `ai_traces` + 更新 lifecycle。
 - 写入 `evaluation_runs` + artifacts + 更新 lifecycle。
 - 删除对象 + tombstone + cleanup job。
 - 插件权限变更 + audit log。
@@ -293,6 +293,15 @@ Rules:
 - 不允许在 Tokio worker 中同步读写大文件。
 - spawn_blocking 中不得访问 `SqlitePool`，只返回纯数据结果。
 - 每个 background job 必须有 timeout 或 cancellation point。
+
+### 9.1 Capture and parser boundary
+
+- URL 保存路径取得的原始 HTML，与浏览器扩展提交的已清洗 DOM，必须进入同一个 Rust `document_parser`。
+- 浏览器扩展只负责当前页的主动采集和传输，不生成 Markdown，不实现站点专用排版规则。
+- parser 统一产出 `text_content`、`markdown_content`、`parser_id` 和 `parser_version`；纯文本用于检索和 AI，Markdown 用于阅读展示。
+- 用户主动提交的选中文本仍走显式 selection capture，不得被 DOM 正文自动覆盖。
+- loopback capture endpoint 必须在创建 `RawCaptureItem` 前校验请求来源、URL scheme、payload 大小和 DOM 结构。
+- 前端不接收或持久化 parser AST；AST 仅在渲染 Markdown 时临时派生。
 
 ## 10. Background Job Runner
 
@@ -444,7 +453,7 @@ Backend minimum test matrix:
 - Migration: empty DB and previous DB version。
 - Capture transaction: object + event + job。
 - Parse pipeline: snapshot + parsed_documents + event。
-- AI pipeline: ai_analysis + ai_traces。
+- AI pipeline: ai_analysis + optional display hints + ai_traces；无效提示不得导致主体分析失败，`reason` 最多保留 160 个字符。
 - Evaluation: run + artifacts + evidence JSON。
 - Deletion: tombstone + cleanup job + search invisibility。
 - Policy: sensitive object denies third-party AI without authorization。

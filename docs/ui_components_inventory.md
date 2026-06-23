@@ -37,9 +37,20 @@
 | `ObjectListItem` | object summary row | selected, failed, archived |
 | `ObjectDetailContainer` | fetch detail | loading, failed, deleted |
 | `ObjectDetailHeader` | title/source/actions | stale, failed |
-| `ParsedDocumentView` | render markdown/text | loading, empty, long content |
+| `MarkdownDocumentView` | lazy safe Markdown/AST reader | empty, plain-text fallback, AI/AST mode |
+| `DocumentToc` | h2-h4 section navigation | hidden, collapsed, expanded |
+| `CodeBlock` | fenced code, copy and long-content collapse | expanded, collapsed, copied, copy failed |
+| `Callout` | trusted NOTE/TIP/IMPORTANT/WARNING/CAUTION presentation | regular quote, five callout kinds |
 | `TagList` | render tags | empty |
 | `SourceLinkButton` | open source URL | unavailable |
+
+Document rendering rules:
+
+- `MarkdownDocumentView` 必须通过 lazy import 加载，AST 不进入全局 store。
+- 普通引用与显式 Callout 必须保持不同语义；不得用 AI 猜测段落级 Callout。
+- AI 布局生效时显示低干扰来源标识，低置信度或旧文档提示不得改变布局。
+- 目录、标题锚点、代码操作和折叠控件必须支持键盘与 accessible name。
+- renderer 不渲染原始 HTML，不允许危险 URL 协议，也不允许 AI 绕过安全组件。
 
 ## 5. AI and Evaluation Components
 
@@ -166,7 +177,10 @@ MVP must implement:
 - `ObjectList`
 - `ObjectListItem`
 - `ObjectDetailContainer`
-- `ParsedDocumentView`
+- `MarkdownDocumentView`
+- `DocumentToc`
+- `CodeBlock`
+- `Callout`
 - `AIAnalysisPanel`
 - `EvaluationPanel`
 - `AddUrlDialog`

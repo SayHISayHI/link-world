@@ -13,6 +13,7 @@ Minimal Manifest V3 extension for MVP browser capture.
 ## Boundary
 
 - Captures only the current active page after a user click.
-- Submits URL, title, selected text, visible text and a sanitized DOM fragment.
+- Submits a sanitized rendered DOM fragment plus canonical URL, title, author and publication metadata.
+- Leaves document parsing and Markdown generation to the shared Rust parser used by every capture path.
 - Does not read cookies, background tabs, browser history or platform sessions.
 - Sends data only to `http://127.0.0.1:17321/capture`.

@@ -427,6 +427,7 @@ impl KnowledgeObjectRepository {
                 analysis.risks_json,
                 analysis.quality_score,
                 analysis.confidence,
+                analysis.display_hints_json,
                 analysis.created_at,
                 traces.provider AS trace_provider,
                 traces.model AS trace_model,
@@ -612,6 +613,7 @@ fn ai_analysis_from_row(row: SqliteRow) -> AIAnalysis {
         risks: parse_json_array(row.get("risks_json")),
         quality_score: row.get("quality_score"),
         confidence: row.get("confidence"),
+        display_hints: parse_json_object(row.get("display_hints_json")),
         trace,
         created_at: row.get("created_at"),
     }
@@ -656,6 +658,13 @@ where
 {
     raw.and_then(|value| serde_json::from_str(&value).ok())
         .unwrap_or_default()
+}
+
+fn parse_json_object<T>(raw: Option<String>) -> Option<T>
+where
+    T: serde::de::DeserializeOwned,
+{
+    raw.and_then(|value| serde_json::from_str(&value).ok())
 }
 
 #[cfg(test)]
@@ -730,6 +739,57 @@ mod tests {
         assert_eq!(objects.len(), 2);
         assert_eq!(objects[0].id, "obj-new");
         assert_eq!(objects[1].id, "obj-old");
+    }
+
+    #[tokio::test]
+    async fn detail_decodes_display_hints_and_keeps_legacy_analysis_compatible() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        let repository = KnowledgeObjectRepository::new(database.pool().clone());
+
+        sqlx::query(
+            r#"
+            INSERT INTO knowledge_objects (
+                id, user_id, object_type, title, privacy_level, lifecycle_status, captured_at, updated_at
+            ) VALUES (
+                'obj-display-hints', 'local', 'article', 'Display hints', 'personal', 'parsed',
+                '2026-06-23T00:00:00Z', '2026-06-23T00:00:00Z'
+            )
+            "#,
+        )
+        .execute(database.pool())
+        .await
+        .expect("object should insert");
+        sqlx::query(
+            r#"
+            INSERT INTO ai_analysis (
+                id, object_id, analysis_type, schema_version, summary, display_hints_json, created_at
+            ) VALUES
+              ('analysis-legacy', 'obj-display-hints', 'general_summary', 1, 'Legacy', NULL, '2026-06-23T00:00:01Z'),
+              ('analysis-current', 'obj-display-hints', 'general_summary', 2, 'Current',
+               '{"schemaVersion":1,"mode":"tutorial","confidence":0.9,"reason":"Steps"}',
+               '2026-06-23T00:00:02Z')
+            "#,
+        )
+        .execute(database.pool())
+        .await
+        .expect("analyses should insert");
+
+        let detail = repository
+            .get_detail("obj-display-hints")
+            .await
+            .expect("detail should load");
+
+        assert_eq!(detail.ai_analyses.len(), 2);
+        assert_eq!(
+            detail.ai_analyses[0]
+                .display_hints
+                .as_ref()
+                .map(|hints| hints.mode.as_str()),
+            Some("tutorial")
+        );
+        assert!(detail.ai_analyses[1].display_hints.is_none());
     }
 
     #[tokio::test]

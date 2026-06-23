@@ -70,6 +70,17 @@ pub struct AIModelAnalysisOutput {
     pub quality_score: Option<f64>,
     #[serde(default)]
     pub confidence: Option<f64>,
+    #[serde(default)]
+    pub display_hints: Option<Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AIDisplayHintsV1 {
+    pub schema_version: i64,
+    pub mode: String,
+    pub confidence: f64,
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -88,6 +99,7 @@ pub struct AIAnalysisSubmission {
     pub risks_json: String,
     pub quality_score: Option<f64>,
     pub confidence: Option<f64>,
+    pub display_hints_json: Option<String>,
     pub created_at: String,
 }
 

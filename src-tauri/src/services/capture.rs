@@ -4,13 +4,13 @@ use crate::domain::capture::{
     CaptureSubmission, RawCaptureItem, SubmitCaptureResponse,
 };
 use crate::errors::{AppError, AppResult};
-use crate::repositories::capture::CaptureRepository;
+use crate::repositories::capture::{CaptureFetchCompletion, CaptureRepository};
 use crate::services::ai::{spawn_ai_enrichment_runner, AIEnrichmentService};
+use crate::services::document_parser::{parse_html_document, DocumentHints, ParsedWebDocument};
 use crate::state::AppState;
 use crate::storage::object_store::{sha256_hex, ObjectStore};
 use chrono::Utc;
 use reqwest::Url;
-use scraper::{ElementRef, Html, Selector};
 use serde_json::json;
 use sqlx::SqlitePool;
 use std::time::Duration;
@@ -18,36 +18,13 @@ use tauri::Emitter;
 use uuid::Uuid;
 
 const LOCAL_USER_ID: &str = "local";
-const INLINE_CAPTURE_PARSER_ID: &str = "builtin.inline_capture_parser";
+const INLINE_CAPTURE_PARSER_ID: &str = "builtin.inline_text_parser";
 const INLINE_CAPTURE_PARSER_VERSION: &str = "0.1.0";
-const HTML_FETCH_PARSER_ID: &str = "builtin.html_fetch_parser";
-const HTML_FETCH_PARSER_VERSION: &str = "0.1.0";
+const HTML_FETCH_PARSER_ID: &str = "builtin.document_html_parser";
+const HTML_FETCH_PARSER_VERSION: &str = "0.3.0";
 const MAX_RAW_CAPTURE_BYTES: usize = 5 * 1024 * 1024;
 const MAX_FETCH_BYTES: usize = 5 * 1024 * 1024;
 const FETCH_TIMEOUT_SECONDS: u64 = 20;
-const MIN_EXTRACTED_TEXT_CHARS: usize = 24;
-const READABLE_TEXT_BLOCK_SELECTOR: &str =
-    "h1, h2, h3, h4, p, li, blockquote, pre, code, figcaption";
-const READABLE_CONTAINER_SELECTORS: &[&str] = &[
-    "article",
-    "main",
-    r#"[role="main"]"#,
-    r#"[itemprop="articleBody"]"#,
-    "#js_content",
-    ".rich_media_content",
-    ".topic_content",
-    ".markdown_body",
-    ".entry-content",
-    ".article-content",
-    ".post-content",
-    ".Post-RichText",
-    ".RichContent-inner",
-    r#"[data-testid="tweetText"]"#,
-    ".article",
-    ".post",
-    ".content",
-    "body",
-];
 
 #[derive(Clone)]
 pub struct CaptureService {
@@ -116,12 +93,10 @@ impl CaptureService {
             snapshot_type: infer_snapshot_type(&item).to_string(),
             storage_uri: stored_snapshot.storage_uri,
             content_hash: stored_snapshot.content_hash,
-            parser_id: parsed
-                .as_ref()
-                .map(|_| INLINE_CAPTURE_PARSER_ID.to_string()),
+            parser_id: parsed.as_ref().map(|document| document.parser_id.clone()),
             parser_version: parsed
                 .as_ref()
-                .map(|_| INLINE_CAPTURE_PARSER_VERSION.to_string()),
+                .map(|document| document.parser_version.clone()),
             captured_at: now.clone(),
         };
 
@@ -132,7 +107,8 @@ impl CaptureService {
                 .user_id
                 .clone()
                 .unwrap_or_else(|| LOCAL_USER_ID.to_string()),
-            title: normalized_title(&item),
+            title: normalized_title(&item)
+                .or_else(|| parsed.as_ref().and_then(|document| document.title.clone())),
             canonical_url: item
                 .canonical_url
                 .clone()
@@ -295,14 +271,17 @@ impl CaptureService {
         let mut tx = self.pool.begin().await?;
         CaptureRepository::complete_fetch_job(
             &mut tx,
-            &job.id,
-            &job.object_id,
-            &job.user_id,
-            parsed.title.as_deref(),
-            &snapshot,
-            &parsed_document,
-            &events,
-            &now,
+            CaptureFetchCompletion {
+                job_id: &job.id,
+                object_id: &job.object_id,
+                user_id: &job.user_id,
+                title: parsed.title.as_deref(),
+                author: parsed.author.as_deref(),
+                snapshot: &snapshot,
+                parsed_document: &parsed_document,
+                events: &events,
+                now: &now,
+            },
         )
         .await?;
         tx.commit().await?;
@@ -397,6 +376,7 @@ pub fn spawn_fetch_job_runner(
 struct FetchedHtmlDocument {
     raw_html: String,
     title: Option<String>,
+    author: Option<String>,
     text_content: String,
     markdown_content: String,
     language: Option<String>,
@@ -431,288 +411,20 @@ async fn parse_fetched_html(html: String) -> AppResult<FetchedHtmlDocument> {
 }
 
 fn parse_fetched_html_sync(html: String) -> AppResult<FetchedHtmlDocument> {
-    let document = Html::parse_document(&html);
-    let title = select_first_text(&document, "title");
-    let description = select_first_attr(&document, r#"meta[name="description"]"#, "content");
-    let language = select_first_attr(&document, "html", "lang");
-    let text_content = select_readable_text(&document)
-        .or_else(|| description.clone())
-        .unwrap_or_else(|| strip_html_tags(&html));
-    let text_content = normalize_whitespace(&text_content);
-
-    if text_content.is_empty() {
-        return Err(AppError::ParseFailed(
-            "HTML document did not contain readable text".to_string(),
-        ));
-    }
-
-    if let Some(reason) =
-        detect_blocked_or_verification_page(title.as_deref(), description.as_deref(), &text_content)
-    {
-        return Err(AppError::ParseFailed(reason));
-    }
-
-    if !is_meaningful_extracted_text(&text_content, description.as_deref()) {
-        return Err(AppError::ParseFailed(
-            "HTML document did not contain enough readable content".to_string(),
-        ));
-    }
-
-    if looks_like_script_or_style_dump(&text_content) {
-        return Err(AppError::ParseFailed(
-            "HTML parser extracted script/style noise instead of readable content".to_string(),
-        ));
-    }
-
-    let markdown_content =
-        build_markdown_preview(title.as_deref(), description.as_deref(), &text_content);
-    let word_count = text_content.split_whitespace().count() as i64;
-    let content_hash = sha256_hex(text_content.as_bytes());
+    let parsed = parse_html_document(&html, DocumentHints::default())?;
+    let word_count = parsed.text_content.split_whitespace().count() as i64;
+    let content_hash = sha256_hex(parsed.text_content.as_bytes());
 
     Ok(FetchedHtmlDocument {
         raw_html: html,
-        title,
-        text_content,
-        markdown_content,
-        language,
+        title: parsed.title,
+        author: parsed.author,
+        text_content: parsed.text_content,
+        markdown_content: parsed.markdown_content,
+        language: parsed.language,
         word_count,
         content_hash,
     })
-}
-
-fn select_first_text(document: &Html, selector: &str) -> Option<String> {
-    let selector = Selector::parse(selector).ok()?;
-    document
-        .select(&selector)
-        .next()
-        .map(|element| element.text().collect::<Vec<_>>().join(" "))
-        .map(|text| normalize_whitespace(&text))
-        .filter(|text| !text.is_empty())
-}
-
-fn select_first_attr(document: &Html, selector: &str, attr: &str) -> Option<String> {
-    let selector = Selector::parse(selector).ok()?;
-    document
-        .select(&selector)
-        .next()
-        .and_then(|element| element.value().attr(attr))
-        .map(normalize_whitespace)
-        .filter(|text| !text.is_empty())
-}
-
-fn select_readable_text(document: &Html) -> Option<String> {
-    let mut best: Option<(usize, String)> = None;
-
-    for selector_text in READABLE_CONTAINER_SELECTORS {
-        let Ok(selector) = Selector::parse(selector_text) else {
-            continue;
-        };
-
-        for element in document.select(&selector) {
-            let allow_fallback = *selector_text != "body";
-            let Some(candidate) = collect_candidate_text(element, allow_fallback) else {
-                continue;
-            };
-            let score = readable_text_score(&candidate, allow_fallback);
-            let should_replace = match best.as_ref() {
-                Some((best_score, _)) => score > *best_score,
-                None => true,
-            };
-
-            if should_replace {
-                best = Some((score, candidate));
-            }
-        }
-    }
-
-    best.map(|(_, text)| text)
-}
-
-fn collect_candidate_text(element: ElementRef<'_>, allow_fallback: bool) -> Option<String> {
-    let block_selector = Selector::parse(READABLE_TEXT_BLOCK_SELECTOR).ok()?;
-    let mut blocks = Vec::new();
-
-    for block in element.select(&block_selector) {
-        let block_text = normalize_whitespace(&block.text().collect::<Vec<_>>().join(" "));
-        if is_readable_text_block(&block_text) {
-            blocks.push(block_text);
-        }
-    }
-
-    let block_text = normalize_whitespace(&blocks.join("\n\n"));
-    if is_readable_text_block(&block_text) {
-        return Some(block_text);
-    }
-
-    if allow_fallback {
-        let fallback = normalize_whitespace(&element.text().collect::<Vec<_>>().join(" "));
-        if is_readable_text_block(&fallback) {
-            return Some(fallback);
-        }
-    }
-
-    None
-}
-
-fn is_readable_text_block(text: &str) -> bool {
-    text.chars().any(|character| !character.is_whitespace())
-}
-
-fn readable_text_score(text: &str, from_specific_container: bool) -> usize {
-    let specificity_bonus = if from_specific_container { 10_000 } else { 0 };
-    specificity_bonus
-        + text
-            .chars()
-            .filter(|character| !character.is_whitespace())
-            .count()
-}
-
-fn is_meaningful_extracted_text(text: &str, description: Option<&str>) -> bool {
-    let text_chars = text
-        .chars()
-        .filter(|character| !character.is_whitespace())
-        .count();
-
-    if text_chars >= MIN_EXTRACTED_TEXT_CHARS {
-        return true;
-    }
-
-    description
-        .map(|description| {
-            text_chars
-                + description
-                    .chars()
-                    .filter(|character| !character.is_whitespace())
-                    .count()
-        })
-        .is_some_and(|total_chars| total_chars >= MIN_EXTRACTED_TEXT_CHARS)
-}
-
-fn detect_blocked_or_verification_page(
-    title: Option<&str>,
-    description: Option<&str>,
-    text_content: &str,
-) -> Option<String> {
-    let combined = format!(
-        "{} {} {}",
-        title.unwrap_or_default(),
-        description.unwrap_or_default(),
-        text_content
-    );
-    let lower_combined = combined.to_lowercase();
-
-    let ascii_markers = [
-        ("captcha", "captcha challenge"),
-        ("verify you are human", "human verification"),
-        ("security check", "security check"),
-        ("access denied", "access denied"),
-        ("checking your browser", "browser verification"),
-        (
-            "please enable javascript and cookies to continue",
-            "browser verification",
-        ),
-    ];
-
-    for (marker, reason) in ascii_markers {
-        if lower_combined.contains(marker) {
-            return Some(format!("blocked or verification page detected: {reason}"));
-        }
-    }
-
-    let cjk_markers = [
-        ("环境异常", "environment verification"),
-        ("完成验证", "environment verification"),
-        ("去验证", "environment verification"),
-        ("安全验证", "security verification"),
-        ("验证码", "captcha challenge"),
-        ("访问受限", "access restricted"),
-        ("请先登录", "login required"),
-        ("登录后继续", "login required"),
-    ];
-
-    for (marker, reason) in cjk_markers {
-        if combined.contains(marker) {
-            return Some(format!("blocked or verification page detected: {reason}"));
-        }
-    }
-
-    None
-}
-
-fn looks_like_script_or_style_dump(text: &str) -> bool {
-    let lower_text = text.to_lowercase();
-
-    if lower_text.matches("--weui-").count() >= 4 {
-        return true;
-    }
-
-    let script_markers = [
-        "document.",
-        "addeventlistener",
-        "queryselector",
-        "window.",
-        "function(",
-        "function ",
-        "var ",
-        "__next_data__",
-        "webpack",
-    ];
-    let style_markers = [
-        "@media",
-        "rgba(",
-        "prefers-color-scheme",
-        "background-",
-        "font-",
-        "color:",
-    ];
-
-    let script_hits = script_markers
-        .iter()
-        .filter(|marker| lower_text.contains(**marker))
-        .count();
-    let style_hits = style_markers
-        .iter()
-        .filter(|marker| lower_text.contains(**marker))
-        .count();
-    let non_whitespace_chars = text
-        .chars()
-        .filter(|character| !character.is_whitespace())
-        .count();
-    let syntax_chars = text
-        .chars()
-        .filter(|character| matches!(character, '{' | '}' | '(' | ')' | ';' | '='))
-        .count();
-    let syntax_ratio = syntax_chars as f32 / non_whitespace_chars.max(1) as f32;
-
-    (script_hits >= 4 && syntax_ratio > 0.06 && non_whitespace_chars > 300)
-        || (style_hits >= 4 && lower_text.matches("--").count() >= 10)
-}
-
-fn build_markdown_preview(
-    title: Option<&str>,
-    description: Option<&str>,
-    text_content: &str,
-) -> String {
-    let mut markdown = String::new();
-
-    if let Some(title) = title {
-        markdown.push_str("# ");
-        markdown.push_str(title);
-        markdown.push_str("\n\n");
-    }
-
-    if let Some(description) = description {
-        markdown.push_str("> ");
-        markdown.push_str(description);
-        markdown.push_str("\n\n");
-    }
-
-    markdown.push_str(text_content);
-    markdown
-}
-
-fn normalize_whitespace(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn validate_capture_item(item: &RawCaptureItem) -> AppResult<()> {
@@ -771,24 +483,35 @@ fn build_inline_parsed_document(
     item: &RawCaptureItem,
     created_at: &str,
 ) -> AppResult<Option<CaptureParsedDocumentSubmission>> {
-    let Some(text_content) = parsed_text_content(item) else {
-        return Ok(None);
-    };
-
-    let text_content = text_content.trim().to_string();
-    if text_content.is_empty() {
-        return Ok(None);
+    if item.source_type != "selection" {
+        if let Some(html) = item
+            .raw_html
+            .as_deref()
+            .filter(|html| !html.trim().is_empty())
+        {
+            let parsed = parse_html_document(html, document_hints(item))?;
+            return Ok(Some(web_document_submission(parsed, created_at)));
+        }
     }
 
+    let Some(text_content) = item
+        .raw_text
+        .as_deref()
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(ToOwned::to_owned)
+    else {
+        return Ok(None);
+    };
     let content_hash = sha256_hex(text_content.as_bytes());
     let word_count = text_content.split_whitespace().count() as i64;
 
     Ok(Some(CaptureParsedDocumentSubmission {
         id: Uuid::new_v4().to_string(),
         title: normalized_title(item),
+        markdown_content: Some(text_content.clone()),
+        language: metadata_string(item, "language"),
         text_content,
-        markdown_content: item.raw_text.clone(),
-        language: None,
         word_count,
         content_hash,
         parser_id: INLINE_CAPTURE_PARSER_ID.to_string(),
@@ -797,36 +520,42 @@ fn build_inline_parsed_document(
     }))
 }
 
-fn parsed_text_content(item: &RawCaptureItem) -> Option<String> {
-    if has_text(&item.raw_text) {
-        return item.raw_text.clone();
+fn web_document_submission(
+    parsed: ParsedWebDocument,
+    created_at: &str,
+) -> CaptureParsedDocumentSubmission {
+    let content_hash = sha256_hex(parsed.text_content.as_bytes());
+    let word_count = parsed.text_content.split_whitespace().count() as i64;
+    CaptureParsedDocumentSubmission {
+        id: Uuid::new_v4().to_string(),
+        title: parsed.title,
+        text_content: parsed.text_content,
+        markdown_content: Some(parsed.markdown_content),
+        language: parsed.language,
+        word_count,
+        content_hash,
+        parser_id: HTML_FETCH_PARSER_ID.to_string(),
+        parser_version: HTML_FETCH_PARSER_VERSION.to_string(),
+        created_at: created_at.to_string(),
     }
-
-    item.raw_html
-        .as_ref()
-        .map(|html| strip_html_tags(html).trim().to_string())
 }
 
-fn strip_html_tags(html: &str) -> String {
-    let mut output = String::with_capacity(html.len());
-    let mut in_tag = false;
-
-    for character in html.chars() {
-        match character {
-            '<' => {
-                in_tag = true;
-                output.push(' ');
-            }
-            '>' => {
-                in_tag = false;
-                output.push(' ');
-            }
-            _ if !in_tag => output.push(character),
-            _ => {}
-        }
+fn document_hints(item: &RawCaptureItem) -> DocumentHints {
+    DocumentHints {
+        title: normalized_title(item),
+        author: item.author.clone(),
+        description: metadata_string(item, "description"),
+        language: metadata_string(item, "language"),
     }
+}
 
-    output.split_whitespace().collect::<Vec<_>>().join(" ")
+fn metadata_string(item: &RawCaptureItem, key: &str) -> Option<String> {
+    item.metadata
+        .get(key)
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
 }
 
 fn normalized_title(item: &RawCaptureItem) -> Option<String> {
@@ -835,21 +564,6 @@ fn normalized_title(item: &RawCaptureItem) -> Option<String> {
         .map(|title| title.trim())
         .filter(|title| !title.is_empty())
         .map(ToOwned::to_owned)
-        .or_else(|| extract_title_from_html(item))
-}
-
-fn extract_title_from_html(item: &RawCaptureItem) -> Option<String> {
-    let html = item.raw_html.as_ref()?;
-    let lower_html = html.to_lowercase();
-    let start = lower_html.find("<title>")? + "<title>".len();
-    let end = lower_html[start..].find("</title>")? + start;
-    let title = strip_html_tags(&html[start..end]);
-
-    if title.trim().is_empty() {
-        None
-    } else {
-        Some(title.trim().to_string())
-    }
 }
 
 fn infer_snapshot_type(item: &RawCaptureItem) -> &'static str {
@@ -960,6 +674,11 @@ fn build_domain_events(
     });
 
     if has_text(&item.raw_text) || has_text(&item.raw_html) {
+        let parser_id = if item.source_type != "selection" && has_text(&item.raw_html) {
+            HTML_FETCH_PARSER_ID
+        } else {
+            INLINE_CAPTURE_PARSER_ID
+        };
         events.push(CaptureDomainEventSubmission {
             id: Uuid::new_v4().to_string(),
             event_type: "object.parsed".to_string(),
@@ -967,7 +686,7 @@ fn build_domain_events(
             user_id,
             payload_json: json!({
                 "objectId": object_id,
-                "parserId": INLINE_CAPTURE_PARSER_ID,
+                "parserId": parser_id,
             })
             .to_string(),
             occurred_at: occurred_at.to_string(),
@@ -1034,7 +753,9 @@ fn build_fetch_failed_event(
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_fetched_html_sync, CaptureService};
+    use super::{
+        build_inline_parsed_document, parse_fetched_html_sync, CaptureService, HTML_FETCH_PARSER_ID,
+    };
     use crate::domain::capture::{PermissionContext, RawCaptureItem};
     use crate::repositories::search::SearchRepository;
     use crate::storage::database::Database;
@@ -1079,6 +800,59 @@ mod tests {
     }
 
     #[test]
+    fn parse_fetched_html_prefers_schema_article_body_and_preserves_block_structure() {
+        let parsed = parse_fetched_html_sync(
+            r#"<!doctype html>
+            <html lang="zh-CN">
+              <head>
+                <title>Clean title plus page suffix and teaser - Example</title>
+                <meta itemprop="headline" content="Clean title">
+                <meta name="description" content="A compact article description.">
+              </head>
+              <body>
+                <article>
+                  <div itemprop="author"><meta itemprop="name" content="Example Author"></div>
+                  <h1>Clean title</h1>
+                  <div class="author-info"><p>42 reads and unrelated collection metadata</p></div>
+                  <div itemprop="articleBody">
+                    <blockquote><p>Boundary-aware intro.</p></blockquote>
+                    <h2>First section</h2>
+                    <p>Paragraph with <code>inline_code()</code>.</p>
+                    <pre><code>const answer = 42;
+return answer;</code></pre>
+                    <table>
+                      <tr><th>Capability</th><th>Result</th></tr>
+                      <tr><td>Structure</td><td>Preserved</td></tr>
+                    </table>
+                  </div>
+                </article>
+              </body>
+            </html>"#
+                .to_string(),
+        )
+        .expect("schema article should parse");
+
+        assert_eq!(parsed.title.as_deref(), Some("Clean title"));
+        assert_eq!(parsed.author.as_deref(), Some("Example Author"));
+        assert_eq!(parsed.language.as_deref(), Some("zh-CN"));
+        assert!(!parsed.text_content.contains("42 reads"));
+        assert_eq!(
+            parsed.text_content.matches("Boundary-aware intro.").count(),
+            1
+        );
+        assert_eq!(parsed.text_content.matches("const answer = 42;").count(), 1);
+        assert!(parsed
+            .text_content
+            .contains("Boundary-aware intro.\n\nFirst section"));
+        assert!(parsed
+            .text_content
+            .contains("const answer = 42;\nreturn answer;"));
+        assert!(parsed
+            .text_content
+            .contains("Capability | Result\nStructure | Preserved"));
+    }
+
+    #[test]
     fn parse_fetched_html_rejects_verification_page() {
         let error = parse_fetched_html_sync(
             r#"<!doctype html>
@@ -1093,6 +867,53 @@ mod tests {
         .expect_err("verification page should not be parsed as content");
 
         assert!(error.to_string().contains("verification page"));
+    }
+
+    #[test]
+    fn inline_dom_capture_keeps_structured_markdown_and_language() {
+        let item = RawCaptureItem {
+            id: None,
+            user_id: None,
+            source_type: "dom".to_string(),
+            source_platform: Some("example.com".to_string()),
+            source_url: Some("https://example.com/post".to_string()),
+            canonical_url: Some("https://example.com/post".to_string()),
+            title: Some("Structured article".to_string()),
+            author: Some("Author".to_string()),
+            captured_at: None,
+            raw_html: Some(
+                "<div itemprop=\"articleBody\"><h2>Structured section</h2><p>Captured content keeps its semantic structure.</p><pre><code class=\"language-js\">let value = 1;</code></pre></div>"
+                    .to_string(),
+            ),
+            raw_text: Some(
+                "Structured section\n\nCaptured content keeps its semantic structure.\n\nlet value = 1;"
+                    .to_string(),
+            ),
+            assets: Vec::new(),
+            metadata: json!({
+                "objectType": "article",
+                "language": "zh-CN"
+            }),
+            privacy_level: "personal".to_string(),
+            permission_context: confirmed_permission(),
+        };
+
+        let parsed = build_inline_parsed_document(&item, "2026-06-22T00:00:00Z")
+            .expect("inline capture should parse")
+            .expect("inline capture should produce a document");
+
+        assert_eq!(parsed.language.as_deref(), Some("zh-CN"));
+        assert_eq!(
+            parsed.markdown_content.as_deref(),
+            Some(
+                "## Structured section\n\nCaptured content keeps its semantic structure.\n\n```js\nlet value = 1;\n```"
+            )
+        );
+        assert_eq!(
+            parsed.text_content,
+            "Structured section\n\nCaptured content keeps its semantic structure.\n\nlet value = 1;"
+        );
+        assert_eq!(parsed.parser_id, HTML_FETCH_PARSER_ID);
     }
 
     #[tokio::test]
@@ -1208,7 +1029,11 @@ mod tests {
         let url = start_test_html_server(
             r#"<!doctype html>
             <html lang="en">
-              <head><title>Fetched Article</title><meta name="description" content="A useful article."></head>
+              <head>
+                <title>Fetched Article</title>
+                <meta name="author" content="Fetch Author">
+                <meta name="description" content="A useful article.">
+              </head>
               <body><main><h1>Fetched Article</h1><p>This page was fetched by the local job runner.</p></main></body>
             </html>"#,
         )
@@ -1258,6 +1083,12 @@ mod tests {
             .fetch_one(database.pool())
             .await
             .expect("object title should be readable");
+        let author: String =
+            sqlx::query_scalar("SELECT author FROM knowledge_objects WHERE id = ?1")
+                .bind(&response.object_id)
+                .fetch_one(database.pool())
+                .await
+                .expect("object author should be readable");
         let job_status: String =
             sqlx::query_scalar("SELECT status FROM background_jobs WHERE id = ?1")
                 .bind(&response.job_id)
@@ -1279,6 +1110,7 @@ mod tests {
 
         assert_eq!(lifecycle_status, "parsed");
         assert_eq!(title, "Fetched Article");
+        assert_eq!(author, "Fetch Author");
         assert_eq!(job_status, "succeeded");
         assert_eq!(snapshot_count, 2);
         assert!(parsed_text.contains("local job runner"));

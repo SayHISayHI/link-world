@@ -41,7 +41,7 @@
 18. [../tests/docs/testing_strategy.md](../tests/docs/testing_strategy.md)
    - 测试分层、fixtures、AI evals、回归测试和发布测试清单。
 19. [adr/README.md](./adr/README.md)
-   - 架构决策记录，解释关键技术和产品架构取舍。
+   - 架构决策记录，解释关键技术和产品架构取舍，包括 Markdown/AST 渲染与 AI 展示提示边界。
 
 ## Source of Truth
 
@@ -85,4 +85,5 @@
 - 修改第三方 API 调用、模型供应商或重试策略时，必须更新 `external_api_resilience.md`。
 - 修改发布、打包、签名或 CI 门槛时，必须更新 `devops_and_ci.md`。
 - 修改测试约束、fixtures 或 eval 基准时，必须更新 `tests/docs/testing_strategy.md`。
+- 修改 Markdown 持久化、AST 派生、渲染插件管线或 AI display hints 时，必须同步检查 API、schema、前端架构、安全策略、测试规范和相关 ADR。
 - 任何代码变更如果影响架构、数据模型、API 契约、状态机、安全策略、同步语义、持久化、AI 行为、插件权限、发布流程或测试策略，必须同步修改相关文档。
