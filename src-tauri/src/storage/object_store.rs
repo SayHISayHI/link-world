@@ -23,6 +23,10 @@ impl ObjectStore {
         Ok(Self { root })
     }
 
+    pub fn root(&self) -> &std::path::Path {
+        &self.root
+    }
+
     pub async fn write_capture_snapshot(
         &self,
         object_id: &str,

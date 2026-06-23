@@ -49,7 +49,7 @@ MVP 主支持：
 - 当前 provider、API protocol、base URL、model 与凭据是否已配置；不得显示 secret 内容。
 - 插件列表和权限状态。
 
-当前实现状态：Models 已提供正式 Settings route、多配置、默认项、连接测试和 credential 状态；Privacy、Capture、Plugins、Storage、Diagnostics、About 仅提供明确的里程碑占位，不计为已交付。
+当前实现状态：Models 已提供正式 Settings route、多配置、默认项、连接测试和 credential 状态；Storage 已支持创建、列出和验证本地 restore point，但尚不支持恢复；Privacy、Capture、Plugins、Diagnostics、About 仅提供明确的里程碑占位，不计为已交付。
 
 ### 3.2 Logs
 
@@ -77,7 +77,8 @@ MVP 主支持：
 
 Local Edition 必须支持：
 
-- 手动导出全库。
+- 手动导出全库。（未实现）
+- 创建、列出和校验本地 restore point。（已实现）
 - 数据库迁移前创建 restore point。
 - 对象存储路径可定位。
 - 检测数据库损坏并给出用户可理解提示。

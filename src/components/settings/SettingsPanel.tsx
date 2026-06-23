@@ -11,6 +11,7 @@ import type {
   ModelProviderConfigView,
 } from "../../types/api";
 import { Button } from "../ui/button";
+import { StorageSettings } from "./StorageSettings";
 
 export type SettingsPanelName =
   | "models"
@@ -64,7 +65,13 @@ export function SettingsPanel({ panel, onPanelChange }: SettingsPanelProps) {
         </nav>
       </aside>
       <main className="min-w-0 flex-1 overflow-y-auto">
-        {panel === "models" ? <ModelSettings /> : <SettingsBoundary panel={panel} />}
+        {panel === "models" ? (
+          <ModelSettings />
+        ) : panel === "storage" ? (
+          <StorageSettings />
+        ) : (
+          <SettingsBoundary panel={panel} />
+        )}
       </main>
     </div>
   );
@@ -358,15 +365,21 @@ function ModelSettings() {
   );
 }
 
-function SettingsBoundary({ panel }: { panel: Exclude<SettingsPanelName, "models"> }) {
-  const copy: Record<Exclude<SettingsPanelName, "models">, [string, string]> = {
+function SettingsBoundary({
+  panel,
+}: {
+  panel: Exclude<SettingsPanelName, "models" | "storage">;
+}) {
+  const copy: Record<
+    Exclude<SettingsPanelName, "models" | "storage">,
+    [string, string]
+  > = {
     privacy: [
       "Privacy",
       "Per-object AI permissions and cloud-processing defaults will be managed here. Both remain off by default.",
     ],
     capture: ["Capture", "Capture source defaults and extension connectivity will be managed here."],
     plugins: ["Plugins", "Plugin manifests, permissions, updates, and isolation status will be managed here."],
-    storage: ["Storage", "Local database, object-store usage, export, and backup controls will be managed here."],
     diagnostics: ["Diagnostics", "Runtime health, job failures, and redacted support bundles will be managed here."],
     about: ["About", "Version, release channel, licenses, and update controls will be managed here."],
   };

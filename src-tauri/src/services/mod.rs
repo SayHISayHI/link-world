@@ -1,4 +1,5 @@
 pub mod ai;
+pub mod backup;
 pub mod browser_capture;
 pub mod capture;
 pub mod document_parser;

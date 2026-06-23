@@ -65,6 +65,11 @@ MVP 不做云端代登录和后台批量抓取。所有采集都必须来自用�
 - **US 5.1**: 用户在全局搜索框输入关键字，系统调用 Rust 提供的 FTS5 接口，在标题、解析正文和 AI 总结中进行全文匹配，快速展示下拉结果。
 - **US 5.2**: 如果 Embedding Provider 与 sqlite-vec 可用，则系统提供语义搜索；如果 sqlite-vec 在时间盒内遇到编译或分发困难，MVP 可回退到纯 FTS5，但 schema 和 API 必须保留向量能力边界。
 
+### Epic 6: 本地数据安全 (Post-MVP)
+
+- **US 6.1**: 用户可以在 Storage 设置中创建、列出和验证同机 restore point；备份必须同时覆盖一致的 SQLite 快照与对象存储，并明确提示包含用户内容。
+- **US 6.2**: 在 safety snapshot、preflight、数据库关闭和失败 rollback 完成前，产品不得提供 Restore 动作。便携导出必须与原始 restore point 分离，默认排除 secret 与 credential reference。
+
 ## 4. 边界异常处理 (Edge Cases)
 
 - **平台限制**: 如果 URL 所在网站开启强力反爬或需要 JavaScript 渲染，Parser 需要识别异常，标记状态为 `failed`，并提示“由于平台限制，请尝试使用浏览器扩展采集当前页面”。

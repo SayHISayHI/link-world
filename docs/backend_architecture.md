@@ -211,6 +211,8 @@ Recommended repositories:
 ```rust
 #[derive(thiserror::Error, Debug)]
 pub enum AppError {
+    #[error("backup invalid: {0}")]
+    BackupInvalid(String),
     #[error("object not found: {0}")]
     ObjectNotFound(String),
     #[error("database constraint failed: {0}")]
@@ -238,6 +240,7 @@ Mapping to IPC:
 
 | AppError | IpcErrorCode |
 | --- | --- |
+| `BackupInvalid` | `ERR_BACKUP_INVALID` |
 | `ObjectNotFound` | `ERR_OBJECT_NOT_FOUND` |
 | `DbConstraint` | `ERR_DB_CONSTRAINT` |
 | migration failure | `ERR_DB_MIGRATION` |
@@ -413,7 +416,22 @@ Rules:
 - 插件异常不能 crash 主进程。
 - 插件连续失败应自动禁用或进入 degraded 状态。
 
-## 15. Object Store
+## 15. Backup Service
+
+`BackupService` owns local restore-point creation and verification:
+
+- Database snapshot uses SQLite `VACUUM INTO`; copying the live main file is forbidden.
+- Object files are copied in `spawn_blocking` with streaming SHA-256.
+- `manifest.json` is versioned and protected by `manifest.sha256`.
+- `.staging-<id>` is not visible as a completed backup; final publication is same-filesystem rename.
+- Manifest paths are relative and reject parent/current/prefix components.
+- Verification checks file size/hash, unexpected files, manifest identity and SQLite `quick_check`.
+- Commands never accept arbitrary filesystem paths and never read credential values.
+- Restore remains disabled until pool shutdown, safety snapshot, rollback and migration preflight are implemented.
+
+Detailed semantics are defined in `docs/backup_and_restore.md`.
+
+## 16. Object Store
 
 对象存储负责 HTML、Markdown、截图、文件、evaluation artifact。
 
@@ -425,7 +443,7 @@ Rules:
 - content hash 必须在写入后验证。
 - 删除对象时 object store cleanup 必须由 purge job 执行。
 
-## 16. Logging and Redaction
+## 17. Logging and Redaction
 
 日志必须结构化。
 
@@ -452,7 +470,7 @@ Required fields:
 
 所有外部错误进入日志前必须经过 redaction helper。
 
-## 17. Testing Requirements
+## 18. Testing Requirements
 
 Backend minimum test matrix:
 
@@ -464,10 +482,11 @@ Backend minimum test matrix:
 - AI pipeline: ai_analysis + optional display hints + ai_traces；无效提示不得导致主体分析失败，`reason` 最多保留 160 个字符。
 - Evaluation: run + artifacts + evidence JSON。
 - Deletion: tombstone + cleanup job + search invisibility。
+- Backup: atomic staging publication + manifest/file hashes + SQLite quick_check + tamper detection。
 - Policy: sensitive object denies third-party AI without authorization。
 - Job idempotency: repeated event/job does not duplicate derived rows。
 
-## 18. Implementation Checklist
+## 19. Implementation Checklist
 
 Before implementing a new backend feature:
 

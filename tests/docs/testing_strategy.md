@@ -95,6 +95,7 @@ Must cover:
 - AI enrich writes analysis and trace.
 - provider registry maps every supported API family and preserves typed auth/rate-limit/timeout/schema errors.
 - migration 0003 preserves old provider rows and defaults them to OpenAI Chat Completions.
+- backup service publishes only complete staging directories, verifies manifest/payload hashes, rejects unsafe paths and runs SQLite quick_check.
 - evaluation writes run and artifacts.
 - delete creates tombstone and purge removes derived data.
 - FTS search uses parsed document and AI summary.
@@ -184,6 +185,7 @@ Fixture categories:
 - AI model responses.
 - evaluation results.
 - database seed records.
+- valid and tampered backup manifests/object payloads.
 - external API error responses.
 
 Parser fixtures should cover at least:

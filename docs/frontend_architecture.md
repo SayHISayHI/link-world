@@ -177,6 +177,7 @@ Hook examples:
 - `useObjectJobs`
 - `useModelProviderConfig`
 - `useModelProviderConfigs`
+- `useBackups`
 - `usePluginPermissions`
 
 Rules:
@@ -378,6 +379,7 @@ Minimum requirements:
 - 列表项支持 arrow navigation。
 - Modal 支持 focus trap。
 - destructive action 有确认。
+- Storage restore point 必须明确标注包含用户内容；未实现 rollback 前不得出现可操作 Restore。
 - AI confidence 不只靠颜色表达。
 
 ## 13. Performance

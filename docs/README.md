@@ -20,29 +20,31 @@
    - Knowledge Object、Job、AI、Evaluation、Deletion、Sync 状态流转和禁止状态。
 8. [database_migrations.md](./database_migrations.md)
    - SQLite migration 命名、备份、事务、测试、回滚和兼容策略。
-9. [tech_stack.md](./tech_stack.md)
+9. [backup_and_restore.md](./backup_and_restore.md)
+   - 本地 restore point、manifest、原子创建、完整性校验、凭据边界和未来恢复流程。
+10. [tech_stack.md](./tech_stack.md)
    - 技术栈、目录结构、测试策略、质量门槛、发布和依赖治理。
-10. [security_privacy_compliance.md](./security_privacy_compliance.md)
+11. [security_privacy_compliance.md](./security_privacy_compliance.md)
    - 威胁模型、隐私分级、凭据、插件权限、AI trace、删除和平台合规边界。
-11. [security_and_privacy_policies.md](./security_and_privacy_policies.md)
+12. [security_and_privacy_policies.md](./security_and_privacy_policies.md)
    - 安全与脱敏红线、AI policy gate、插件 policy gate、诊断和删除策略。
-12. [ui_components_inventory.md](./ui_components_inventory.md)
+13. [ui_components_inventory.md](./ui_components_inventory.md)
    - UI 组件清单、组件职责、状态要求、设置页、搜索、AI/Evaluation 面板规范。
-13. [external_api_resilience.md](./external_api_resilience.md)
+14. [external_api_resilience.md](./external_api_resilience.md)
    - 第三方调用 timeout、retry、fallback、rate limit、错误映射和韧性测试。
-14. [sync_architecture.md](./sync_architecture.md)
+15. [sync_architecture.md](./sync_architecture.md)
    - 多端同步、可同步字段、冲突解决、tombstone 同步、隐私同步边界。
-15. [operational_readiness.md](./operational_readiness.md)
+16. [operational_readiness.md](./operational_readiness.md)
    - 发布就绪、环境矩阵、诊断、备份恢复、迁移策略和事故处理。
-16. [devops_and_ci.md](./devops_and_ci.md)
+17. [devops_and_ci.md](./devops_and_ci.md)
    - CI、构建矩阵、测试门槛、打包、签名、发布、回滚和诊断包。
-17. [plugins/plugin_development_guide.md](./plugins/plugin_development_guide.md)
+18. [plugins/plugin_development_guide.md](./plugins/plugin_development_guide.md)
    - Connector、Parser、Evaluator、Prompt 资源和 Registry 规范。
-18. [post_mvp_roadmap.md](./post_mvp_roadmap.md)
+19. [post_mvp_roadmap.md](./post_mvp_roadmap.md)
    - MVP 后 10 周执行范围、周度交付、验收门槛、当前状态和明确排除项。
-19. [../tests/docs/testing_strategy.md](../tests/docs/testing_strategy.md)
+20. [../tests/docs/testing_strategy.md](../tests/docs/testing_strategy.md)
    - 测试分层、fixtures、AI evals、回归测试和发布测试清单。
-20. [adr/README.md](./adr/README.md)
+21. [adr/README.md](./adr/README.md)
    - 架构决策记录，解释关键技术和产品架构取舍，包括 Markdown/AST 渲染与 AI 展示提示边界。
 
 ## Source of Truth
@@ -53,6 +55,7 @@
 - 数据存储以 `database_schema.sql` 为准。
 - 状态流转以 `state_machines.md` 为准。
 - 数据库升级以 `database_migrations.md` 为准。
+- 本地备份、验证和恢复安全边界以 `backup_and_restore.md` 为准。
 - 后端实现模式以 `backend_architecture.md` 为准。
 - 前端实现模式以 `frontend_architecture.md` 为准。
 - 安全和隐私争议以 `security_privacy_compliance.md` 和 `security_and_privacy_policies.md` 为准。

@@ -812,6 +812,7 @@ Local Edition 推荐:
 - sqlite-vec 或 LanceDB: 本地向量索引。
 - Local object store: HTML 快照、截图、附件、日志、评估产物。
 - Local audit log: 关键操作、AI 调用和插件访问记录。
+- Local restore points: SQLite 一致性快照、对象文件与版本化 hash manifest；不等同于便携导出。
 
 本地数据目录需要明确分层:
 
@@ -821,6 +822,7 @@ Local Edition 推荐:
 - `plugins`: 插件包和插件配置。
 - `secrets`: 本地加密凭据。
 - `logs`: 本地运行日志。
+- `backups`: 先 staging、后原子发布的同机 restore point；包含用户内容，不包含 credential value。
 
 ### 9.2 Cloud storage
 

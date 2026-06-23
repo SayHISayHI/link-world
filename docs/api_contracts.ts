@@ -324,6 +324,22 @@ export interface LocalMetricsSnapshot {
   objectStoreSizeBytes?: number;
 }
 
+
+export interface BackupSummary {
+  backupId: string;
+  appVersion?: string;
+  createdAt?: string;
+  objectFileCount: number;
+  totalSizeBytes: number;
+  status: 'ready' | 'invalid';
+}
+
+export interface BackupVerification {
+  backupId: string;
+  valid: boolean;
+  checkedFileCount: number;
+  issues: string[];
+}
 // 标准的 IPC 响应包裹器
 export interface IpcResponse<T> {
   status: 'success' | 'error';
@@ -336,6 +352,7 @@ export interface IpcResponse<T> {
 }
 
 export type IpcErrorCode =
+  | 'ERR_BACKUP_INVALID'
   | 'ERR_DB_CONSTRAINT'
   | 'ERR_DB_MIGRATION'
   | 'ERR_NETWORK_TIMEOUT'
@@ -440,6 +457,21 @@ export interface AgentCommands {
   get_evaluation_run: (args: { runId: string }) => Promise<IpcResponse<EvaluationRun>>;
 }
 
+/**
+ * 模块：Backup / Storage
+ */
+export interface BackupCommands {
+  // 创建同机 restore point；不接受任意路径参数。
+  create_backup: () => Promise<IpcResponse<BackupSummary>>;
+
+  // 列出正式 backup 目录；staging 目录不会返回。
+  list_backups: () => Promise<IpcResponse<BackupSummary[]>>;
+
+  // 校验 manifest、payload SHA-256 与 SQLite quick_check。
+  verify_backup: (args: {
+    backupId: string;
+  }) => Promise<IpcResponse<BackupVerification>>;
+}
 /**
  * 模块：Jobs / Events / Diagnostics
  */

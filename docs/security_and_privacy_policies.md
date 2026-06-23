@@ -57,6 +57,8 @@ Before `TextGenerationProvider.generate` or any future embedding/rerank/vision p
 Provider connection tests do not include object content and do not create AI analyses, but they still use `SecretStore`, redacted errors and the configured destination. Windows Alpha 使用 Credential Manager（service `com.linkworld.app.model-provider`）；SQLite 只保存 `keyring:model-provider:<config-id>` 或显式环境变量引用。Read APIs return only `hasApiKey`, never the key or `secret_ref`. 删除 provider 配置时先删除 credential，再删除数据库引用；任一步失败都不得伪装为成功。
 Provider base URL 不允许携带 userinfo、query 或 fragment，避免把凭据混入 URL、错误或诊断日志。默认 provider 的 config id 存在 `local_settings`；删除默认项只清除选择，不自动把内容路由到其他第三方 provider。
 
+本地 restore point 是完整用户数据副本，不是脱敏导出：它包含对象正文和 sensitive / secret 内容，依赖 OS 用户目录权限，当前不宣称加密。Credential value 不进入备份；便携导出必须另行脱敏并默认排除 secret。备份命令不得接受调用方提供的任意路径。
+
 Decision table:
 
 | Privacy | Local model | Third-party model |
