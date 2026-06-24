@@ -214,6 +214,8 @@ pub enum AppError {
     #[error("backup invalid: {0}")]
     BackupInvalid(String),
     #[error("object not found: {0}")]
+    #[error("restore invalid: {0}")]
+    RestoreInvalid(String),
     ObjectNotFound(String),
     #[error("database constraint failed: {0}")]
     DbConstraint(String),
@@ -241,6 +243,7 @@ Mapping to IPC:
 | AppError | IpcErrorCode |
 | --- | --- |
 | `BackupInvalid` | `ERR_BACKUP_INVALID` |
+| `RestoreInvalid` | `ERR_RESTORE_INVALID` |
 | `ObjectNotFound` | `ERR_OBJECT_NOT_FOUND` |
 | `DbConstraint` | `ERR_DB_CONSTRAINT` |
 | migration failure | `ERR_DB_MIGRATION` |
@@ -416,9 +419,9 @@ Rules:
 - 插件异常不能 crash 主进程。
 - 插件连续失败应自动禁用或进入 degraded 状态。
 
-## 15. Backup Service
+## 15. Backup and Restore Services
 
-`BackupService` owns local restore-point creation and verification:
+`BackupService` owns local restore-point creation and verification; `RestoreService` owns prepare/restart/apply/rollback:
 
 - Database snapshot uses SQLite `VACUUM INTO`; copying the live main file is forbidden.
 - Object files are copied in `spawn_blocking` with streaming SHA-256.
@@ -427,7 +430,13 @@ Rules:
 - Manifest paths are relative and reject parent/current/prefix components.
 - Verification checks file size/hash, unexpected files, manifest identity and SQLite `quick_check`.
 - Commands never accept arbitrary filesystem paths and never read credential values.
-- Restore remains disabled until pool shutdown, safety snapshot, rollback and migration preflight are implemented.
+- `prepare_restore` re-verifies the target, creates a safety backup, copies a private candidate, runs migrations, `quick_check`, `foreign_key_check`, and regenerates the candidate manifest.
+- A running process never replaces its own SQLite files. It writes a bounded pending marker and restarts.
+- `AppState::initialize` applies pending restore before opening the pool or starting capture services.
+- Phase markers (`prepared` → `moving-live` → `live-moved` → `candidate-installed`) make the two-path database/object switch crash recoverable.
+- Restored storage is validated before rollback data is deleted; initialization failure closes the new pool, restores rollback payload, and reopens old storage.
+- `get_restore_status` exposes only ids, status, timestamp and a sanitized message.
+- Safety backups remain ordinary verified restore points and are never deleted automatically.
 
 Detailed semantics are defined in `docs/backup_and_restore.md`.
 
@@ -483,6 +492,7 @@ Backend minimum test matrix:
 - Evaluation: run + artifacts + evidence JSON。
 - Deletion: tombstone + cleanup job + search invisibility。
 - Backup: atomic staging publication + manifest/file hashes + SQLite quick_check + tamper detection。
+- Restore: candidate migration + safety backup + restart boundary + phase recovery + injected database failure rollback。
 - Policy: sensitive object denies third-party AI without authorization。
 - Job idempotency: repeated event/job does not duplicate derived rows。
 

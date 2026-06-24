@@ -1,5 +1,6 @@
 use crate::errors::{AppError, AppResult};
 use crate::runtime::models::ModelProviderRegistry;
+use crate::services::restore::begin_pending_restore;
 use crate::storage::database::Database;
 use crate::storage::object_store::ObjectStore;
 use std::collections::HashMap;
@@ -185,8 +186,23 @@ impl AppState {
             .path()
             .app_data_dir()
             .map_err(|error| AppError::Filesystem(error.to_string()))?;
-        let database = Database::initialize(data_dir.clone()).await?;
-        let object_store = ObjectStore::initialize(data_dir)?;
+        let restore_transaction = begin_pending_restore(&data_dir).await?;
+        let validate_restored_data = restore_transaction.is_some();
+        let storage = Self::initialize_storage(data_dir.clone(), validate_restored_data).await;
+
+        let (database, object_store) = match (storage, restore_transaction) {
+            (Ok(storage), Some(transaction)) => {
+                transaction.complete()?;
+                storage
+            }
+            (Err(error), Some(transaction)) => {
+                let reason = error.to_string();
+                transaction.rollback(&reason)?;
+                Self::initialize_storage(data_dir.clone(), false).await?
+            }
+            (Ok(storage), None) => storage,
+            (Err(error), None) => return Err(error),
+        };
         let model_registry = ModelProviderRegistry::new()?;
         let secrets = SecretStore::system()?;
 
@@ -197,6 +213,27 @@ impl AppState {
             secrets,
             model_registry,
         })
+    }
+
+    async fn initialize_storage(
+        data_dir: std::path::PathBuf,
+        validate_integrity: bool,
+    ) -> AppResult<(Database, ObjectStore)> {
+        let database = Database::initialize(data_dir.clone()).await?;
+        if validate_integrity {
+            if let Err(error) = database.validate_integrity().await {
+                database.pool().close().await;
+                return Err(error);
+            }
+        }
+
+        match ObjectStore::initialize(data_dir) {
+            Ok(object_store) => Ok((database, object_store)),
+            Err(error) => {
+                database.pool().close().await;
+                Err(error)
+            }
+        }
     }
 
     pub fn backend_version(&self) -> &str {

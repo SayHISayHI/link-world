@@ -49,7 +49,7 @@ MVP 主支持：
 - 当前 provider、API protocol、base URL、model 与凭据是否已配置；不得显示 secret 内容。
 - 插件列表和权限状态。
 
-当前实现状态：Models 已提供正式 Settings route、多配置、默认项、连接测试和 credential 状态；Storage 已支持创建、列出和验证本地 restore point，但尚不支持恢复；Privacy、Capture、Plugins、Diagnostics、About 仅提供明确的里程碑占位，不计为已交付。
+当前实现状态：Models 已提供正式 Settings route、多配置、默认项、连接测试和 credential 状态；Storage 已支持创建、列出、验证、两阶段恢复和自动 rollback，真实 Windows 故障矩阵仍是发布门禁；Privacy、Capture、Plugins、Diagnostics、About 仅提供明确的里程碑占位，不计为已交付。
 
 ### 3.2 Logs
 
@@ -80,14 +80,17 @@ Local Edition 必须支持：
 - 手动导出全库。（未实现）
 - 创建、列出和校验本地 restore point。（已实现）
 - 数据库迁移前创建 restore point。
+- 恢复前完整校验、safety backup、私有候选迁移和重启应用。（已实现）
+- 恢复失败或 phase 中断后自动 rollback，旧数据库重新可启动。（自动化已实现；真实 Windows 回归待完成）
 - 对象存储路径可定位。
 - 检测数据库损坏并给出用户可理解提示。
 
-建议恢复策略：
+当前恢复策略：
 
-- SQLite `.backup` 或复制前 checkpoint WAL。
-- 导出 JSONL + objects manifest。
-- 校验 source snapshot content hash。
+- 在线备份使用 `VACUUM INTO`，候选迁移后执行 `quick_check`、`foreign_key_check` 和 WAL checkpoint。
+- 在线进程只 prepare；重启后、pool 初始化前通过 phase marker 切换数据库与 objects。
+- 候选初始化失败先关闭新 pool，再恢复 rollback payload 和旧数据库。
+- JSON/Markdown 便携导出是独立能力，不能复用含完整用户内容的 restore point。（未实现）
 
 ## 5. Migration Policy
 
@@ -95,7 +98,7 @@ Local Edition 必须支持：
 
 - 每个 migration 必须有版本号和描述。
 - 破坏性 migration 必须先创建备份。
-- 失败后停止启动并给出恢复入口。
+- restore candidate 迁移失败不得触碰在线数据；启动期迁移失败必须自动 rollback 或停止启动，禁止在不一致数据上继续运行。
 - 不允许静默删除用户数据。
 - 旧 AI analysis 和 evaluation result 不因 schema 升级被覆盖。
 

@@ -21,7 +21,7 @@
 8. [database_migrations.md](./database_migrations.md)
    - SQLite migration 命名、备份、事务、测试、回滚和兼容策略。
 9. [backup_and_restore.md](./backup_and_restore.md)
-   - 本地 restore point、manifest、原子创建、完整性校验、凭据边界和未来恢复流程。
+   - 本地 restore point、manifest、原子创建、两阶段恢复、phase rollback、凭据边界和发布前故障矩阵。
 10. [tech_stack.md](./tech_stack.md)
    - 技术栈、目录结构、测试策略、质量门槛、发布和依赖治理。
 11. [security_privacy_compliance.md](./security_privacy_compliance.md)

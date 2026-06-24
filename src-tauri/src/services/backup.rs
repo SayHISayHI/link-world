@@ -16,10 +16,10 @@ use std::path::{Component, Path, PathBuf};
 use uuid::Uuid;
 
 const BACKUPS_DIR_NAME: &str = "backups";
-const DATABASE_BACKUP_NAME: &str = "database.sqlite3";
-const MANIFEST_FILE_NAME: &str = "manifest.json";
-const MANIFEST_HASH_FILE_NAME: &str = "manifest.sha256";
-const OBJECTS_BACKUP_DIR_NAME: &str = "objects";
+pub(crate) const DATABASE_BACKUP_NAME: &str = "database.sqlite3";
+pub(crate) const MANIFEST_FILE_NAME: &str = "manifest.json";
+pub(crate) const MANIFEST_HASH_FILE_NAME: &str = "manifest.sha256";
+pub(crate) const OBJECTS_BACKUP_DIR_NAME: &str = "objects";
 const MAX_MANIFEST_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_MANIFEST_HASH_BYTES: u64 = 256;
 const MAX_OBJECT_DIRECTORY_DEPTH: usize = 32;
@@ -59,6 +59,14 @@ impl BackupService {
             data_dir.join(BACKUPS_DIR_NAME),
             state.backend_version().to_string(),
         ))
+    }
+
+    pub(crate) fn backup_root(&self) -> &Path {
+        &self.backup_root
+    }
+
+    pub(crate) fn app_version(&self) -> &str {
+        &self.app_version
     }
 
     pub async fn create_backup(&self) -> AppResult<BackupSummary> {
@@ -128,36 +136,7 @@ impl BackupService {
         if !backup_dir.is_dir() {
             return Err(AppError::BackupInvalid("backup not found".to_string()));
         }
-
-        let backup_id_for_scan = backup_id.clone();
-        let scan = tokio::task::spawn_blocking(move || {
-            verify_backup_files(&backup_dir, &backup_id_for_scan)
-        })
-        .await
-        .map_err(|error| AppError::Filesystem(error.to_string()))?;
-
-        let mut verification = match scan {
-            Ok(verification) => verification,
-            Err(error) => BackupVerification {
-                backup_id,
-                valid: false,
-                checked_file_count: 0,
-                issues: vec![error.to_string()],
-            },
-        };
-
-        if verification.issues.is_empty() {
-            let database_path = self
-                .backup_root
-                .join(&verification.backup_id)
-                .join(DATABASE_BACKUP_NAME);
-            if let Err(issue) = verify_sqlite_snapshot(&database_path).await {
-                verification.issues.push(issue);
-            }
-        }
-
-        verification.valid = verification.issues.is_empty();
-        Ok(verification)
+        verify_backup_directory(backup_dir, backup_id).await
     }
 
     async fn create_sqlite_snapshot(&self, destination: &Path) -> AppResult<()> {
@@ -171,6 +150,37 @@ impl BackupService {
             .await?;
         Ok(())
     }
+}
+
+pub(crate) async fn verify_backup_directory(
+    backup_dir: PathBuf,
+    backup_id: String,
+) -> AppResult<BackupVerification> {
+    let database_path = backup_dir.join(DATABASE_BACKUP_NAME);
+    let backup_id_for_scan = backup_id.clone();
+    let scan =
+        tokio::task::spawn_blocking(move || verify_backup_files(&backup_dir, &backup_id_for_scan))
+            .await
+            .map_err(|error| AppError::Filesystem(error.to_string()))?;
+
+    let mut verification = match scan {
+        Ok(verification) => verification,
+        Err(error) => BackupVerification {
+            backup_id,
+            valid: false,
+            checked_file_count: 0,
+            issues: vec![error.to_string()],
+        },
+    };
+
+    if verification.issues.is_empty() {
+        if let Err(issue) = verify_sqlite_snapshot(&database_path).await {
+            verification.issues.push(issue);
+        }
+    }
+
+    verification.valid = verification.issues.is_empty();
+    Ok(verification)
 }
 
 fn finalize_backup(
@@ -526,7 +536,7 @@ fn collect_manifest_paths(root: &Path, prefix: &str) -> AppResult<BTreeSet<Strin
     Ok(paths)
 }
 
-fn read_checked_manifest(backup_dir: &Path) -> AppResult<BackupManifest> {
+pub(crate) fn read_checked_manifest(backup_dir: &Path) -> AppResult<BackupManifest> {
     let manifest_path = backup_dir.join(MANIFEST_FILE_NAME);
     let hash_path = backup_dir.join(MANIFEST_HASH_FILE_NAME);
     if fs::metadata(&manifest_path)?.len() > MAX_MANIFEST_BYTES {
@@ -551,7 +561,7 @@ fn read_checked_manifest(backup_dir: &Path) -> AppResult<BackupManifest> {
     from_slice(&bytes).map_err(|error| AppError::BackupInvalid(error.to_string()))
 }
 
-fn validate_manifest_identity(
+pub(crate) fn validate_manifest_identity(
     manifest: BackupManifest,
     expected_backup_id: &str,
 ) -> AppResult<BackupManifest> {
@@ -590,7 +600,7 @@ async fn verify_sqlite_snapshot(path: &Path) -> Result<(), String> {
     }
 }
 
-fn normalize_backup_id(backup_id: &str) -> AppResult<String> {
+pub(crate) fn normalize_backup_id(backup_id: &str) -> AppResult<String> {
     let backup_id = backup_id.trim();
     if backup_id.is_empty()
         || backup_id.len() > 128
@@ -606,7 +616,7 @@ fn normalize_backup_id(backup_id: &str) -> AppResult<String> {
     Ok(backup_id.to_string())
 }
 
-fn parse_safe_relative_path(relative_path: &str) -> AppResult<PathBuf> {
+pub(crate) fn parse_safe_relative_path(relative_path: &str) -> AppResult<PathBuf> {
     let path = Path::new(relative_path);
     if path.as_os_str().is_empty() || path.is_absolute() {
         return Err(AppError::BackupInvalid(format!(

@@ -178,6 +178,7 @@ Hook examples:
 - `useModelProviderConfig`
 - `useModelProviderConfigs`
 - `useBackups`
+  - owns create/verify/prepare/restart command state and the last restore result; payload content never enters React state.
 - `usePluginPermissions`
 
 Rules:
@@ -379,7 +380,8 @@ Minimum requirements:
 - 列表项支持 arrow navigation。
 - Modal 支持 focus trap。
 - destructive action 有确认。
-- Storage restore point 必须明确标注包含用户内容；未实现 rollback 前不得出现可操作 Restore。
+- Storage restore point 必须明确标注包含用户内容。
+- Restore 是 destructive action：先展示内联确认，说明 safety backup 与重启边界；准备期间禁用并发恢复，失败时保留可读错误。
 - AI confidence 不只靠颜色表达。
 
 ## 13. Performance

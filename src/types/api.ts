@@ -1,5 +1,6 @@
 export type IpcErrorCode =
   | "ERR_BACKUP_INVALID"
+  | "ERR_RESTORE_INVALID"
   | "ERR_DB_CONSTRAINT"
   | "ERR_DB_MIGRATION"
   | "ERR_NETWORK_TIMEOUT"
@@ -43,6 +44,20 @@ export interface BackupVerification {
   checkedFileCount: number;
   issues: string[];
 }
+export interface RestorePreparation {
+  backupId: string;
+  safetyBackupId: string;
+  restartRequired: boolean;
+}
+
+export interface RestoreStatus {
+  backupId: string;
+  safetyBackupId: string;
+  status: "succeeded" | "rolled_back" | "failed" | string;
+  completedAt: string;
+  message?: string;
+}
+
 export interface PingResponse {
   message: string;
   backendVersion: string;

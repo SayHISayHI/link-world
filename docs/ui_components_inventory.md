@@ -111,7 +111,7 @@ Rules:
 | --- | --- |
 | `SettingsPanel` | formal settings route, section navigation and milestone boundaries |
 | `ModelSettings` | provider list, create/edit/delete/default, protocol, base URL, model and connection test |
-| `StorageSettings` | create/list/verify local restore points and communicate content boundary |
+| `StorageSettings` | create/list/verify local restore points, confirm restore, display restart/rollback result and communicate content boundary |
 | `SettingsBoundary` | explicit placeholder for privacy/capture/plugins/diagnostics/about until implemented |
 
 Rules:
@@ -124,7 +124,7 @@ Rules:
 - Provider test result must distinguish auth, network, model name and schema errors.
 - Plugin permissions show required vs optional.
 - Sensitive permissions require explicit confirmation.
-- Storage backup UI must state that restore points contain user content, never claim encryption, and must not expose Restore before rollback is implemented.
+- Storage backup UI must state that restore points contain user content and never claim encryption. Restore requires a separate inline confirmation, explains safety backup and restart, disables concurrent restore preparation, and displays succeeded/rolled-back/failed status without payload details.
 
 ## 9. Feedback Components
 

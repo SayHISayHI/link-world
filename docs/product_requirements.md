@@ -68,7 +68,8 @@ MVP 不做云端代登录和后台批量抓取。所有采集都必须来自用�
 ### Epic 6: 本地数据安全 (Post-MVP)
 
 - **US 6.1**: 用户可以在 Storage 设置中创建、列出和验证同机 restore point；备份必须同时覆盖一致的 SQLite 快照与对象存储，并明确提示包含用户内容。
-- **US 6.2**: 在 safety snapshot、preflight、数据库关闭和失败 rollback 完成前，产品不得提供 Restore 动作。便携导出必须与原始 restore point 分离，默认排除 secret 与 credential reference。
+- **US 6.2**: 用户显式二次确认 Restore 后，系统必须重新验证目标、创建 safety restore point、在私有副本上迁移，并在重启后的数据库连接池建立前切换数据；失败或中断必须恢复旧数据并展示结果。
+- **US 6.3**: 便携导出必须与原始 restore point 分离，默认排除 secret、credential reference、内部任务记录和本机路径。
 
 ## 4. 边界异常处理 (Edge Cases)
 

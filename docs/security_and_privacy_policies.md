@@ -58,6 +58,8 @@ Provider connection tests do not include object content and do not create AI ana
 Provider base URL 不允许携带 userinfo、query 或 fragment，避免把凭据混入 URL、错误或诊断日志。默认 provider 的 config id 存在 `local_settings`；删除默认项只清除选择，不自动把内容路由到其他第三方 provider。
 
 本地 restore point 是完整用户数据副本，不是脱敏导出：它包含对象正文和 sensitive / secret 内容，依赖 OS 用户目录权限，当前不宣称加密。Credential value 不进入备份；便携导出必须另行脱敏并默认排除 secret。备份命令不得接受调用方提供的任意路径。
+Restore 必须由用户显式确认；IPC 只接收 backupId，transactionId、candidate 和 rollback 路径均由后端在 app data 内生成。恢复控制文件最大 64 KiB，结果不得包含正文、文件清单、credential reference 或绝对路径。运行中的 SQLite pool 不得被原地替换。
+
 
 Decision table:
 

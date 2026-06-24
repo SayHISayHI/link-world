@@ -813,6 +813,7 @@ Local Edition 推荐:
 - Local object store: HTML 快照、截图、附件、日志、评估产物。
 - Local audit log: 关键操作、AI 调用和插件访问记录。
 - Local restore points: SQLite 一致性快照、对象文件与版本化 hash manifest；不等同于便携导出。
+- Restore lifecycle: 在线 prepare + safety backup；重启后在 pool 建立前用 phase marker 切换；候选初始化失败自动 rollback。
 
 本地数据目录需要明确分层:
 
@@ -823,6 +824,7 @@ Local Edition 推荐:
 - `secrets`: 本地加密凭据。
 - `logs`: 本地运行日志。
 - `backups`: 先 staging、后原子发布的同机 restore point；包含用户内容，不包含 credential value。
+- `restore`: 有界 pending phase marker、迁移后的私有 candidate、短期 rollback payload 和脱敏 last result。
 
 ### 9.2 Cloud storage
 
@@ -1284,6 +1286,7 @@ Retry policy：
 - Database writes are transactional around lifecycle changes.
 - A failed worker cannot corrupt object status.
 - Migration creates a backup or restore point before destructive changes.
+- Restore failure converges to either a validated candidate or a validated rollback; partial live storage must never start.
 - Every external call has timeout, cancellation and error classification.
 
 ### 17.3 Security targets

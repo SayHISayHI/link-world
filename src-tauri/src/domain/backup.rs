@@ -56,3 +56,22 @@ pub struct BackupVerification {
     pub checked_file_count: usize,
     pub issues: Vec<String>,
 }
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RestorePreparation {
+    pub backup_id: String,
+    pub safety_backup_id: String,
+    pub restart_required: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RestoreStatus {
+    pub backup_id: String,
+    pub safety_backup_id: String,
+    pub status: String,
+    pub completed_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}

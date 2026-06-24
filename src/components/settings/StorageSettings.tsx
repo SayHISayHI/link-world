@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { Archive, RefreshCw, ShieldCheck } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Archive, RefreshCw, RotateCcw, ShieldCheck } from "lucide-react";
 import { useBackups } from "../../hooks/commands/useBackups";
 import type { BackupSummary } from "../../types/api";
 import { Button } from "../ui/button";
@@ -10,16 +10,21 @@ export function StorageSettings() {
     creating,
     error,
     loading,
+    restoreStatus,
+    restoringId,
     verificationById,
     verifyingId,
     createBackup,
     loadBackups,
+    loadRestoreStatus,
+    restoreBackup,
     verifyBackup,
   } = useBackups();
+  const [confirmingId, setConfirmingId] = useState<string>();
 
   useEffect(() => {
-    void loadBackups();
-  }, [loadBackups]);
+    void Promise.all([loadBackups(), loadRestoreStatus()]);
+  }, [loadBackups, loadRestoreStatus]);
 
   return (
     <div className="mx-auto max-w-5xl p-8">
@@ -47,6 +52,30 @@ export function StorageSettings() {
         <div className="mt-5 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
           <p className="font-medium">{error.title}</p>
           <p className="mt-1">{error.message}</p>
+        </div>
+      ) : null}
+
+      {restoreStatus ? (
+        <div
+          className={
+            "mt-5 rounded-md border p-3 text-sm " +
+            (restoreStatus.status === "succeeded"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+              : "border-amber-200 bg-amber-50 text-amber-900")
+          }
+        >
+          <p className="font-medium">
+            {restoreStatus.status === "succeeded"
+              ? "Restore completed"
+              : "Restore did not replace the current library"}
+          </p>
+          <p className="mt-1 text-xs">
+            Target {restoreStatus.backupId} / safety backup {restoreStatus.safetyBackupId} /{" "}
+            {formatDate(restoreStatus.completedAt)}
+          </p>
+          {restoreStatus.message ? (
+            <p className="mt-1 text-xs">{restoreStatus.message}</p>
+          ) : null}
         </div>
       ) : null}
 
@@ -80,8 +109,14 @@ export function StorageSettings() {
             <BackupRow
               key={backup.backupId}
               backup={backup}
+              confirming={confirmingId === backup.backupId}
+              restoring={restoringId === backup.backupId}
+              restoreDisabled={restoringId !== undefined}
               verification={verificationById[backup.backupId]}
               verifying={verifyingId === backup.backupId}
+              onCancelRestore={() => setConfirmingId(undefined)}
+              onRequestRestore={() => setConfirmingId(backup.backupId)}
+              onRestore={() => void restoreBackup(backup.backupId)}
               onVerify={() => void verifyBackup(backup.backupId)}
             />
           ))}
@@ -91,8 +126,9 @@ export function StorageSettings() {
       <div className="mt-7 flex gap-3 rounded-lg border border-border bg-surface p-4 text-xs leading-5 text-muted-foreground">
         <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
         <p>
-          Restore is intentionally not enabled in this slice. The next step adds preflight
-          validation, a safety restore point, and rollback before any live data is replaced.
+          Restore preparation re-verifies every payload, migrates a private candidate, and creates
+          a safety backup. Live data is switched only during restart; interrupted or invalid
+          restores are rolled back before the application opens.
         </p>
       </div>
     </div>
@@ -101,12 +137,24 @@ export function StorageSettings() {
 
 function BackupRow({
   backup,
+  confirming,
+  onCancelRestore,
+  onRequestRestore,
+  onRestore,
   onVerify,
+  restoring,
+  restoreDisabled,
   verification,
   verifying,
 }: {
   backup: BackupSummary;
+  confirming: boolean;
+  onCancelRestore: () => void;
+  onRequestRestore: () => void;
+  onRestore: () => void;
   onVerify: () => void;
+  restoring: boolean;
+  restoreDisabled: boolean;
   verification?: {
     valid: boolean;
     checkedFileCount: number;
@@ -143,14 +191,25 @@ function BackupRow({
             </p>
           ) : null}
         </div>
-        <Button
-          variant="secondary"
-          className="h-8 text-xs"
-          onClick={onVerify}
-          disabled={verifying || invalid}
-        >
-          {verifying ? "Verifying..." : "Verify"}
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            variant="secondary"
+            className="h-8 text-xs"
+            onClick={onVerify}
+            disabled={verifying || invalid || restoring}
+          >
+            {verifying ? "Verifying..." : "Verify"}
+          </Button>
+          <Button
+            variant="secondary"
+            className="h-8 text-xs"
+            onClick={onRequestRestore}
+            disabled={invalid || restoring || restoreDisabled}
+          >
+            <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+            {restoring ? "Preparing..." : "Restore"}
+          </Button>
+        </div>
       </div>
       {verification ? (
         verification.valid ? (
@@ -167,6 +226,38 @@ function BackupRow({
             </ul>
           </div>
         )
+      ) : null}
+      {confirming ? (
+        <div
+          className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950"
+          role="group"
+          aria-label="Confirm restore"
+        >
+          <p className="font-semibold">Restore this point and restart Link World?</p>
+          <p className="mt-1 leading-5">
+            The current database and object store will be replaced. Before shutdown, Link World
+            re-verifies this backup, migrates a private candidate, and creates a separate safety
+            backup for automatic rollback.
+          </p>
+          <div className="mt-3 flex justify-end gap-2">
+            <Button
+              variant="ghost"
+              className="h-8 text-xs"
+              onClick={onCancelRestore}
+              disabled={restoring}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              className="h-8 text-xs"
+              onClick={onRestore}
+              disabled={restoring}
+            >
+              {restoring ? "Preparing and restarting..." : "Restore and restart"}
+            </Button>
+          </div>
+        </div>
       ) : null}
     </div>
   );

@@ -340,6 +340,20 @@ export interface BackupVerification {
   checkedFileCount: number;
   issues: string[];
 }
+
+export interface RestorePreparation {
+  backupId: string;
+  safetyBackupId: string;
+  restartRequired: boolean;
+}
+
+export interface RestoreStatus {
+  backupId: string;
+  safetyBackupId: string;
+  status: 'succeeded' | 'rolled_back' | 'failed';
+  completedAt: string;
+  message?: string;
+}
 // 标准的 IPC 响应包裹器
 export interface IpcResponse<T> {
   status: 'success' | 'error';
@@ -353,6 +367,7 @@ export interface IpcResponse<T> {
 
 export type IpcErrorCode =
   | 'ERR_BACKUP_INVALID'
+  | 'ERR_RESTORE_INVALID'
   | 'ERR_DB_CONSTRAINT'
   | 'ERR_DB_MIGRATION'
   | 'ERR_NETWORK_TIMEOUT'
@@ -471,6 +486,15 @@ export interface BackupCommands {
   verify_backup: (args: {
     backupId: string;
   }) => Promise<IpcResponse<BackupVerification>>;
+
+  // 重新校验目标、创建 safety backup，并迁移和验证私有候选目录。
+  prepare_restore: (args: { backupId: string }) => Promise<IpcResponse<RestorePreparation>>;
+
+  // 返回最近一次恢复结果；不返回正文、文件清单或绝对路径。
+  get_restore_status: () => Promise<IpcResponse<RestoreStatus | null>>;
+
+  // 仅在 pending restore 已存在时安排应用重启；文件替换发生在下次数据库初始化前。
+  restart_to_apply_restore: () => Promise<IpcResponse<boolean>>;
 }
 /**
  * 模块：Jobs / Events / Diagnostics

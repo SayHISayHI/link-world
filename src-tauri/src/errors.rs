@@ -6,6 +6,8 @@ pub type AppResult<T> = Result<T, AppError>;
 pub enum AppError {
     #[error("backup invalid: {0}")]
     BackupInvalid(String),
+    #[error("restore invalid: {0}")]
+    RestoreInvalid(String),
     #[error("object not found")]
     ObjectNotFound,
     #[error("database constraint failed")]
@@ -44,6 +46,7 @@ pub enum AppError {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum IpcErrorCode {
     ErrBackupInvalid,
+    ErrRestoreInvalid,
     ErrDbConstraint,
     ErrDbMigration,
     ErrNetworkTimeout,
@@ -97,6 +100,7 @@ impl From<AppError> for IpcError {
     fn from(error: AppError) -> Self {
         let code = match error {
             AppError::BackupInvalid(_) => IpcErrorCode::ErrBackupInvalid,
+            AppError::RestoreInvalid(_) => IpcErrorCode::ErrRestoreInvalid,
             AppError::ObjectNotFound => IpcErrorCode::ErrObjectNotFound,
             AppError::DbConstraint => IpcErrorCode::ErrDbConstraint,
             AppError::DbMigration(_) => IpcErrorCode::ErrDbMigration,

@@ -1,13 +1,20 @@
 import { useCallback, useState } from "react";
 import type { AppUiError } from "../../lib/errors";
 import { invokeCommand } from "../../lib/tauri";
-import type { BackupSummary, BackupVerification } from "../../types/api";
+import type {
+  BackupSummary,
+  BackupVerification,
+  RestorePreparation,
+  RestoreStatus,
+} from "../../types/api";
 
 interface BackupState {
   backups: BackupSummary[];
   creating: boolean;
   error?: AppUiError;
   loading: boolean;
+  restoreStatus?: RestoreStatus;
+  restoringId?: string;
   verificationById: Record<string, BackupVerification>;
   verifyingId?: string;
 }
@@ -36,6 +43,26 @@ export function useBackups() {
         ...current,
         error: error as AppUiError,
         loading: false,
+      }));
+      return undefined;
+    }
+  }, []);
+
+  const loadRestoreStatus = useCallback(async () => {
+    try {
+      const restoreStatus = await invokeCommand<Record<string, never>, RestoreStatus | null>(
+        "get_restore_status",
+        {},
+      );
+      setState((current) => ({
+        ...current,
+        restoreStatus: restoreStatus ?? undefined,
+      }));
+      return restoreStatus;
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        error: error as AppUiError,
       }));
       return undefined;
     }
@@ -94,10 +121,38 @@ export function useBackups() {
     }
   }, []);
 
+  const restoreBackup = useCallback(async (backupId: string) => {
+    setState((current) => ({
+      ...current,
+      error: undefined,
+      restoringId: backupId,
+    }));
+    try {
+      const preparation = await invokeCommand<
+        { backupId: string },
+        RestorePreparation
+      >("prepare_restore", { backupId });
+      await invokeCommand<Record<string, never>, boolean>(
+        "restart_to_apply_restore",
+        {},
+      );
+      return preparation;
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        error: error as AppUiError,
+        restoringId: undefined,
+      }));
+      return undefined;
+    }
+  }, []);
+
   return {
     ...state,
     createBackup,
     loadBackups,
+    loadRestoreStatus,
+    restoreBackup,
     verifyBackup,
   };
 }

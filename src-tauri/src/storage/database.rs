@@ -3,7 +3,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, S
 use sqlx::SqlitePool;
 use std::path::{Path, PathBuf};
 
-const DATABASE_FILE_NAME: &str = "link-world.sqlite3";
+pub const DATABASE_FILE_NAME: &str = "link-world.sqlite3";
 const MAX_SQLITE_CONNECTIONS: u32 = 5;
 
 #[derive(Debug, Clone)]
@@ -23,7 +23,10 @@ impl Database {
             .connect_with(options)
             .await?;
 
-        run_migrations(&pool).await?;
+        if let Err(error) = run_migrations(&pool).await {
+            pool.close().await;
+            return Err(error);
+        }
 
         Ok(Self { pool, path })
     }
@@ -44,6 +47,30 @@ impl Database {
             pool,
             path: PathBuf::from(":memory:"),
         })
+    }
+
+    pub async fn validate_restore_candidate(path: &Path) -> AppResult<()> {
+        let options = sqlite_options(path).create_if_missing(false);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await?;
+
+        let result: AppResult<()> = async {
+            run_migrations(&pool).await?;
+            validate_pool_integrity(&pool).await?;
+            sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+                .execute(&pool)
+                .await?;
+            Ok(())
+        }
+        .await;
+        pool.close().await;
+        result
+    }
+
+    pub async fn validate_integrity(&self) -> AppResult<()> {
+        validate_pool_integrity(&self.pool).await
     }
 
     pub fn pool(&self) -> &SqlitePool {
@@ -69,6 +96,29 @@ async fn run_migrations(pool: &SqlitePool) -> AppResult<()> {
         .run(pool)
         .await
         .map_err(|error| AppError::DbMigration(error.to_string()))
+}
+
+async fn validate_pool_integrity(pool: &SqlitePool) -> AppResult<()> {
+    let quick_check: String = sqlx::query_scalar("PRAGMA quick_check")
+        .fetch_one(pool)
+        .await?;
+    if quick_check != "ok" {
+        return Err(AppError::RestoreInvalid(format!(
+            "database quick_check returned: {quick_check}"
+        )));
+    }
+
+    let foreign_key_violations: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM pragma_foreign_key_check")
+            .fetch_one(pool)
+            .await?;
+    if foreign_key_violations != 0 {
+        return Err(AppError::RestoreInvalid(format!(
+            "database contains {foreign_key_violations} foreign key violations"
+        )));
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
