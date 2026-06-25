@@ -1,11 +1,43 @@
 use crate::errors::{AppError, AppResult};
+use sqlx::migrate::Migrator;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use sqlx::SqlitePool;
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 pub const DATABASE_FILE_NAME: &str = "link-world.sqlite3";
 const MAX_SQLITE_CONNECTIONS: u32 = 5;
 
+static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MigrationPlan {
+    pub applied_versions: Vec<i64>,
+    pub pending_versions: Vec<i64>,
+    pub has_user_schema: bool,
+}
+
+impl MigrationPlan {
+    pub fn requires_migration(&self) -> bool {
+        !self.pending_versions.is_empty()
+    }
+
+    pub fn requires_backup(&self) -> bool {
+        self.has_user_schema && self.requires_migration()
+    }
+
+    pub fn current_version(&self) -> Option<i64> {
+        self.applied_versions.last().copied()
+    }
+
+    pub fn target_version(&self) -> Option<i64> {
+        MIGRATOR
+            .iter()
+            .filter(|migration| !migration.migration_type.is_down_migration())
+            .map(|migration| migration.version)
+            .max()
+    }
+}
 #[derive(Debug, Clone)]
 pub struct Database {
     pool: SqlitePool,
@@ -13,22 +45,32 @@ pub struct Database {
 }
 
 impl Database {
+    #[cfg(test)]
     pub async fn initialize(data_dir: PathBuf) -> AppResult<Self> {
-        std::fs::create_dir_all(&data_dir)?;
-
-        let path = data_dir.join(DATABASE_FILE_NAME);
-        let options = sqlite_options(&path);
-        let pool = SqlitePoolOptions::new()
-            .max_connections(MAX_SQLITE_CONNECTIONS)
-            .connect_with(options)
-            .await?;
-
-        if let Err(error) = run_migrations(&pool).await {
-            pool.close().await;
+        let database = Self::connect_without_migrations(data_dir).await?;
+        if let Err(error) = database.run_migrations().await {
+            database.pool.close().await;
             return Err(error);
         }
+        Ok(database)
+    }
 
+    pub(crate) async fn connect_without_migrations(data_dir: PathBuf) -> AppResult<Self> {
+        std::fs::create_dir_all(&data_dir)?;
+        let path = data_dir.join(DATABASE_FILE_NAME);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(MAX_SQLITE_CONNECTIONS)
+            .connect_with(sqlite_options(&path))
+            .await?;
         Ok(Self { pool, path })
+    }
+
+    pub(crate) async fn migration_plan(&self) -> AppResult<MigrationPlan> {
+        inspect_migration_plan(&self.pool).await
+    }
+
+    pub(crate) async fn run_migrations(&self) -> AppResult<()> {
+        run_migrations(&self.pool).await
     }
 
     pub async fn initialize_in_memory() -> AppResult<Self> {
@@ -91,8 +133,71 @@ fn sqlite_options(path: &Path) -> SqliteConnectOptions {
         .synchronous(SqliteSynchronous::Normal)
 }
 
+async fn inspect_migration_plan(pool: &SqlitePool) -> AppResult<MigrationPlan> {
+    let has_migrations_table: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = '_sqlx_migrations'",
+    )
+    .fetch_one(pool)
+    .await?;
+    let user_table_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_master \
+         WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name != '_sqlx_migrations'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    let known_migrations = MIGRATOR
+        .iter()
+        .filter(|migration| !migration.migration_type.is_down_migration())
+        .collect::<Vec<_>>();
+    let mut applied_versions = Vec::new();
+
+    if has_migrations_table != 0 {
+        let applied: Vec<(i64, bool, Vec<u8>)> = sqlx::query_as(
+            "SELECT version, success, checksum FROM _sqlx_migrations ORDER BY version",
+        )
+        .fetch_all(pool)
+        .await?;
+
+        for (version, success, checksum) in applied {
+            if !success {
+                return Err(AppError::DbMigration(format!(
+                    "migration {version} is marked as incomplete"
+                )));
+            }
+            let migration = known_migrations
+                .iter()
+                .find(|migration| migration.version == version)
+                .ok_or_else(|| {
+                    AppError::DbMigration(format!(
+                        "database contains unknown migration version {version}"
+                    ))
+                })?;
+            if migration.checksum.as_ref() != checksum.as_slice() {
+                return Err(AppError::DbMigration(format!(
+                    "migration {version} checksum does not match this application"
+                )));
+            }
+            applied_versions.push(version);
+        }
+    }
+
+    let applied = applied_versions.iter().copied().collect::<BTreeSet<_>>();
+    let pending_versions = known_migrations
+        .iter()
+        .filter(|migration| !applied.contains(&migration.version))
+        .map(|migration| migration.version)
+        .collect();
+
+    Ok(MigrationPlan {
+        applied_versions,
+        pending_versions,
+        has_user_schema: user_table_count != 0,
+    })
+}
+
 async fn run_migrations(pool: &SqlitePool) -> AppResult<()> {
-    sqlx::migrate!("./migrations")
+    MIGRATOR
         .run(pool)
         .await
         .map_err(|error| AppError::DbMigration(error.to_string()))
@@ -120,6 +225,9 @@ async fn validate_pool_integrity(pool: &SqlitePool) -> AppResult<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod migration_tests;
 
 #[cfg(test)]
 mod tests {

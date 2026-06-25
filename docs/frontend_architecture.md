@@ -31,6 +31,7 @@ src/
 │   ├── analysis/            # AI Analysis presentation
 │   ├── evaluation/          # Evaluation result presentation
 │   ├── settings/            # settings panels
+│   ├── recovery/            # startup recovery surfaces before normal AppState is available
 │   └── shared/              # common presentational components
 ├── containers/              # data-aware components
 ├── hooks/
@@ -170,6 +171,8 @@ export async function invokeCommand<TArgs, TResult>(
 Hook examples:
 
 - `useSubmitCapture`
+- `useStartupStatus`
+- `useRestartApp`
 - `useRecentObjects`
 - `useObjectDetail`
 - `useSearchHybrid`
@@ -179,6 +182,10 @@ Hook examples:
 - `useModelProviderConfigs`
 - `useBackups`
   - owns create/verify/prepare/restart command state and the last restore result; payload content never enters React state.
+- startup hooks are owned by `App` / recovery surfaces; `get_startup_status` gates whether the normal Library shell may mount.
+- `usePortableExport`
+  - owns explicit `export_library` state; it stores only the returned summary/path and never loads exported object bodies back into React state.
+- `restart_app` only schedules process restart and does not mutate storage.
 - `usePluginPermissions`
 
 Rules:
@@ -187,6 +194,7 @@ Rules:
 - Hooks translate `IpcErrorCode` to UI error type.
 - Hooks decide retryability only from explicit error code, not message text.
 - Hooks must support cancellation or stale response guards.
+- Recovery-safe hooks must be explicitly documented; normal library hooks must not be called while `mode=recovery`.
 
 ## 5. Routing Strategy
 
@@ -205,6 +213,11 @@ type AppRoute =
 Rules:
 
 - Tauri desktop 不依赖 browser history。
+- Startup recovery is not a normal route. `App` must query startup status first and avoid mounting `LibraryShellContainer` while `mode=recovery`.
+- `StartupRecoveryScreen` may call only startup/backup/restore hooks that are explicitly recovery-safe.
+- Recovery UI must not subscribe to library events, capture state, model provider settings, or object detail commands.
+- `StorageSettings` can render in `startupRecovery` mode; it hides `create_backup` and keeps verify/restore actions visible.
+- Browser preview may fall back to normal shell if Tauri runtime is unavailable; the desktop runtime must use `get_startup_status`.
 - 如果未来引入 React Router，必须使用 `HashRouter`，避免本地文件路径刷新问题。
 - Deep link / browser extension capture 进入应用后，只能转换为 route action，不直接改 domain store。
 - Sidebar 分类通过 `library.filter` 驱动后端过滤；`inbox` / `failed` 是 lifecycle 过滤，其余值按 object type 过滤。
@@ -361,6 +374,8 @@ Settings forms:
 - storage path。
 - export options。
 
+- `StorageSettings` exposes portable export only in normal settings mode. It must stay hidden in `startupRecovery` mode.
+- Export result display may show the export directory path returned by the backend, but components must not accept arbitrary destination paths from the user until a dedicated file-picker boundary exists.
 Rules:
 
 - API key 输入框支持 paste，但提交后不保留明文。
@@ -409,7 +424,9 @@ Rules:
 - 不使用可见说明文字解释功能，界面应通过结构和控件自解释。
 
 ## 15. Testing Requirements
+- `StartupRecoveryScreen` / `StorageSettings(mode=startupRecovery)` hides create backup, surfaces verified backup id, and preserves explicit restore confirmation。
 
+- `StorageSettings` portable export button calls `usePortableExport`, displays summary, and is hidden in startup recovery mode。
 Minimum frontend tests:
 
 - `ObjectList` renders lifecycle states。

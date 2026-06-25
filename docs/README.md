@@ -19,9 +19,9 @@
 7. [state_machines.md](./state_machines.md)
    - Knowledge Object、Job、AI、Evaluation、Deletion、Sync 状态流转和禁止状态。
 8. [database_migrations.md](./database_migrations.md)
-   - SQLite migration 命名、备份、事务、测试、回滚和兼容策略。
+   - SQLite migration 命名、事务、0001–0003 生成式 fixture、启动 restore-point guard、数据不变量和回滚策略。
 9. [backup_and_restore.md](./backup_and_restore.md)
-   - 本地 restore point、manifest、原子创建、两阶段恢复、phase rollback、凭据边界和发布前故障矩阵。
+   - 本地 restore point、manifest、原子创建、两阶段恢复、phase rollback、启动 recovery UI、便携 Markdown/JSON 导出、凭据边界和发布前故障矩阵。
 10. [tech_stack.md](./tech_stack.md)
    - 技术栈、目录结构、测试策略、质量门槛、发布和依赖治理。
 11. [security_privacy_compliance.md](./security_privacy_compliance.md)

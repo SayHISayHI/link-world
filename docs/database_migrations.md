@@ -1,6 +1,6 @@
 # Link World 数据库迁移规范
 
-状态: Draft  
+状态: Active baseline
 适用范围: SQLite / sqlx migrations / Local Edition
 
 ## 1. Purpose
@@ -65,18 +65,25 @@ High-risk migration requires:
 - explicit release note.
 - rollback plan.
 
-## 5. Backup Strategy
+## 5. Startup Migration Guard
 
-Before high-risk migration:
+Production startup must not let SQLx mutate an existing user database before a recoverable restore point exists. `AppState` therefore initializes storage in this order:
 
-1. Checkpoint WAL.
-2. Create SQLite backup file.
-3. Record app version and schema version.
-4. Verify backup file exists and is readable.
-5. Run migration.
-6. If migration fails, keep original and backup untouched.
+1. Initialize the object-store path and connect SQLite without running migrations.
+2. Inspect `_sqlx_migrations`; reject incomplete, unknown, or checksum-mismatched versions before any schema write.
+3. If the database is fresh and contains no user tables, run pending migrations without creating an empty backup.
+4. If an existing user schema has pending migrations, create and fully verify a normal restore point containing the SQLite `VACUUM INTO` snapshot and object store.
+5. Write `migration/guard.prepared.json`, then rename it to `guard.running.json` immediately before running SQLx migrations.
+6. Run migrations, `quick_check`, and `foreign_key_check`; on success remove the guard and write a bounded, redacted `last-result.json`.
 
-Backup path must be visible in diagnostics.
+Crash convergence is fail-closed:
+
+- `guard.prepared.json` means the verified restore point exists and migration has not started; startup re-verifies it before proceeding.
+- `guard.running.json` plus pending migrations means a previous attempt may have partially executed; automatic retry is blocked and the error retains the verified backup ID.
+- `guard.running.json` with no pending migration means schema commit completed but cleanup was interrupted; startup validates integrity and completes the guard.
+- Guard/result files are limited to 64 KiB and contain identifiers, versions, status, and timestamps only. They do not expose content, credential values, or absolute paths.
+
+The verified restore point is deliberately retained after success. Automatic restore is not attempted because migration rollback semantics are schema-specific; recovery requires an explicit user action through the startup recovery UI.
 
 ## 6. Transaction Policy
 
@@ -128,13 +135,30 @@ Every migration must be tested against:
 - DB with evaluation artifacts.
 - DB with tombstones.
 
+### 9.1 当前自动化基线
+
+历史 fixture 在测试运行时由正式 `sqlx::migrate!` 源截断生成，并保留真实 `_sqlx_migrations` version/checksum；仓库不保存易发生版本漂移的 SQLite 二进制 fixture。
+
+- 0001 fixture：1000 个对象，并覆盖 sensitive/secret、snapshot、parsed document、legacy AI analysis、AI trace、Evaluation artifact、失败 job、FTS、provider、tombstone 和 local setting。
+- 0001 → latest：验证所有核心/派生行数、隐私级别、FTS 可检索性、外键、`display_hints_json IS NULL` 兼容和 provider 默认 API family。
+- 0002 → latest：验证已有 display hints 原样保留，历史 provider identity 不改写。
+- 0003 → latest：验证重复启动幂等，非默认 `anthropic_messages` 不回退。
+- future version：注入未知 migration 999 后必须返回 `DbMigration`，用户对象和 migration metadata 不被重写。
+
+自动化 fixture 只证明 schema/data compatibility，不等同于发布包升级回归。仍需：
+
+- 每次新增 migration 时把上一已发布版本加入矩阵。
+- Windows 安装包从上一 Alpha 原地升级。
+- 普通应用启动的 restore-point guard 已实现并覆盖 fresh DB、existing v1 DB、running 中断阻断和 migration 已提交后的收敛；启动 recovery UI 已有组件测试，真实安装升级场景仍需回归。
+
 ## 10. Failure Handling
 
 On migration failure:
 
 - stop app startup before normal use.
+- expose a restricted startup recovery UI before opening normal Library state or background services.
 - show user-readable error.
-- show backup path if created.
+- surface the verified backup ID without exposing an absolute path.
 - write redacted log.
 - never attempt repeated destructive migration automatically.
 

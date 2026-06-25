@@ -15,7 +15,7 @@ use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use uuid::Uuid;
 
-const BACKUPS_DIR_NAME: &str = "backups";
+pub(crate) const BACKUPS_DIR_NAME: &str = "backups";
 pub(crate) const DATABASE_BACKUP_NAME: &str = "database.sqlite3";
 pub(crate) const MANIFEST_FILE_NAME: &str = "manifest.json";
 pub(crate) const MANIFEST_HASH_FILE_NAME: &str = "manifest.sha256";
@@ -30,6 +30,33 @@ pub struct BackupService {
     object_root: PathBuf,
     backup_root: PathBuf,
     app_version: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct BackupCatalog {
+    backup_root: PathBuf,
+}
+
+impl BackupCatalog {
+    pub fn new(backup_root: PathBuf) -> Self {
+        Self { backup_root }
+    }
+
+    pub async fn list_backups(&self) -> AppResult<Vec<BackupSummary>> {
+        let backup_root = self.backup_root.clone();
+        tokio::task::spawn_blocking(move || list_backup_summaries(&backup_root))
+            .await
+            .map_err(|error| AppError::Filesystem(error.to_string()))?
+    }
+
+    pub async fn verify_backup(&self, backup_id: &str) -> AppResult<BackupVerification> {
+        let backup_id = normalize_backup_id(backup_id)?;
+        let backup_dir = self.backup_root.join(&backup_id);
+        if !backup_dir.is_dir() {
+            return Err(AppError::BackupInvalid("backup not found".to_string()));
+        }
+        verify_backup_directory(backup_dir, backup_id).await
+    }
 }
 
 impl BackupService {
@@ -63,6 +90,10 @@ impl BackupService {
 
     pub(crate) fn backup_root(&self) -> &Path {
         &self.backup_root
+    }
+
+    pub fn catalog(&self) -> BackupCatalog {
+        BackupCatalog::new(self.backup_root.clone())
     }
 
     pub(crate) fn app_version(&self) -> &str {
@@ -124,19 +155,11 @@ impl BackupService {
     }
 
     pub async fn list_backups(&self) -> AppResult<Vec<BackupSummary>> {
-        let backup_root = self.backup_root.clone();
-        tokio::task::spawn_blocking(move || list_backup_summaries(&backup_root))
-            .await
-            .map_err(|error| AppError::Filesystem(error.to_string()))?
+        self.catalog().list_backups().await
     }
 
     pub async fn verify_backup(&self, backup_id: &str) -> AppResult<BackupVerification> {
-        let backup_id = normalize_backup_id(backup_id)?;
-        let backup_dir = self.backup_root.join(&backup_id);
-        if !backup_dir.is_dir() {
-            return Err(AppError::BackupInvalid("backup not found".to_string()));
-        }
-        verify_backup_directory(backup_dir, backup_id).await
+        self.catalog().verify_backup(backup_id).await
     }
 
     async fn create_sqlite_snapshot(&self, destination: &Path) -> AppResult<()> {

@@ -111,7 +111,8 @@ Rules:
 | --- | --- |
 | `SettingsPanel` | formal settings route, section navigation and milestone boundaries |
 | `ModelSettings` | provider list, create/edit/delete/default, protocol, base URL, model and connection test |
-| `StorageSettings` | create/list/verify local restore points, confirm restore, display restart/rollback result and communicate content boundary |
+| `StorageSettings` | create/list/verify local restore points, confirm restore, display restart/rollback result, trigger portable Markdown/JSON export, and communicate content boundary; `startupRecovery` mode hides create backup and export |
+| `StartupRecoveryScreen` | boot-safe recovery surface shown before normal Library mounts; displays redacted startup issue, verified backup id, restart and restricted restore actions |
 | `SettingsBoundary` | explicit placeholder for privacy/capture/plugins/diagnostics/about until implemented |
 
 Rules:
@@ -124,7 +125,9 @@ Rules:
 - Provider test result must distinguish auth, network, model name and schema errors.
 - Plugin permissions show required vs optional.
 - Sensitive permissions require explicit confirmation.
+- Startup recovery UI must not mount Library containers, model settings, object detail commands, or event subscriptions.
 - Storage backup UI must state that restore points contain user content and never claim encryption. Restore requires a separate inline confirmation, explains safety backup and restart, disables concurrent restore preparation, and displays succeeded/rolled-back/failed status without payload details.
+- Portable export UI must explain that export is separate from restore points, defaults to non-secret objects, and excludes credential references/internal jobs/local storage paths. It must not accept arbitrary destination paths from the component.
 
 ## 9. Feedback Components
 

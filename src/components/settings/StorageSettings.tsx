@@ -1,10 +1,17 @@
 import { useEffect, useState } from "react";
-import { Archive, RefreshCw, RotateCcw, ShieldCheck } from "lucide-react";
+import { Archive, Download, RefreshCw, RotateCcw, ShieldCheck } from "lucide-react";
 import { useBackups } from "../../hooks/commands/useBackups";
-import type { BackupSummary } from "../../types/api";
+import { usePortableExport } from "../../hooks/commands/usePortableExport";
+import type { BackupSummary, StartupIssue } from "../../types/api";
 import { Button } from "../ui/button";
 
-export function StorageSettings() {
+interface StorageSettingsProps {
+  mode?: "settings" | "startupRecovery";
+  startupIssue?: StartupIssue;
+}
+
+export function StorageSettings({ mode = "settings", startupIssue }: StorageSettingsProps) {
+  const isStartupRecovery = mode === "startupRecovery";
   const {
     backups,
     creating,
@@ -20,7 +27,14 @@ export function StorageSettings() {
     restoreBackup,
     verifyBackup,
   } = useBackups();
+  const {
+    error: exportError,
+    exporting,
+    summary: exportSummary,
+    exportLibrary,
+  } = usePortableExport();
   const [confirmingId, setConfirmingId] = useState<string>();
+  const visibleError = error ?? exportError;
 
   useEffect(() => {
     void Promise.all([loadBackups(), loadRestoreStatus()]);
@@ -30,17 +44,28 @@ export function StorageSettings() {
     <div className="mx-auto max-w-5xl p-8">
       <div className="flex items-start justify-between gap-5">
         <div>
-          <h2 className="text-xl font-semibold">Storage and backups</h2>
+          <h2 className="text-xl font-semibold">
+            {isStartupRecovery ? "Startup recovery" : "Storage and backups"}
+          </h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Create a local restore point containing a consistent SQLite snapshot and the object
-            store. Every payload file is recorded in a versioned SHA-256 manifest.
+            {isStartupRecovery
+              ? "Link World is running in restricted recovery mode. Choose a verified local restore point to recover the library; ordinary library features stay disabled until restart succeeds."
+              : "Create a local restore point containing a consistent SQLite snapshot and the object store. Every payload file is recorded in a versioned SHA-256 manifest."}
           </p>
         </div>
-        <Button onClick={() => void createBackup()} disabled={creating || loading}>
-          <Archive className="h-4 w-4" aria-hidden="true" />
-          {creating ? "Creating..." : "Create backup"}
-        </Button>
+        {isStartupRecovery ? null : (
+          <Button onClick={() => void createBackup()} disabled={creating || loading}>
+            <Archive className="h-4 w-4" aria-hidden="true" />
+            {creating ? "Creating..." : "Create backup"}
+          </Button>
+        )}
       </div>
+
+      {isStartupRecovery && startupIssue?.verifiedBackupId ? (
+        <div className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-xs leading-5 text-emerald-900">
+          Verified pre-migration restore point available: {startupIssue.verifiedBackupId}
+        </div>
+      ) : null}
 
       <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-900">
         Backups contain saved user content, including locally classified sensitive content. API
@@ -48,10 +73,10 @@ export function StorageSettings() {
         account and backup directory accordingly.
       </div>
 
-      {error ? (
+      {visibleError ? (
         <div className="mt-5 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-          <p className="font-medium">{error.title}</p>
-          <p className="mt-1">{error.message}</p>
+          <p className="font-medium">{visibleError.title}</p>
+          <p className="mt-1">{visibleError.message}</p>
         </div>
       ) : null}
 
@@ -78,6 +103,34 @@ export function StorageSettings() {
           ) : null}
         </div>
       ) : null}
+
+      {isStartupRecovery ? null : (
+        <section className="mt-7 rounded-lg border border-border bg-surface p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-semibold">Portable export</h3>
+              <p className="mt-2 max-w-2xl text-xs leading-5 text-muted-foreground">
+                Export all non-secret objects to Markdown and JSON under the app data exports folder.
+                Credential references, internal jobs, and local object storage paths are excluded.
+              </p>
+            </div>
+            <Button
+              variant="secondary"
+              onClick={() => void exportLibrary()}
+              disabled={exporting || loading || creating}
+            >
+              <Download className="h-4 w-4" aria-hidden="true" />
+              {exporting ? "Exporting..." : "Export library"}
+            </Button>
+          </div>
+          {exportSummary ? (
+            <div className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-900">
+              Exported {exportSummary.objectCount} objects to {exportSummary.exportRoot}. Skipped{" "}
+              {exportSummary.skippedSecretCount} secret objects by default.
+            </div>
+          ) : null}
+        </section>
+      )}
 
       <section className="mt-7">
         <div className="flex items-center justify-between gap-3">
@@ -126,9 +179,9 @@ export function StorageSettings() {
       <div className="mt-7 flex gap-3 rounded-lg border border-border bg-surface p-4 text-xs leading-5 text-muted-foreground">
         <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
         <p>
-          Restore preparation re-verifies every payload, migrates a private candidate, and creates
-          a safety backup. Live data is switched only during restart; interrupted or invalid
-          restores are rolled back before the application opens.
+          {isStartupRecovery
+            ? "Recovery mode only exposes backup listing, verification, restore preparation, and restart. It does not open the normal library database or start background services."
+            : "Restore preparation re-verifies every payload, migrates a private candidate, and creates a safety backup. Live data is switched only during restart; interrupted or invalid restores are rolled back before the application opens."}
         </p>
       </div>
     </div>

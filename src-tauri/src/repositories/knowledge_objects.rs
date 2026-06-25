@@ -124,6 +124,33 @@ impl KnowledgeObjectRepository {
         Ok(object)
     }
 
+    pub async fn list_export_candidates(&self) -> AppResult<Vec<KnowledgeObject>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT
+                id,
+                user_id,
+                object_type,
+                title,
+                canonical_url,
+                source_platform,
+                author,
+                privacy_level,
+                lifecycle_status,
+                failure_reason,
+                captured_at,
+                updated_at
+            FROM knowledge_objects
+            WHERE lifecycle_status != 'deleted'
+            ORDER BY updated_at DESC, captured_at DESC
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.into_iter().map(knowledge_object_from_row).collect())
+    }
+
     pub async fn get_detail(&self, object_id: &str) -> AppResult<KnowledgeObjectDetail> {
         let object = self.get_object(object_id).await?;
         let parsed_document = self.get_latest_parsed_document(object_id).await?;

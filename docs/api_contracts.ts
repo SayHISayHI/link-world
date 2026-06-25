@@ -354,6 +354,50 @@ export interface RestoreStatus {
   completedAt: string;
   message?: string;
 }
+
+export interface PortableExportSummary {
+  exportId: string;
+  exportRoot: string;
+  format: 'markdown_json_directory';
+  objectCount: number;
+  skippedSecretCount: number;
+  markdownFileCount: number;
+  jsonFileCount: number;
+  createdAt: string;
+}
+
+export type StartupMode = 'ready' | 'recovery';
+
+export type StartupRecoveryKind =
+  | 'database_migration'
+  | 'restore'
+  | 'database'
+  | 'storage'
+  | 'unknown';
+
+export interface StartupMigrationRecovery {
+  phase: 'prepared' | 'running' | string;
+  backupId?: string;
+  fromVersion?: number;
+  targetVersion: number;
+  appVersion: string;
+  createdAt: string;
+}
+
+export interface StartupIssue {
+  code: IpcErrorCode;
+  title: string;
+  message: string;
+  recoveryKind: StartupRecoveryKind;
+  verifiedBackupId?: string;
+  migration?: StartupMigrationRecovery;
+}
+
+export interface StartupStatus {
+  mode: StartupMode;
+  backendVersion: string;
+  issue?: StartupIssue;
+}
 // 标准的 IPC 响应包裹器
 export interface IpcResponse<T> {
   status: 'success' | 'error';
@@ -385,6 +429,21 @@ export type IpcErrorCode =
 
 // ==========================================
 // 2. 暴露给前端的 Tauri Commands 签名
+
+/**
+ * 模块：System / Startup
+ */
+export interface SystemCommands {
+  // 查询当前进程是否完整 ready，或是否处于受限 startup recovery 模式。
+  // invoke('get_startup_status')
+  get_startup_status: () => Promise<IpcResponse<StartupStatus>>;
+
+  // 安排应用重启；用于用户修复环境问题后重试启动，或 recovery 页面手动重启。
+  restart_app: () => Promise<IpcResponse<boolean>>;
+
+  // 普通 ready 模式下的后端健康检查；recovery UI 不依赖该命令。
+  ping: () => Promise<IpcResponse<{ message: string; backendVersion: string }>>;
+}
 // ==========================================
 
 /**
@@ -476,27 +535,39 @@ export interface AgentCommands {
  * 模块：Backup / Storage
  */
 export interface BackupCommands {
-  // 创建同机 restore point；不接受任意路径参数。
+  // 创建同机 restore point；不接受任意路径参数。startup recovery 模式下禁用。
   create_backup: () => Promise<IpcResponse<BackupSummary>>;
 
-  // 列出正式 backup 目录；staging 目录不会返回。
+  // 列出正式 backup 目录；staging 目录不会返回；startup recovery 模式可用。
   list_backups: () => Promise<IpcResponse<BackupSummary[]>>;
 
-  // 校验 manifest、payload SHA-256 与 SQLite quick_check。
+  // 校验 manifest、payload SHA-256 与 SQLite quick_check；startup recovery 模式可用。
   verify_backup: (args: {
     backupId: string;
   }) => Promise<IpcResponse<BackupVerification>>;
 
-  // 重新校验目标、创建 safety backup，并迁移和验证私有候选目录。
+  // 重新校验目标、创建 safety backup，并迁移和验证私有候选目录。startup recovery 模式会临时连接 live DB 但不运行普通 migration。
   prepare_restore: (args: { backupId: string }) => Promise<IpcResponse<RestorePreparation>>;
 
-  // 返回最近一次恢复结果；不返回正文、文件清单或绝对路径。
+  // 返回最近一次恢复结果；不返回正文、文件清单或绝对路径；startup recovery 模式可用。
   get_restore_status: () => Promise<IpcResponse<RestoreStatus | null>>;
 
-  // 仅在 pending restore 已存在时安排应用重启；文件替换发生在下次数据库初始化前。
+  // 仅在 pending restore 已存在时安排应用重启；文件替换发生在下次数据库初始化前；startup recovery 模式可用。
   restart_to_apply_restore: () => Promise<IpcResponse<boolean>>;
 }
 /**
+
+/**
+ * 模块：Portable Export
+ */
+export interface PortableExportCommands {
+  // 导出全库非 secret 对象到 app data/exports 下的 Markdown + JSON 目录。
+  // 不接受任意路径参数；不导出 credential reference、内部 job、source snapshot storage URI 或 secret 对象。
+  // startup recovery 模式禁用。
+  // invoke('export_library')
+  export_library: () => Promise<IpcResponse<PortableExportSummary>>;
+}
+
  * 模块：Jobs / Events / Diagnostics
  */
 export interface OperationsCommands {

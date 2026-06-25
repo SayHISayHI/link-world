@@ -1,12 +1,16 @@
+use crate::domain::startup::{StartupIssue, StartupMode, StartupRecoveryKind, StartupStatus};
 use crate::errors::{AppError, AppResult};
 use crate::runtime::models::ModelProviderRegistry;
+use crate::services::migration::MigrationService;
 use crate::services::restore::begin_pending_restore;
 use crate::storage::database::Database;
 use crate::storage::object_store::ObjectStore;
 use std::collections::HashMap;
 use std::fmt;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use tauri::Manager;
+use uuid::Uuid;
 
 #[cfg(target_os = "windows")]
 const KEYRING_SERVICE: &str = "com.linkworld.app.model-provider";
@@ -20,6 +24,71 @@ pub struct AppState {
     object_store: Option<ObjectStore>,
     secrets: SecretStore,
     model_registry: ModelProviderRegistry,
+}
+
+#[derive(Debug)]
+pub struct StartupState {
+    data_dir: PathBuf,
+    status: StartupStatus,
+}
+
+impl StartupState {
+    pub fn ready(data_dir: PathBuf) -> Self {
+        Self {
+            data_dir,
+            status: StartupStatus {
+                mode: StartupMode::Ready,
+                backend_version: env!("CARGO_PKG_VERSION").to_string(),
+                issue: None,
+            },
+        }
+    }
+
+    pub fn recovery(data_dir: PathBuf, error: AppError) -> Self {
+        let raw_message = error.to_string();
+        let message = sanitize_startup_message(&data_dir, &raw_message);
+        let migration = if matches!(error, AppError::DbMigration(_)) {
+            MigrationService::recovery_info(&data_dir).ok().flatten()
+        } else {
+            None
+        };
+        let verified_backup_id = migration
+            .as_ref()
+            .and_then(|info| info.backup_id.clone())
+            .or_else(|| extract_backup_id(&raw_message));
+
+        Self {
+            data_dir,
+            status: StartupStatus {
+                mode: StartupMode::Recovery,
+                backend_version: env!("CARGO_PKG_VERSION").to_string(),
+                issue: Some(StartupIssue {
+                    code: startup_error_code(&error).to_string(),
+                    title: startup_issue_title(&error).to_string(),
+                    message,
+                    recovery_kind: startup_recovery_kind(&error),
+                    verified_backup_id,
+                    migration,
+                }),
+            },
+        }
+    }
+
+    pub fn status(&self) -> &StartupStatus {
+        &self.status
+    }
+
+    pub fn data_dir(&self) -> &Path {
+        &self.data_dir
+    }
+
+    pub fn backend_version(&self) -> &str {
+        &self.status.backend_version
+    }
+
+    pub fn is_recovery(&self) -> bool {
+        self.status.mode == StartupMode::Recovery
+    }
 }
 
 trait SecretBackend: Send + Sync {
@@ -170,6 +239,73 @@ impl SecretBackend for WindowsCredentialBackend {
     }
 }
 
+fn startup_error_code(error: &AppError) -> &'static str {
+    match error {
+        AppError::BackupInvalid(_) => "ERR_BACKUP_INVALID",
+        AppError::RestoreInvalid(_) => "ERR_RESTORE_INVALID",
+        AppError::DbConstraint => "ERR_DB_CONSTRAINT",
+        AppError::DbMigration(_) => "ERR_DB_MIGRATION",
+        AppError::JobNotFound => "ERR_JOB_NOT_FOUND",
+        AppError::NetworkTimeout => "ERR_NETWORK_TIMEOUT",
+        AppError::ParseFailed(_) => "ERR_PARSE_FAILED",
+        AppError::ModelAuth => "ERR_MODEL_AUTH",
+        AppError::ModelRateLimit => "ERR_MODEL_RATE_LIMIT",
+        AppError::ModelNotFound => "ERR_MODEL_NOT_FOUND",
+        AppError::ModelOutputSchema(_) => "ERR_MODEL_OUTPUT_SCHEMA",
+        AppError::PolicyDenied(_) => "ERR_POLICY_DENIED",
+        AppError::PluginPermission(_) => "ERR_PLUGIN_PERMISSION",
+        AppError::ObjectNotFound => "ERR_OBJECT_NOT_FOUND",
+        AppError::SecretStorage => "ERR_SECRET_STORAGE",
+        AppError::Database(_) | AppError::Filesystem(_) | AppError::Unknown(_) => "ERR_UNKNOWN",
+    }
+}
+
+fn startup_issue_title(error: &AppError) -> &'static str {
+    match error {
+        AppError::DbMigration(_) => "Database migration needs recovery",
+        AppError::RestoreInvalid(_) => "Restore did not complete safely",
+        AppError::Database(_) => "Database could not be opened",
+        AppError::Filesystem(_) => "Storage could not be opened",
+        AppError::SecretStorage => "Credential storage is unavailable",
+        _ => "Startup failed",
+    }
+}
+
+fn startup_recovery_kind(error: &AppError) -> StartupRecoveryKind {
+    match error {
+        AppError::DbMigration(_) => StartupRecoveryKind::DatabaseMigration,
+        AppError::RestoreInvalid(_) => StartupRecoveryKind::Restore,
+        AppError::Database(_) => StartupRecoveryKind::Database,
+        AppError::Filesystem(_) => StartupRecoveryKind::Storage,
+        _ => StartupRecoveryKind::Unknown,
+    }
+}
+
+fn sanitize_startup_message(data_dir: &Path, message: &str) -> String {
+    let data_dir_text = data_dir.to_string_lossy();
+    let redacted = message.replace(data_dir_text.as_ref(), "<app-data>");
+    truncate_chars(&redacted, 512)
+}
+
+fn extract_backup_id(message: &str) -> Option<String> {
+    message
+        .split(|character: char| {
+            !(character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
+        })
+        .find(|candidate| Uuid::parse_str(candidate).is_ok())
+        .map(ToOwned::to_owned)
+}
+
+fn truncate_chars(value: &str, max_chars: usize) -> String {
+    if value.chars().count() <= max_chars {
+        return value.to_string();
+    }
+
+    let mut truncated = value.chars().take(max_chars).collect::<String>();
+    truncated.push('…');
+    truncated
+}
+
 impl AppState {
     pub fn new() -> AppResult<Self> {
         Ok(Self {
@@ -181,11 +317,18 @@ impl AppState {
         })
     }
 
-    pub async fn initialize(app_handle: &tauri::AppHandle) -> AppResult<Self> {
-        let data_dir = app_handle
+    pub fn app_data_dir(app_handle: &tauri::AppHandle) -> AppResult<PathBuf> {
+        app_handle
             .path()
             .app_data_dir()
-            .map_err(|error| AppError::Filesystem(error.to_string()))?;
+            .map_err(|error| AppError::Filesystem(error.to_string()))
+    }
+
+    pub async fn initialize(app_handle: &tauri::AppHandle) -> AppResult<Self> {
+        Self::initialize_from_data_dir(Self::app_data_dir(app_handle)?).await
+    }
+
+    pub async fn initialize_from_data_dir(data_dir: PathBuf) -> AppResult<Self> {
         let restore_transaction = begin_pending_restore(&data_dir).await?;
         let validate_restored_data = restore_transaction.is_some();
         let storage = Self::initialize_storage(data_dir.clone(), validate_restored_data).await;
@@ -219,7 +362,19 @@ impl AppState {
         data_dir: std::path::PathBuf,
         validate_integrity: bool,
     ) -> AppResult<(Database, ObjectStore)> {
-        let database = Database::initialize(data_dir.clone()).await?;
+        let object_store = ObjectStore::initialize(data_dir.clone())?;
+        let database = Database::connect_without_migrations(data_dir.clone()).await?;
+        if let Err(error) = MigrationService::migrate_with_protection(
+            &database,
+            &object_store,
+            &data_dir,
+            env!("CARGO_PKG_VERSION"),
+        )
+        .await
+        {
+            database.pool().close().await;
+            return Err(error);
+        }
         if validate_integrity {
             if let Err(error) = database.validate_integrity().await {
                 database.pool().close().await;
@@ -227,13 +382,7 @@ impl AppState {
             }
         }
 
-        match ObjectStore::initialize(data_dir) {
-            Ok(object_store) => Ok((database, object_store)),
-            Err(error) => {
-                database.pool().close().await;
-                Err(error)
-            }
-        }
+        Ok((database, object_store))
     }
 
     pub fn backend_version(&self) -> &str {
@@ -263,7 +412,11 @@ impl AppState {
 
 #[cfg(test)]
 mod tests {
-    use super::SecretStore;
+    use super::{SecretStore, StartupState};
+    use crate::domain::startup::{StartupMode, StartupRecoveryKind};
+    use crate::errors::AppError;
+    use std::path::PathBuf;
+    use uuid::Uuid;
 
     #[test]
     fn memory_secret_store_supports_set_resolve_and_delete() {
@@ -291,5 +444,30 @@ mod tests {
                 .expect("missing secret should resolve"),
             None
         );
+    }
+
+    #[test]
+    fn startup_recovery_status_redacts_data_dir_and_extracts_backup_id() {
+        let backup_id = Uuid::new_v4().to_string();
+        let data_dir = PathBuf::from("C:/Users/example/AppData/Link World");
+        let state = StartupState::recovery(
+            data_dir.clone(),
+            AppError::DbMigration(format!(
+                "failed at {}; verified restore point {} is available",
+                data_dir.display(),
+                backup_id
+            )),
+        );
+
+        let status = state.status();
+        assert_eq!(status.mode, StartupMode::Recovery);
+        let issue = status.issue.as_ref().expect("recovery issue should exist");
+        assert_eq!(
+            issue.verified_backup_id.as_deref(),
+            Some(backup_id.as_str())
+        );
+        assert_eq!(issue.recovery_kind, StartupRecoveryKind::DatabaseMigration);
+        assert!(!issue.message.contains("C:/Users/example"));
+        assert!(issue.message.contains("<app-data>"));
     }
 }

@@ -85,6 +85,13 @@ Rules:
 - UI 选择态、当前对象 ID、窗口状态不得放进 Rust `AppState`。
 - 后台任务通过 `JobRunnerHandle` 提交，不允许 command 自己 `tokio::spawn` 一条业务链路。
 
+
+Startup has a separate `StartupState`:
+
+- `StartupState::Ready` is managed alongside full `AppState` after database, object store, secret store and model registry initialize.
+- `StartupState::Recovery` is managed when initialization fails before normal use. The window stays open, but normal `AppState` is absent and capture/AI background services are not started.
+- `get_startup_status` exposes only ready/recovery mode, backend version, redacted message, error code, verified backup id and migration guard metadata.
+- Commands that require normal library access must continue to depend on `AppState`; backup catalog and restore-preparation commands have explicit recovery-mode branches.
 ## 4. Command Boundary
 
 Tauri command 是 IPC 边界，不是业务逻辑层。
@@ -136,6 +143,7 @@ Core services:
 - `PluginService`
 - `SyncService`
 - `MaintenanceService`
+- `MigrationService`
 
 Service responsibilities:
 
@@ -437,7 +445,16 @@ Rules:
 - Restored storage is validated before rollback data is deleted; initialization failure closes the new pool, restores rollback payload, and reopens old storage.
 - `get_restore_status` exposes only ids, status, timestamp and a sanitized message.
 - Safety backups remain ordinary verified restore points and are never deleted automatically.
+- `MigrationService` connects production SQLite without applying migrations, validates migration metadata, and creates a verified restore point before migrating any existing user schema.
+- Migration guards transition `prepared` → `running`; a running guard with pending versions blocks automatic retry, while a committed migration with a stale guard converges after integrity validation.
+- Fresh databases migrate without creating empty restore points. Migration guards contain only bounded identifiers/version metadata and never expose payloads or absolute paths.
 
+- In startup recovery mode, backup catalog commands use `BackupCatalog` over app data backups and do not require `AppState`.
+- `prepare_restore` can run in recovery mode by opening live SQLite without startup migration; if that temporary connection fails, recovery remains fail-closed.
+- `create_backup` is intentionally disabled in recovery mode.
+- `PortableExportService` owns Markdown/JSON directory export under app data `exports/`; clients do not provide output paths.
+- Portable export depends on normal `AppState` and is disabled in startup recovery mode. It exports non-secret objects, omits credential reference, internal jobs, source snapshot storage URI and evaluation artifact storage URI.
+- Export output is a portability artifact, not a restore point; it cannot be used by `RestoreService`.
 Detailed semantics are defined in `docs/backup_and_restore.md`.
 
 ## 16. Object Store
@@ -485,14 +502,16 @@ Backend minimum test matrix:
 
 - State machine: all lifecycle transitions including `failed`。
 - Error mapping: every `AppError` maps to `IpcErrorCode`。
-- Migration: empty DB and previous DB version。
+- Migration: empty DB；production migrator 生成的 0001/0002/0003 file fixtures；1000-object invariants；unknown future version fail-closed；existing-schema restore point；guard interruption convergence。
+- Portable export: non-secret object markdown/metadata export, secret skip count, and storage URI / credential-reference omission.
 - Capture transaction: object + event + job。
+- Startup recovery: redacted startup status, backup id extraction, restricted backup/restore command availability。
 - Parse pipeline: snapshot + parsed_documents + event。
 - AI pipeline: ai_analysis + optional display hints + ai_traces；无效提示不得导致主体分析失败，`reason` 最多保留 160 个字符。
 - Evaluation: run + artifacts + evidence JSON。
 - Deletion: tombstone + cleanup job + search invisibility。
 - Backup: atomic staging publication + manifest/file hashes + SQLite quick_check + tamper detection。
-- Restore: candidate migration + safety backup + restart boundary + phase recovery + injected database failure rollback。
+- Restore: candidate migration + safety backup + restart boundary；四个 phase 中断；copy hash race；duplicate prepare；missing rollback payload；injected database failure rollback。
 - Policy: sensitive object denies third-party AI without authorization。
 - Job idempotency: repeated event/job does not duplicate derived rows。
 

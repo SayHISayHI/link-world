@@ -4,5 +4,6 @@ pub mod capture;
 pub mod evaluation;
 pub mod library;
 pub mod operations;
+pub mod portable_export;
 pub mod search;
 pub mod system;

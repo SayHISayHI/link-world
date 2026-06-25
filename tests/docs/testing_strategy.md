@@ -95,10 +95,17 @@ Must cover:
 - AI enrich writes analysis and trace.
 - provider registry maps every supported API family and preserves typed auth/rate-limit/timeout/schema errors.
 - migration 0003 preserves old provider rows and defaults them to OpenAI Chat Completions.
+- migration fixtures use the production SQLx migrator truncated at versions 1/2/3, preserving real checksum metadata instead of hand-authored schemas.
+- v1 fixture carries 1000 objects plus snapshot/document/AI trace/Evaluation/failed job/FTS/provider/tombstone data; future unknown migration versions fail closed.
 - backup service publishes only complete staging directories, verifies manifest/payload hashes, rejects unsafe paths and runs SQLite quick_check.
 - restore prepare re-verifies the source, creates a safety backup, migrates and validates a private candidate before writing pending state.
-- restart restore covers successful database/object replacement, initialization failure rollback, and interrupted phase recovery including optional WAL/SHM preservation.
+- restart restore covers deterministic interruption at prepared, moving-live, live-moved and candidate-installed, including partial candidate install and optional WAL/SHM preservation.
+- I/O boundaries cover source hash changes during copy, duplicate prepare, candidate tampering and missing required rollback payload.
+- startup migration protection covers existing-schema restore-point creation, fresh DB bypass, running-phase retry blocking, and committed-migration guard convergence.
+- startup recovery state redacts app data paths, extracts verified backup id, and does not require normal `AppState` for safe backup catalog/status commands.
+- `StorageSettings(mode=startupRecovery)` hides create backup, surfaces the verified backup id, and retains explicit restore confirmation.
 - evaluation writes run and artifacts.
+- portable export writes manifest/JSONL/metadata/markdown, skips secret objects, and omits source/evaluation storage URI, credential references and secret body content.
 - delete creates tombstone and purge removes derived data.
 - FTS search uses parsed document and AI summary.
 
@@ -124,6 +131,7 @@ Component tests:
 - Markdown AST analysis produces stable heading IDs, a bounded table of contents and deterministic display modes.
 - long code blocks support copy and collapse interactions without loading a syntax-highlighting engine.
 - valid AI display hints apply only to their source parsed document; stale, invalid and low-confidence hints fall back to AST inference.
+- `StorageSettings` portable export button calls `usePortableExport`, displays exported object/secret-skip summary, and is hidden in startup recovery mode.
 - `AIAnalysisPanel` shows run state, summary and trace, contains no provider credential form, and links to Settings.
 - `EvaluationPanel` shows verdict, evidence and limitations.
 - model provider settings list multiple stable ids without returning API keys, create/edit/delete configs, enforce one explicit default, allow protocol selection, clear key drafts after save and invalidate stale connection-test success after edits.
@@ -188,8 +196,8 @@ Fixture categories:
 - evaluation results.
 - database seed records.
 - valid and tampered backup manifests/object payloads.
-- restore candidates from every published migration baseline.
-- forced termination at prepared, moving-live, live-moved and candidate-installed boundaries.
+- generated database fixtures from every published migration baseline; current automated baselines are 0001/0002/0003.
+- real-process forced termination at prepared, moving-live, live-moved and candidate-installed boundaries in the Windows installation test matrix.
 - external API error responses.
 
 Parser fixtures should cover at least:

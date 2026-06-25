@@ -76,6 +76,7 @@ Quality gates:
 - No `any` in new code unless locally justified。
 - No direct `invoke` outside `hooks/commands`。
 - No direct DB/file/secret access from frontend。
+- Startup recovery UI tests must verify restricted mode hides create_backup and preserves explicit restore confirmation.
 
 ### 4.2 Rust
 
@@ -96,14 +97,20 @@ Quality gates:
 Migration tests:
 
 - Empty DB -> latest schema。
-- Previous fixture DB -> latest schema。
-- Failed migration leaves backup / restore point。
+- Generated 0001/0002/0003 fixture DB -> latest schema, using production SQLx checksums。
+- Unknown future migration -> fail closed without rewriting user rows。
+- Restore phase interruption and rollback I/O fault matrix。
+- Pending ordinary startup migration creates a verified restore point before live migration; fresh DB skips backup, interrupted running guard blocks retry, and committed migration converges on next startup。（4 个自动化用例已实现；真实安装升级仍是发布门禁）
+- Startup recovery state redacts app data paths, surfaces verified backup id, and keeps normal AppState/background services unavailable until recovery succeeds.
 - Deletion purge removes FTS/vector/derived rows。
+- Portable export writes non-secret Markdown/JSON artifacts and verifies that metadata excludes credential references, internal jobs and local storage URI fields。
 
 Test DB strategy:
 
 - Unit tests can use in-memory SQLite when possible。
 - Migration tests should also run against a temp file DB because WAL、FTS5、sqlite-vec behavior may differ from memory。
+- Focused commands: `cargo test storage::database::migration_tests` and `cargo test services::restore`。
+- Function-level phase simulation belongs in normal CI; real-process kill tests belong in the Windows packaging matrix。
 
 ## 5. GitHub Actions Draft
 

@@ -77,10 +77,11 @@ MVP 主支持：
 
 Local Edition 必须支持：
 
-- 手动导出全库。（未实现）
+- 手动导出全库非 secret 对象为 Markdown/JSON 目录。（已实现；真实安装包回归待完成）
 - 创建、列出和校验本地 restore point。（已实现）
-- 数据库迁移前创建 restore point。
+- 普通应用启动检测 pending migration 后先创建并验证 restore point，以 phase guard 阻止不确定 migration 自动重试。（已实现；真实安装升级待回归）
 - 恢复前完整校验、safety backup、私有候选迁移和重启应用。（已实现）
+- 启动迁移失败时进入受限 recovery UI，展示 verified backup ID 并提供显式 restore/restart 操作。（已实现；真实安装升级待回归）
 - 恢复失败或 phase 中断后自动 rollback，旧数据库重新可启动。（自动化已实现；真实 Windows 回归待完成）
 - 对象存储路径可定位。
 - 检测数据库损坏并给出用户可理解提示。
@@ -90,7 +91,9 @@ Local Edition 必须支持：
 - 在线备份使用 `VACUUM INTO`，候选迁移后执行 `quick_check`、`foreign_key_check` 和 WAL checkpoint。
 - 在线进程只 prepare；重启后、pool 初始化前通过 phase marker 切换数据库与 objects。
 - 候选初始化失败先关闭新 pool，再恢复 rollback payload 和旧数据库。
-- JSON/Markdown 便携导出是独立能力，不能复用含完整用户内容的 restore point。（未实现）
+- JSON/Markdown 便携导出是独立能力，不复用含完整用户内容的 restore point；默认排除 secret、credential reference、内部 job 和本机对象存储路径。（已实现）
+- 普通启动 migration 在 SQLx 写 schema 前创建完整 restore point；`guard.running.json` 遗留且仍有 pending migration 时 fail closed，并保留 verified backup ID。
+- 启动 migration 失败时不会挂载普通 Library 或后台服务；应用进入 `StartupState::Recovery`，只开放备份列表、校验、显式 restore 准备和重启。
 
 ## 5. Migration Policy
 
@@ -100,7 +103,10 @@ Local Edition 必须支持：
 - 破坏性 migration 必须先创建备份。
 - restore candidate 迁移失败不得触碰在线数据；启动期迁移失败必须自动 rollback 或停止启动，禁止在不一致数据上继续运行。
 - 不允许静默删除用户数据。
+
 - 旧 AI analysis 和 evaluation result 不因 schema 升级被覆盖。
+
+当前自动化已覆盖 0001/0002/0003 历史 schema、1000 对象 v1 数据集、外键/FTS/隐私/AI/Evaluation/job/provider/tombstone 不变量、未知未来 migration 的 fail-closed、启动 recovery UI 的受限操作展示，以及便携导出默认排除 secret 与本机 storage URI。真实安装包原地升级和进程级强制终止仍未完成。
 
 ## 6. Incident Playbooks
 

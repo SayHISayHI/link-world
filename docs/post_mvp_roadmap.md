@@ -45,7 +45,7 @@
 | Sprint 1B 凭据持久化 | 已实现，待真实机回归 | Windows Credential Manager；数据库只保存引用 |
 | Sprint 1C 导航与列表边界 | 已实现，待 UI 回归 | All/Inbox/Articles/GitHub/Prompts/Failed 后端过滤；30 条分页 |
 | Sprint 1D 文档契约 | 已同步 | API、架构、安全、PRD、UI、数据库与本路线图 |
-| Sprint 2 数据安全 | 执行中 | 创建/列出/验证与两阶段恢复/rollback 已实现；导出、迁移 fixture、真实 Windows 故障矩阵待实现 |
+| Sprint 2 数据安全 | 执行中 | 备份/两阶段恢复/rollback、0001–0003 fixture、启动迁移保护、启动恢复界面与便携导出已实现；真实 Windows 故障矩阵待实现 |
 | Sprint 3 采集可靠性 | 未开始 | 超时、受限页面、扩展回退、任务恢复 |
 | Sprint 4 搜索质量 | 未开始 | FTS 排序、过滤、索引修复与大库性能 |
 | Sprint 5 可观测性 | 未开始 | 诊断页、健康状态、脱敏支持包 |
@@ -80,13 +80,17 @@
 - 数据目录清单与版本信息。
 - 原子备份：SQLite 一致性快照、对象存储清单、manifest hash。（已实现）
 - 恢复前校验、safety backup、私有候选迁移、重启切换、phase recovery 和失败回滚。（已实现；真实 Windows 回归待完成）
-- JSON/Markdown 导出最小闭环；secret 默认不导出。
-- 从当前生产基线升级的迁移 fixture。
+- JSON/Markdown 导出最小闭环；secret 默认不导出，且不导出 credential reference、内部 job 或本机对象存储路径。（已实现）
+- 0001/0002/0003 历史 schema 到 latest 的生成式 migration fixture。（已实现）
+- 启动迁移失败进入受限 recovery UI，隐藏 create backup，展示 verified backup ID，并只开放 verify/restore/restart。（已实现；真实安装升级待回归）
+- 普通启动检测 pending migration 后先创建并验证 restore point，以 phase guard 阻止不确定 migration 自动重试。（已实现）
 
 验收：
 
-- 复制真实规模 fixture 后升级不丢行、不破坏外键和 FTS。
+- 1000 对象 v1 fixture 与 v2/v3 定向 fixture 升级不丢行、不破坏外键和 FTS。（自动化已通过；真实用户规模仍需安装包回归）
 - 备份中断不产生“看似成功”的半成品。
+- 启动 migration fail closed 后不进入普通 Library，recovery UI 可列出并验证 restore point，显式准备恢复或重启重试。（组件与后端自动化已通过；真实安装包回归待完成）
+- existing v1 启动升级前备份保持旧 schema；fresh DB 不备份；running guard 中断 fail closed；已提交 migration 的遗留 guard 可收敛。（自动化已通过）
 - 恢复失败时原数据目录仍可启动。（自动化故障注入已通过；安装包与强制终止矩阵待完成）
 - 本地 restore point 不含 API Key value，但为无损恢复包含用户内容和 opaque credential reference；便携导出不含 credential reference，默认排除 secret 对象。
 

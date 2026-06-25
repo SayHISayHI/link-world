@@ -17,22 +17,36 @@ pub mod telemetry;
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
-            let state = tauri::async_runtime::block_on(state::AppState::initialize(app.handle()))
-                .map_err(|error| Box::<dyn std::error::Error>::from(error.to_string()))?;
-            let capture_service = services::capture::CaptureService::from_state(&state)
-                .map_err(|error| Box::<dyn std::error::Error>::from(error.to_string()))?;
-            let ai_service = services::ai::AIEnrichmentService::from_state(&state)
+            let app_handle = app.handle().clone();
+            let data_dir = state::AppState::app_data_dir(&app_handle)
                 .map_err(|error| Box::<dyn std::error::Error>::from(error.to_string()))?;
 
-            services::browser_capture::spawn_loopback_capture_server(
-                app.handle().clone(),
-                capture_service,
-                ai_service,
-            );
-            app.manage(state);
+            match tauri::async_runtime::block_on(state::AppState::initialize_from_data_dir(
+                data_dir.clone(),
+            )) {
+                Ok(app_state) => {
+                    let capture_service = services::capture::CaptureService::from_state(&app_state)
+                        .map_err(|error| Box::<dyn std::error::Error>::from(error.to_string()))?;
+                    let ai_service = services::ai::AIEnrichmentService::from_state(&app_state)
+                        .map_err(|error| Box::<dyn std::error::Error>::from(error.to_string()))?;
+
+                    services::browser_capture::spawn_loopback_capture_server(
+                        app_handle,
+                        capture_service,
+                        ai_service,
+                    );
+                    app.manage(state::StartupState::ready(data_dir));
+                    app.manage(app_state);
+                }
+                Err(error) => {
+                    app.manage(state::StartupState::recovery(data_dir, error));
+                }
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::system::get_startup_status,
+            commands::system::restart_app,
             commands::system::ping,
             commands::backup::create_backup,
             commands::backup::list_backups,
@@ -57,6 +71,7 @@ pub fn run() {
             commands::operations::get_background_job,
             commands::operations::get_object_jobs,
             commands::operations::retry_background_job,
+            commands::portable_export::export_library,
             commands::search::search_hybrid,
             commands::search::rebuild_search_index,
             commands::search::reindex_object

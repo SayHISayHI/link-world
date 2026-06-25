@@ -28,6 +28,38 @@ export interface IpcResponse<T> {
   error?: IpcError;
 }
 
+export type StartupMode = "ready" | "recovery";
+
+export type StartupRecoveryKind =
+  | "database_migration"
+  | "restore"
+  | "database"
+  | "storage"
+  | "unknown";
+
+export interface StartupMigrationRecovery {
+  phase: "prepared" | "running" | string;
+  backupId?: string;
+  fromVersion?: number;
+  targetVersion: number;
+  appVersion: string;
+  createdAt: string;
+}
+
+export interface StartupIssue {
+  code: IpcErrorCode;
+  title: string;
+  message: string;
+  recoveryKind: StartupRecoveryKind;
+  verifiedBackupId?: string;
+  migration?: StartupMigrationRecovery;
+}
+
+export interface StartupStatus {
+  mode: StartupMode;
+  backendVersion: string;
+  issue?: StartupIssue;
+}
 
 export interface BackupSummary {
   backupId: string;
@@ -56,6 +88,17 @@ export interface RestoreStatus {
   status: "succeeded" | "rolled_back" | "failed" | string;
   completedAt: string;
   message?: string;
+}
+
+export interface PortableExportSummary {
+  exportId: string;
+  exportRoot: string;
+  format: string;
+  objectCount: number;
+  skippedSecretCount: number;
+  markdownFileCount: number;
+  jsonFileCount: number;
+  createdAt: string;
 }
 
 export interface PingResponse {

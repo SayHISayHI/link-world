@@ -814,7 +814,10 @@ Local Edition 推荐:
 - Local audit log: 关键操作、AI 调用和插件访问记录。
 - Local restore points: SQLite 一致性快照、对象文件与版本化 hash manifest；不等同于便携导出。
 - Restore lifecycle: 在线 prepare + safety backup；重启后在 pool 建立前用 phase marker 切换；候选初始化失败自动 rollback。
+- Portable exports: app data `exports/<export-id>/` 下的 Markdown/JSON 目录；默认排除 secret、credential reference、内部 job 和本机 storage URI，不等同于 restore point。
+- Startup migration guard: 已有用户 schema 在 SQLx migration 前创建并验证 restore point；不确定的 running phase 阻止自动重试。
 
+- Startup recovery UI: 启动失败时注册受限 `StartupState::Recovery`，不挂载普通 Library、不启动后台服务，只允许列出/验证 restore point、显式准备恢复或重启重试。
 本地数据目录需要明确分层:
 
 - `metadata`: 结构化数据库。
@@ -825,6 +828,7 @@ Local Edition 推荐:
 - `logs`: 本地运行日志。
 - `backups`: 先 staging、后原子发布的同机 restore point；包含用户内容，不包含 credential value。
 - `restore`: 有界 pending phase marker、迁移后的私有 candidate、短期 rollback payload 和脱敏 last result。
+- `migration`: 有界 prepared/running guard 和脱敏 last result；只保存 restore point 标识与 schema/app 版本。
 
 ### 9.2 Cloud storage
 
@@ -1360,10 +1364,11 @@ Local Edition 也需要可观测性，但默认只对用户本机可见。
 
 必须支持：
 
-- 导出单个对象为 Markdown + JSON metadata。
-- 导出 collection 为 Markdown folder。
-- 导出全库 JSONL。
-- 导出时保留来源、采集时间、AI trace 摘要和 evaluation verdict。
+- 当前已实现全库非 secret 对象的 Markdown + JSON directory export，并生成 manifest、objects.jsonl、逐对象 metadata.json 和 document.md。
+- 后续支持导出单个对象为 Markdown + JSON metadata。
+- 后续支持导出 collection 为 Markdown folder。
+- 导出全库 JSONL 必须持续保留。
+- 导出时保留来源、采集时间、AI trace 摘要和 evaluation verdict，但不得包含 credential reference、内部 job、本机 object storage URI 或 secret 正文。
 
 ### 19.3 Deletion semantics
 

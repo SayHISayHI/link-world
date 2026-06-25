@@ -279,6 +279,10 @@ pub fn read_last_status(data_dir: &Path) -> AppResult<Option<RestoreStatus>> {
     read_bounded_json(&path).map(Some)
 }
 
+pub fn has_pending_restore_in_dir(data_dir: &Path) -> AppResult<bool> {
+    Ok(find_pending_marker(&data_dir.join(RESTORE_DIR_NAME))?.is_some())
+}
+
 async fn apply_prepared_restore(
     data_dir: &Path,
     marker: RestoreMarker,
@@ -773,13 +777,17 @@ fn digest_to_hex(bytes: impl AsRef<[u8]>) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        begin_pending_restore, restore_rollback_file, sanitize_status_message, RestoreService,
+        begin_pending_restore, candidate_dir_name, copy_manifest_entry, find_pending_marker,
+        move_live_to_rollback, move_required, restore_rollback_file, rollback_dir_name,
+        sanitize_status_message, transition_phase, RestorePhase, RestoreService,
     };
+    use crate::domain::backup::BackupFileEntry;
+    use crate::errors::AppError;
     use crate::services::backup::BackupService;
     use crate::storage::database::Database;
     use crate::storage::object_store::ObjectStore;
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use uuid::Uuid;
 
     #[test]
@@ -789,6 +797,28 @@ mod tests {
         let sanitized = sanitize_status_message(&data_dir, &message);
         assert!(!sanitized.contains("C:/Users/example"));
         assert!(sanitized.chars().count() <= 513);
+    }
+
+    #[test]
+    fn candidate_copy_rechecks_hash_after_source_verification() {
+        let root =
+            std::env::temp_dir().join(format!("link-world-copy-race-test-{}", Uuid::new_v4()));
+        let source_root = root.join("source");
+        let destination_root = root.join("destination");
+        fs::create_dir_all(source_root.join("objects")).expect("source directory should create");
+        fs::create_dir_all(&destination_root).expect("destination directory should create");
+        fs::write(source_root.join("objects").join("payload.bin"), b"changed")
+            .expect("changed source should write");
+        let entry = BackupFileEntry {
+            relative_path: "objects/payload.bin".to_string(),
+            size_bytes: 7,
+            sha256: "0".repeat(64),
+        };
+
+        let error = copy_manifest_entry(&source_root, &destination_root, &entry)
+            .expect_err("copy must reject a source changed after verification");
+        assert!(matches!(error, AppError::RestoreInvalid(_)));
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
@@ -842,6 +872,286 @@ mod tests {
             "0.1.0-test".to_string(),
         );
         (data_dir, database, object_store, backup_service)
+    }
+
+    async fn prepared_restore_fixture() -> (PathBuf, Database, RestoreService, String, String) {
+        let (data_dir, database, object_store, backup_service) = fixture().await;
+        sqlx::query("CREATE TABLE restore_probe(value TEXT NOT NULL)")
+            .execute(database.pool())
+            .await
+            .expect("probe table should create");
+        sqlx::query("INSERT INTO restore_probe(value) VALUES ('target')")
+            .execute(database.pool())
+            .await
+            .expect("target probe should insert");
+        object_store
+            .write_capture_snapshot("object-1", "snapshot-1", b"target".to_vec())
+            .await
+            .expect("target object should write");
+        let target = backup_service
+            .create_backup()
+            .await
+            .expect("target backup should create");
+
+        sqlx::query("UPDATE restore_probe SET value = 'current'")
+            .execute(database.pool())
+            .await
+            .expect("current probe should update");
+        fs::write(
+            object_store.root().join("object-1").join("snapshot-1.json"),
+            b"current",
+        )
+        .expect("current object should write");
+
+        let restore_service = RestoreService::new(backup_service, data_dir.clone());
+        let preparation = restore_service
+            .prepare_restore(&target.backup_id)
+            .await
+            .expect("restore should prepare");
+        assert!(preparation.restart_required);
+        assert_ne!(preparation.backup_id, preparation.safety_backup_id);
+
+        (
+            data_dir,
+            database,
+            restore_service,
+            preparation.backup_id,
+            preparation.safety_backup_id,
+        )
+    }
+
+    async fn assert_live_state(data_dir: &Path, expected: &str) {
+        let database = Database::initialize(data_dir.to_path_buf())
+            .await
+            .expect("live database should initialize");
+        let value: String = sqlx::query_scalar("SELECT value FROM restore_probe")
+            .fetch_one(database.pool())
+            .await
+            .expect("probe should query");
+        assert_eq!(value, expected);
+        assert_eq!(
+            fs::read(
+                data_dir
+                    .join("objects")
+                    .join("object-1")
+                    .join("snapshot-1.json")
+            )
+            .expect("live object should read"),
+            expected.as_bytes()
+        );
+        database.pool().close().await;
+    }
+
+    #[tokio::test]
+    async fn existing_pending_restore_rejects_second_prepare_without_new_safety_backup() {
+        let (data_dir, database, restore_service, target_id, _safety_id) =
+            prepared_restore_fixture().await;
+        let backup_root = data_dir.join("backups");
+        let before_count = fs::read_dir(&backup_root)
+            .expect("backup root should read")
+            .filter_map(Result::ok)
+            .filter(|entry| entry.path().is_dir())
+            .count();
+
+        let error = restore_service
+            .prepare_restore(&target_id)
+            .await
+            .expect_err("second prepare must be rejected");
+        assert!(matches!(error, AppError::RestoreInvalid(_)));
+
+        let after_count = fs::read_dir(&backup_root)
+            .expect("backup root should read")
+            .filter_map(Result::ok)
+            .filter(|entry| entry.path().is_dir())
+            .count();
+        assert_eq!(after_count, before_count);
+
+        database.pool().close().await;
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[tokio::test]
+    async fn moving_live_interruption_restores_only_payloads_already_moved() {
+        let (data_dir, database, restore_service, _target_id, safety_id) =
+            prepared_restore_fixture().await;
+        database.pool().close().await;
+
+        let restore_root = data_dir.join("restore");
+        let (phase, marker) = find_pending_marker(&restore_root)
+            .expect("pending marker should read")
+            .expect("prepared marker should exist");
+        assert_eq!(phase, RestorePhase::Prepared);
+        transition_phase(
+            &restore_root,
+            RestorePhase::Prepared,
+            RestorePhase::MovingLive,
+        )
+        .expect("phase should advance");
+        let rollback_dir = restore_root.join(rollback_dir_name(&marker.transaction_id));
+        fs::create_dir(&rollback_dir).expect("rollback directory should create");
+        move_required(
+            &data_dir.join("link-world.sqlite3"),
+            &rollback_dir.join("link-world.sqlite3"),
+        )
+        .expect("database should move before simulated interruption");
+
+        assert!(begin_pending_restore(&data_dir)
+            .await
+            .expect("moving-live recovery should succeed")
+            .is_none());
+        assert_live_state(&data_dir, "current").await;
+        let status = restore_service
+            .get_last_status()
+            .expect("restore status should read")
+            .expect("restore status should exist");
+        assert_eq!(status.status, "rolled_back");
+        assert!(data_dir.join("backups").join(safety_id).is_dir());
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[tokio::test]
+    async fn live_moved_interruption_removes_partial_candidate_and_restores_old_data() {
+        let (data_dir, database, restore_service, _target_id, _safety_id) =
+            prepared_restore_fixture().await;
+        database.pool().close().await;
+
+        let restore_root = data_dir.join("restore");
+        let (_, marker) = find_pending_marker(&restore_root)
+            .expect("pending marker should read")
+            .expect("prepared marker should exist");
+        transition_phase(
+            &restore_root,
+            RestorePhase::Prepared,
+            RestorePhase::MovingLive,
+        )
+        .expect("phase should advance");
+        let rollback_dir = restore_root.join(rollback_dir_name(&marker.transaction_id));
+        fs::create_dir(&rollback_dir).expect("rollback directory should create");
+        move_live_to_rollback(&data_dir, &rollback_dir).expect("all live payloads should move");
+        transition_phase(
+            &restore_root,
+            RestorePhase::MovingLive,
+            RestorePhase::LiveMoved,
+        )
+        .expect("phase should advance");
+        let candidate_dir = restore_root.join(candidate_dir_name(&marker.transaction_id));
+        move_required(
+            &candidate_dir.join("database.sqlite3"),
+            &data_dir.join("link-world.sqlite3"),
+        )
+        .expect("candidate database should install before simulated interruption");
+
+        assert!(begin_pending_restore(&data_dir)
+            .await
+            .expect("live-moved recovery should succeed")
+            .is_none());
+        assert_live_state(&data_dir, "current").await;
+        let status = restore_service
+            .get_last_status()
+            .expect("restore status should read")
+            .expect("restore status should exist");
+        assert_eq!(status.status, "rolled_back");
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[tokio::test]
+    async fn candidate_installed_interruption_resumes_validation_and_completion() {
+        let (data_dir, database, restore_service, target_id, _safety_id) =
+            prepared_restore_fixture().await;
+        database.pool().close().await;
+
+        let interrupted_transaction = begin_pending_restore(&data_dir)
+            .await
+            .expect("prepared restore should apply")
+            .expect("restore transaction should exist");
+        assert_eq!(interrupted_transaction.backup_id(), target_id);
+        drop(interrupted_transaction);
+
+        let resumed_transaction = begin_pending_restore(&data_dir)
+            .await
+            .expect("candidate-installed restore should resume")
+            .expect("resumed transaction should exist");
+        assert_eq!(resumed_transaction.backup_id(), target_id);
+        assert_live_state(&data_dir, "target").await;
+        resumed_transaction
+            .complete()
+            .expect("resumed restore should complete");
+
+        let status = restore_service
+            .get_last_status()
+            .expect("restore status should read")
+            .expect("restore status should exist");
+        assert_eq!(status.status, "succeeded");
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[tokio::test]
+    async fn prepared_candidate_tampering_fails_without_touching_live_data() {
+        let (data_dir, database, restore_service, _target_id, _safety_id) =
+            prepared_restore_fixture().await;
+        database.pool().close().await;
+
+        let restore_root = data_dir.join("restore");
+        let (_, marker) = find_pending_marker(&restore_root)
+            .expect("pending marker should read")
+            .expect("prepared marker should exist");
+        fs::write(
+            restore_root
+                .join(candidate_dir_name(&marker.transaction_id))
+                .join("objects")
+                .join("object-1")
+                .join("snapshot-1.json"),
+            b"tampered",
+        )
+        .expect("candidate should be tampered");
+
+        assert!(begin_pending_restore(&data_dir)
+            .await
+            .expect("invalid prepared candidate should be abandoned")
+            .is_none());
+        assert_live_state(&data_dir, "current").await;
+        let status = restore_service
+            .get_last_status()
+            .expect("restore status should read")
+            .expect("restore status should exist");
+        assert_eq!(status.status, "failed");
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[tokio::test]
+    async fn missing_required_rollback_payload_fails_closed() {
+        let (data_dir, database, _restore_service, _target_id, safety_id) =
+            prepared_restore_fixture().await;
+        database.pool().close().await;
+
+        let restore_root = data_dir.join("restore");
+        let (_, marker) = find_pending_marker(&restore_root)
+            .expect("pending marker should read")
+            .expect("prepared marker should exist");
+        transition_phase(
+            &restore_root,
+            RestorePhase::Prepared,
+            RestorePhase::MovingLive,
+        )
+        .expect("phase should advance");
+        let rollback_dir = restore_root.join(rollback_dir_name(&marker.transaction_id));
+        fs::create_dir(&rollback_dir).expect("rollback directory should create");
+        move_live_to_rollback(&data_dir, &rollback_dir).expect("all live payloads should move");
+        transition_phase(
+            &restore_root,
+            RestorePhase::MovingLive,
+            RestorePhase::LiveMoved,
+        )
+        .expect("phase should advance");
+        fs::remove_file(rollback_dir.join("link-world.sqlite3"))
+            .expect("rollback database should be removed for fault injection");
+
+        let error = begin_pending_restore(&data_dir)
+            .await
+            .expect_err("missing rollback payload must stop startup");
+        assert!(matches!(error, AppError::RestoreInvalid(_)));
+        assert!(data_dir.join("backups").join(safety_id).is_dir());
+        let _ = fs::remove_dir_all(data_dir);
     }
 
     #[tokio::test]

@@ -4,11 +4,17 @@ import { StorageSettings } from "./StorageSettings";
 
 const useBackupsMock = vi.hoisted(() => vi.fn());
 
+const usePortableExportMock = vi.hoisted(() => vi.fn());
 vi.mock("../../hooks/commands/useBackups", () => ({
   useBackups: useBackupsMock,
 }));
 
+vi.mock("../../hooks/commands/usePortableExport", () => ({
+  usePortableExport: usePortableExportMock,
+}));
+
 const createBackup = vi.fn();
+const exportLibrary = vi.fn();
 const loadBackups = vi.fn();
 const loadRestoreStatus = vi.fn();
 const restoreBackup = vi.fn();
@@ -31,10 +37,15 @@ function hookState(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   createBackup.mockReset();
+  exportLibrary.mockReset();
   loadBackups.mockReset();
   loadRestoreStatus.mockReset();
   restoreBackup.mockReset();
   verifyBackup.mockReset();
+  usePortableExportMock.mockReturnValue({
+    exporting: false,
+    exportLibrary,
+  });
   useBackupsMock.mockReturnValue(hookState());
 });
 
@@ -48,6 +59,30 @@ describe("StorageSettings", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Create backup" }));
     expect(createBackup).toHaveBeenCalledOnce();
+  });
+
+  it("exports a portable non-secret Markdown and JSON copy", () => {
+    usePortableExportMock.mockReturnValue({
+      exporting: false,
+      exportLibrary,
+      summary: {
+        exportId: "export-1",
+        exportRoot: "C:/Users/example/AppData/Roaming/link-world/exports/export-1",
+        format: "markdown_json_directory",
+        objectCount: 2,
+        skippedSecretCount: 1,
+        markdownFileCount: 2,
+        jsonFileCount: 4,
+        createdAt: "2026-06-25T00:00:00Z",
+      },
+    });
+
+    render(<StorageSettings />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Export library" }));
+    expect(exportLibrary).toHaveBeenCalledOnce();
+    expect(screen.getByText(/Exported 2 objects/)).toBeInTheDocument();
+    expect(screen.getByText(/Skipped 1 secret objects/)).toBeInTheDocument();
   });
 
   it("shows verification metadata without exposing payload content", () => {
@@ -128,5 +163,41 @@ describe("StorageSettings", () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/backup-safety/)).toBeInTheDocument();
     expect(screen.getByText("database integrity check failed")).toBeInTheDocument();
+  });
+
+  it("limits startup recovery mode to restore actions", () => {
+    useBackupsMock.mockReturnValue(
+      hookState({
+        backups: [
+          {
+            backupId: "backup-guard",
+            appVersion: "0.1.0",
+            createdAt: "2026-06-23T00:00:00Z",
+            objectFileCount: 2,
+            totalSizeBytes: 8192,
+            status: "ready",
+          },
+        ],
+      }),
+    );
+
+    render(
+      <StorageSettings
+        mode="startupRecovery"
+        startupIssue={{
+          code: "ERR_DB_MIGRATION",
+          title: "Database migration needs recovery",
+          message: "automatic retry is blocked",
+          recoveryKind: "database_migration",
+          verifiedBackupId: "backup-guard",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Startup recovery")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create backup" })).not.toBeInTheDocument();
+    expect(screen.getAllByText(/backup-guard/).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "Export library" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Restore" })).toBeInTheDocument();
   });
 });
