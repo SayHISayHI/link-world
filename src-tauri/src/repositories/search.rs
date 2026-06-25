@@ -1,5 +1,5 @@
 use crate::domain::knowledge::KnowledgeObject;
-use crate::domain::search::SearchResult;
+use crate::domain::search::{SearchIndexHealthResponse, SearchResult};
 use crate::errors::{AppError, AppResult};
 use serde_json::json;
 use sqlx::sqlite::SqliteRow;
@@ -8,6 +8,7 @@ use sqlx::{Row, Sqlite, SqlitePool, Transaction};
 const DEFAULT_SEARCH_LIMIT: i64 = 20;
 const MAX_SEARCH_LIMIT: i64 = 50;
 const SEARCH_REINDEX_JOB_TYPE: &str = "search.reindex_object";
+const MAX_HEALTH_SAMPLE_IDS: i64 = 20;
 
 #[derive(Debug, Clone)]
 pub struct SearchRepository {
@@ -183,6 +184,147 @@ impl SearchRepository {
 
         tx.commit().await?;
         Ok(indexed)
+    }
+
+    pub async fn check_index_health(&self) -> AppResult<SearchIndexHealthResponse> {
+        let expected_indexed_objects = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*)
+            FROM knowledge_objects AS objects
+            WHERE objects.lifecycle_status != 'deleted'
+              AND EXISTS (
+                SELECT 1
+                FROM parsed_documents AS parsed
+                WHERE parsed.object_id = objects.id
+              )
+            "#,
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        let actual_indexed_rows =
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM knowledge_fts")
+                .fetch_one(&self.pool)
+                .await?;
+
+        let missing_object_ids = sqlx::query_scalar::<_, String>(
+            r#"
+            WITH latest_parsed AS (
+                SELECT
+                    objects.id AS object_id,
+                    (
+                        SELECT parsed.id
+                        FROM parsed_documents AS parsed
+                        WHERE parsed.object_id = objects.id
+                        ORDER BY parsed.created_at DESC, parsed.id DESC
+                        LIMIT 1
+                    ) AS parsed_document_id
+                FROM knowledge_objects AS objects
+                WHERE objects.lifecycle_status != 'deleted'
+            )
+            SELECT latest_parsed.object_id
+            FROM latest_parsed
+            LEFT JOIN knowledge_fts AS fts ON fts.object_id = latest_parsed.object_id
+            WHERE latest_parsed.parsed_document_id IS NOT NULL
+              AND fts.object_id IS NULL
+            ORDER BY latest_parsed.object_id
+            LIMIT ?1
+            "#,
+        )
+        .bind(MAX_HEALTH_SAMPLE_IDS)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let stale_object_ids = sqlx::query_scalar::<_, String>(
+            r#"
+            WITH latest_parsed AS (
+                SELECT
+                    objects.id AS object_id,
+                    (
+                        SELECT parsed.id
+                        FROM parsed_documents AS parsed
+                        WHERE parsed.object_id = objects.id
+                        ORDER BY parsed.created_at DESC, parsed.id DESC
+                        LIMIT 1
+                    ) AS parsed_document_id
+                FROM knowledge_objects AS objects
+                WHERE objects.lifecycle_status != 'deleted'
+            )
+            SELECT DISTINCT latest_parsed.object_id
+            FROM latest_parsed
+            INNER JOIN knowledge_fts AS fts ON fts.object_id = latest_parsed.object_id
+            WHERE latest_parsed.parsed_document_id IS NOT NULL
+              AND fts.parsed_document_id != latest_parsed.parsed_document_id
+            ORDER BY latest_parsed.object_id
+            LIMIT ?1
+            "#,
+        )
+        .bind(MAX_HEALTH_SAMPLE_IDS)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let orphaned_object_ids = sqlx::query_scalar::<_, String>(
+            r#"
+            WITH latest_parsed AS (
+                SELECT
+                    objects.id AS object_id,
+                    (
+                        SELECT parsed.id
+                        FROM parsed_documents AS parsed
+                        WHERE parsed.object_id = objects.id
+                        ORDER BY parsed.created_at DESC, parsed.id DESC
+                        LIMIT 1
+                    ) AS parsed_document_id
+                FROM knowledge_objects AS objects
+                WHERE objects.lifecycle_status != 'deleted'
+            )
+            SELECT DISTINCT fts.object_id
+            FROM knowledge_fts AS fts
+            LEFT JOIN latest_parsed ON latest_parsed.object_id = fts.object_id
+            WHERE latest_parsed.parsed_document_id IS NULL
+            ORDER BY fts.object_id
+            LIMIT ?1
+            "#,
+        )
+        .bind(MAX_HEALTH_SAMPLE_IDS)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let duplicate_object_ids = sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT object_id
+            FROM knowledge_fts
+            GROUP BY object_id
+            HAVING COUNT(*) > 1
+            ORDER BY object_id
+            LIMIT ?1
+            "#,
+        )
+        .bind(MAX_HEALTH_SAMPLE_IDS)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let missing_objects = count_missing_index_rows(&self.pool).await?;
+        let stale_objects = count_stale_index_rows(&self.pool).await?;
+        let orphaned_rows = count_orphaned_index_rows(&self.pool).await?;
+        let duplicate_rows = count_duplicate_index_rows(&self.pool).await?;
+
+        Ok(SearchIndexHealthResponse {
+            healthy: missing_objects == 0
+                && stale_objects == 0
+                && orphaned_rows == 0
+                && duplicate_rows == 0,
+            expected_indexed_objects,
+            actual_indexed_rows,
+            missing_objects,
+            stale_objects,
+            orphaned_rows,
+            duplicate_rows,
+            missing_object_ids,
+            stale_object_ids,
+            orphaned_object_ids,
+            duplicate_object_ids,
+        })
     }
 
     pub async fn reindex_object(
@@ -371,6 +513,102 @@ fn normalize_filter(filter_type: Option<String>) -> Option<String> {
     filter_type
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty() && value != "all")
+}
+
+async fn count_missing_index_rows(pool: &SqlitePool) -> AppResult<i64> {
+    Ok(sqlx::query_scalar::<_, i64>(
+        r#"
+        WITH latest_parsed AS (
+            SELECT
+                objects.id AS object_id,
+                (
+                    SELECT parsed.id
+                    FROM parsed_documents AS parsed
+                    WHERE parsed.object_id = objects.id
+                    ORDER BY parsed.created_at DESC, parsed.id DESC
+                    LIMIT 1
+                ) AS parsed_document_id
+            FROM knowledge_objects AS objects
+            WHERE objects.lifecycle_status != 'deleted'
+        )
+        SELECT COUNT(*)
+        FROM latest_parsed
+        LEFT JOIN knowledge_fts AS fts ON fts.object_id = latest_parsed.object_id
+        WHERE latest_parsed.parsed_document_id IS NOT NULL
+          AND fts.object_id IS NULL
+        "#,
+    )
+    .fetch_one(pool)
+    .await?)
+}
+
+async fn count_stale_index_rows(pool: &SqlitePool) -> AppResult<i64> {
+    Ok(sqlx::query_scalar::<_, i64>(
+        r#"
+        WITH latest_parsed AS (
+            SELECT
+                objects.id AS object_id,
+                (
+                    SELECT parsed.id
+                    FROM parsed_documents AS parsed
+                    WHERE parsed.object_id = objects.id
+                    ORDER BY parsed.created_at DESC, parsed.id DESC
+                    LIMIT 1
+                ) AS parsed_document_id
+            FROM knowledge_objects AS objects
+            WHERE objects.lifecycle_status != 'deleted'
+        )
+        SELECT COUNT(DISTINCT latest_parsed.object_id)
+        FROM latest_parsed
+        INNER JOIN knowledge_fts AS fts ON fts.object_id = latest_parsed.object_id
+        WHERE latest_parsed.parsed_document_id IS NOT NULL
+          AND fts.parsed_document_id != latest_parsed.parsed_document_id
+        "#,
+    )
+    .fetch_one(pool)
+    .await?)
+}
+
+async fn count_orphaned_index_rows(pool: &SqlitePool) -> AppResult<i64> {
+    Ok(sqlx::query_scalar::<_, i64>(
+        r#"
+        WITH latest_parsed AS (
+            SELECT
+                objects.id AS object_id,
+                (
+                    SELECT parsed.id
+                    FROM parsed_documents AS parsed
+                    WHERE parsed.object_id = objects.id
+                    ORDER BY parsed.created_at DESC, parsed.id DESC
+                    LIMIT 1
+                ) AS parsed_document_id
+            FROM knowledge_objects AS objects
+            WHERE objects.lifecycle_status != 'deleted'
+        )
+        SELECT COUNT(*)
+        FROM knowledge_fts AS fts
+        LEFT JOIN latest_parsed ON latest_parsed.object_id = fts.object_id
+        WHERE latest_parsed.parsed_document_id IS NULL
+        "#,
+    )
+    .fetch_one(pool)
+    .await?)
+}
+
+async fn count_duplicate_index_rows(pool: &SqlitePool) -> AppResult<i64> {
+    Ok(sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT COALESCE(SUM(row_count - 1), 0)
+        FROM (
+            SELECT COUNT(*) AS row_count
+            FROM knowledge_fts
+            GROUP BY object_id
+            HAVING COUNT(*) > 1
+        )
+        "#,
+    )
+    .fetch_one(pool)
+    .await?)
 }
 
 fn map_search_error(error: sqlx::Error) -> AppError {
@@ -585,6 +823,129 @@ mod tests {
         assert!(inbox_results
             .iter()
             .all(|result| result.object.lifecycle_status == "parsed"));
+    }
+
+    #[tokio::test]
+    async fn search_index_health_reports_healthy_index() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        seed_searchable_object(database.pool()).await;
+        reindex(database.pool(), "obj-search").await;
+        let repository = SearchRepository::new(database.pool().clone());
+
+        let health = repository
+            .check_index_health()
+            .await
+            .expect("health check should work");
+
+        assert!(health.healthy);
+        assert_eq!(health.expected_indexed_objects, 1);
+        assert_eq!(health.actual_indexed_rows, 1);
+        assert_eq!(health.missing_objects, 0);
+        assert_eq!(health.stale_objects, 0);
+        assert_eq!(health.orphaned_rows, 0);
+    }
+
+    #[tokio::test]
+    async fn search_index_health_reports_missing_stale_and_orphaned_rows() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        seed_custom_searchable_object(
+            database.pool(),
+            "obj-missing-index",
+            "article",
+            "Missing Index",
+            "missing health marker",
+            "personal",
+            "parsed",
+        )
+        .await;
+        seed_custom_searchable_object(
+            database.pool(),
+            "obj-stale-index",
+            "article",
+            "Stale Index",
+            "stale health marker old",
+            "personal",
+            "parsed",
+        )
+        .await;
+        seed_custom_searchable_object(
+            database.pool(),
+            "obj-orphan-index",
+            "article",
+            "Orphan Index",
+            "orphan health marker",
+            "personal",
+            "parsed",
+        )
+        .await;
+        reindex(database.pool(), "obj-stale-index").await;
+        reindex(database.pool(), "obj-orphan-index").await;
+
+        sqlx::query(
+            r#"
+            INSERT INTO parsed_documents (
+                id, object_id, title, text_content, word_count, content_hash, parser_id, parser_version, created_at
+            ) VALUES (
+                'parsed-obj-stale-index-new', 'obj-stale-index', 'Stale Index',
+                'stale health marker new latest document',
+                6, 'hash-stale-new', 'test.parser', '0.1.0', '2026-06-17T00:01:00Z'
+            )
+            "#,
+        )
+        .execute(database.pool())
+        .await
+        .expect("new parsed document should insert");
+        sqlx::query("UPDATE knowledge_objects SET lifecycle_status = 'deleted' WHERE id = ?1")
+            .bind("obj-orphan-index")
+            .execute(database.pool())
+            .await
+            .expect("orphan fixture object should be marked deleted");
+        sqlx::query(
+            r#"
+            INSERT INTO knowledge_fts (
+                object_id,
+                parsed_document_id,
+                title,
+                author,
+                content,
+                ai_summary
+            )
+            SELECT
+                object_id,
+                parsed_document_id,
+                title,
+                author,
+                content,
+                ai_summary
+            FROM knowledge_fts
+            WHERE object_id = 'obj-stale-index'
+            "#,
+        )
+        .execute(database.pool())
+        .await
+        .expect("duplicate FTS row should insert");
+
+        let repository = SearchRepository::new(database.pool().clone());
+        let health = repository
+            .check_index_health()
+            .await
+            .expect("health check should detect inconsistencies");
+
+        assert!(!health.healthy);
+        assert_eq!(health.expected_indexed_objects, 2);
+        assert_eq!(health.actual_indexed_rows, 3);
+        assert_eq!(health.missing_objects, 1);
+        assert_eq!(health.stale_objects, 1);
+        assert_eq!(health.orphaned_rows, 1);
+        assert_eq!(health.duplicate_rows, 1);
+        assert_eq!(health.missing_object_ids, vec!["obj-missing-index"]);
+        assert_eq!(health.stale_object_ids, vec!["obj-stale-index"]);
+        assert_eq!(health.orphaned_object_ids, vec!["obj-orphan-index"]);
+        assert_eq!(health.duplicate_object_ids, vec!["obj-stale-index"]);
     }
 
     #[tokio::test]

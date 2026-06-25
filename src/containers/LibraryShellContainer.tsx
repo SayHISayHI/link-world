@@ -5,6 +5,7 @@ import { ObjectDetail } from "../components/library/ObjectDetail";
 import { ObjectList } from "../components/library/ObjectList";
 import { Sidebar } from "../components/library/Sidebar";
 import { SettingsPanel, type SettingsPanelName } from "../components/settings/SettingsPanel";
+import { useCheckSearchIndex } from "../hooks/commands/useCheckSearchIndex";
 import { useDeleteObject } from "../hooks/commands/useDeleteObject";
 import { useObjectDetail } from "../hooks/commands/useObjectDetail";
 import { useObjectJobs } from "../hooks/commands/useObjectJobs";
@@ -22,7 +23,12 @@ import type { AppUiError } from "../lib/errors";
 import { useLibraryStore } from "../store/libraryStore";
 import { useSearchStore } from "../store/searchStore";
 import { useUiStore } from "../store/uiStore";
-import type { BackgroundJob, KnowledgeObject } from "../types/api";
+import type {
+  BackgroundJob,
+  KnowledgeObject,
+  RebuildSearchIndexResponse,
+  SearchIndexHealthResponse,
+} from "../types/api";
 
 const LIBRARY_PAGE_SIZE = 30;
 
@@ -60,6 +66,7 @@ export function LibraryShellContainer() {
   const [captureUrl, setCaptureUrl] = useState("");
   const [lastCaptureJob, setLastCaptureJob] = useState<CaptureJobCompletedPayload>();
   const [hasMoreObjects, setHasMoreObjects] = useState(false);
+  const [searchMaintenanceMode, setSearchMaintenanceMode] = useState<"check" | "rebuild">();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const { objects, selectedObjectId, selectedDetail, selectObject, setObjects, setSelectedDetail } = useLibraryStore();
   const { query: searchQuery, setQuery: setSearchQuery } = useSearchStore();
@@ -112,6 +119,12 @@ export function LibraryShellContainer() {
     loading: rebuildSearchIndexLoading,
     rebuildSearchIndex,
   } = useRebuildSearchIndex();
+  const {
+    data: searchIndexHealth,
+    error: searchIndexHealthError,
+    loading: searchIndexHealthLoading,
+    checkSearchIndex,
+  } = useCheckSearchIndex();
   const {
     data: reindexObjectResult,
     error: reindexObjectError,
@@ -480,6 +493,7 @@ export function LibraryShellContainer() {
   }, [libraryFilter, loadRecentObjects, objects.length]);
 
   const handleRebuildSearchIndex = useCallback(async () => {
+    setSearchMaintenanceMode("rebuild");
     const response = await rebuildSearchIndex();
     if (!response) {
       return;
@@ -487,6 +501,11 @@ export function LibraryShellContainer() {
 
     await Promise.all([refreshRecentObjects(), refreshSearchResults()]);
   }, [rebuildSearchIndex, refreshRecentObjects, refreshSearchResults]);
+
+  const handleCheckSearchIndex = useCallback(async () => {
+    setSearchMaintenanceMode("check");
+    await checkSearchIndex();
+  }, [checkSearchIndex]);
 
   const handleReindexSelectedObject = useCallback(async () => {
     if (!selectedObjectId) {
@@ -579,11 +598,13 @@ export function LibraryShellContainer() {
             searchResults={searchResults}
             searchLoading={searchLoading}
             searchError={searchError}
-            searchMaintenanceLoading={rebuildSearchIndexLoading}
-            searchMaintenanceError={rebuildSearchIndexError}
-            searchMaintenanceMessage={
-              rebuildSearchIndexResult ? `Indexed ${rebuildSearchIndexResult.indexedObjects} objects` : undefined
-            }
+            searchMaintenanceLoading={rebuildSearchIndexLoading || searchIndexHealthLoading}
+            searchMaintenanceError={rebuildSearchIndexError ?? searchIndexHealthError}
+            searchMaintenanceMessage={searchMaintenanceMessage(
+              searchMaintenanceMode,
+              rebuildSearchIndexResult,
+              searchIndexHealth,
+            )}
             onCaptureValueChange={setCaptureUrl}
             onCaptureSubmit={handleCaptureSubmit}
             onSearchValueChange={setSearchQuery}
@@ -591,6 +612,7 @@ export function LibraryShellContainer() {
               setSearchQuery("");
               resetSearch();
             }}
+            onCheckSearchIndex={handleCheckSearchIndex}
             onRebuildSearchIndex={handleRebuildSearchIndex}
             onLoadMore={() => {
               void handleLoadMoreObjects();
@@ -659,6 +681,26 @@ function reindexStatusMessage(
   }
 
   return result.indexed ? "Search index updated." : "No parsed document available for indexing.";
+}
+
+function searchMaintenanceMessage(
+  mode: "check" | "rebuild" | undefined,
+  rebuildResult?: RebuildSearchIndexResponse,
+  health?: SearchIndexHealthResponse,
+) {
+  if (mode === "rebuild" && rebuildResult) {
+    return `Indexed ${rebuildResult.indexedObjects} objects`;
+  }
+
+  if (mode !== "check" || !health) {
+    return undefined;
+  }
+
+  if (health.healthy) {
+    return `Search index healthy: ${health.actualIndexedRows}/${health.expectedIndexedObjects} rows indexed.`;
+  }
+
+  return `Search index needs rebuild: ${health.missingObjects} missing, ${health.staleObjects} stale, ${health.orphanedRows} orphaned, ${health.duplicateRows} duplicate.`;
 }
 
 function inferEvaluatorType(object?: KnowledgeObject) {

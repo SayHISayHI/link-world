@@ -1,4 +1,6 @@
-use crate::domain::search::{RebuildSearchIndexResponse, ReindexObjectResponse, SearchResult};
+use crate::domain::search::{
+    RebuildSearchIndexResponse, ReindexObjectResponse, SearchIndexHealthResponse, SearchResult,
+};
 use crate::errors::{map_ipc_result, IpcResponse};
 use crate::services::search::SearchService;
 use crate::state::AppState;
@@ -42,6 +44,19 @@ pub async fn rebuild_search_index(
         );
         let _ = app_handle.emit("library://objects-updated", ());
     }
+
+    Ok(map_ipc_result(result))
+}
+
+#[tauri::command]
+pub async fn check_search_index(
+    state: tauri::State<'_, AppState>,
+) -> Result<IpcResponse<SearchIndexHealthResponse>, String> {
+    let result = async {
+        let service = SearchService::from_state(state.inner())?;
+        service.check_search_index().await
+    }
+    .await;
 
     Ok(map_ipc_result(result))
 }

@@ -216,6 +216,21 @@ export interface SearchResult {
   score: number;
 }
 
+export interface SearchIndexHealthResponse {
+  healthy: boolean;
+  expectedIndexedObjects: number;
+  actualIndexedRows: number;
+  missingObjects: number;
+  staleObjects: number;
+  orphanedRows: number;
+  duplicateRows: number;
+  // Sample object ids only, capped by the backend; never includes content/snippets.
+  missingObjectIds: string[];
+  staleObjectIds: string[];
+  orphanedObjectIds: string[];
+  duplicateObjectIds: string[];
+}
+
 export type ModelApiFamily =
   | 'openai_chat_completions'
   | 'openai_responses'
@@ -643,4 +658,8 @@ export interface MaintenanceCommands {
   // 重新索引单个对象。
   // invoke('reindex_object', { objectId })
   reindex_object: (args: { objectId: string }) => Promise<IpcResponse<{ jobId: string }>>;
+
+  // 只读检查 FTS 索引一致性；修复仍通过 rebuild/reindex 执行。
+  // invoke('check_search_index')
+  check_search_index: () => Promise<IpcResponse<SearchIndexHealthResponse>>;
 }

@@ -175,6 +175,7 @@ Rules:
 - FTS、vector、cache 是派生索引，不得作为正文 source of truth。
 - FTS ranking uses explicit field weights: title 8, author 3, parsed content 1 and latest AI summary 4. `object_id` and `parsed_document_id` remain unindexed identifiers. Search snippets must be derived from FTS at query time and suppressed for `secret` objects so result rows do not reveal secret body content.
 - Search filter composition reuses Library navigation semantics: `inbox` means `captured` or `parsed`, `failed` means lifecycle failed, and other values are matched against `object_type`.
+- Search index health checks are read-only and return counts plus capped object-id samples for missing, stale, orphaned and duplicate FTS rows. They must not return snippets, parsed text, AI summaries, URLs with query content or object bodies. Repair remains an explicit `rebuild_search_index` or `reindex_object` action.
 
 Recommended repositories:
 

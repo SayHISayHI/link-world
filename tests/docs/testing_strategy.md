@@ -115,6 +115,7 @@ Must cover:
 - FTS search uses parsed document and AI summary.
 - FTS search ranks title matches above repeated body-only matches according to documented weights, and suppresses snippets for `secret` objects.
 - FTS search composes with Library filters for object type, `inbox` lifecycle and `failed` lifecycle semantics.
+- search index health detects missing, stale, orphaned and duplicate FTS rows without returning content snippets.
 
 ### 4.3 Job idempotency tests
 

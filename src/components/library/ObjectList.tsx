@@ -33,6 +33,7 @@ interface ObjectListProps {
   onCaptureSubmit: () => void;
   onSearchValueChange: (value: string) => void;
   onClearSearch: () => void;
+  onCheckSearchIndex: () => void;
   onRebuildSearchIndex: () => void;
   onLoadMore: () => void;
   onSelectObject: (objectId: string) => void;
@@ -61,6 +62,7 @@ export function ObjectList({
   onCaptureSubmit,
   onSearchValueChange,
   onClearSearch,
+  onCheckSearchIndex,
   onRebuildSearchIndex,
   onLoadMore,
   onSelectObject,
@@ -96,6 +98,15 @@ export function ObjectList({
               Clear
             </button>
           ) : null}
+          <button
+            className="h-9 shrink-0 rounded-md border border-border px-3 text-xs text-muted-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={searchMaintenanceLoading}
+            onClick={onCheckSearchIndex}
+            title="Check search index"
+            type="button"
+          >
+            Check
+          </button>
           <button
             className="flex h-9 shrink-0 items-center gap-1 rounded-md border border-border px-3 text-xs text-muted-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
             disabled={searchMaintenanceLoading}

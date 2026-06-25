@@ -120,6 +120,7 @@ Rules:
 - 空查询不调用后端。
 - 搜索结果只保存必要 snippet 和 object metadata。
 - Search command calls include the active Library filter when one is selected, so Sidebar filters and search results share backend semantics.
+- Search maintenance UI may display index health counts and capped object-id samples, but not parsed text or snippets from the health check.
 
 ### 3.4 Job state
 

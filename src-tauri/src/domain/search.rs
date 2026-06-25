@@ -24,3 +24,19 @@ pub struct ReindexObjectResponse {
     pub object_id: String,
     pub indexed: bool,
 }
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchIndexHealthResponse {
+    pub healthy: bool,
+    pub expected_indexed_objects: i64,
+    pub actual_indexed_rows: i64,
+    pub missing_objects: i64,
+    pub stale_objects: i64,
+    pub orphaned_rows: i64,
+    pub duplicate_rows: i64,
+    pub missing_object_ids: Vec<String>,
+    pub stale_object_ids: Vec<String>,
+    pub orphaned_object_ids: Vec<String>,
+    pub duplicate_object_ids: Vec<String>,
+}

@@ -363,6 +363,20 @@ export interface RebuildSearchIndexResponse {
   indexedObjects: number;
 }
 
+export interface SearchIndexHealthResponse {
+  healthy: boolean;
+  expectedIndexedObjects: number;
+  actualIndexedRows: number;
+  missingObjects: number;
+  staleObjects: number;
+  orphanedRows: number;
+  duplicateRows: number;
+  missingObjectIds: string[];
+  staleObjectIds: string[];
+  orphanedObjectIds: string[];
+  duplicateObjectIds: string[];
+}
+
 export interface ReindexObjectResponse {
   jobId: string;
   objectId: string;

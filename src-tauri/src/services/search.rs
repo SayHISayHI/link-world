@@ -1,4 +1,6 @@
-use crate::domain::search::{RebuildSearchIndexResponse, ReindexObjectResponse, SearchResult};
+use crate::domain::search::{
+    RebuildSearchIndexResponse, ReindexObjectResponse, SearchIndexHealthResponse, SearchResult,
+};
 use crate::errors::AppResult;
 use crate::repositories::search::SearchRepository;
 use crate::state::AppState;
@@ -45,6 +47,10 @@ impl SearchService {
             job_id,
             indexed_objects,
         })
+    }
+
+    pub async fn check_search_index(&self) -> AppResult<SearchIndexHealthResponse> {
+        self.repository.check_index_health().await
     }
 
     pub async fn reindex_object(&self, object_id: &str) -> AppResult<ReindexObjectResponse> {

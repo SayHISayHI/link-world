@@ -47,7 +47,7 @@
 | Sprint 1D 文档契约 | 已同步 | API、架构、安全、PRD、UI、数据库与本路线图 |
 | Sprint 2 数据安全 | 执行中 | 备份/两阶段恢复/rollback、0001–0003 fixture、启动迁移保护、启动恢复界面与便携导出已实现；真实 Windows 故障矩阵待实现 |
 | Sprint 3 采集可靠性 | 执行中 | 启动时 running job 收敛、capture 超时/HTTP/受限页/空正文分类与扩展回退提示已实现；手动 URL 去重边界已实现；AI job failureReason 分类已实现 |
-| Sprint 4 搜索质量 | 执行中 | FTS 字段权重、secret snippet 抑制和 Library filter 组合搜索已实现；索引一致性检查和大库性能待实现 |
+| Sprint 4 搜索质量 | 执行中 | FTS 字段权重、secret snippet 抑制、Library filter 组合搜索和索引一致性检查已实现；大库性能待实现 |
 | Sprint 5 可观测性 | 未开始 | 诊断页、健康状态、脱敏支持包 |
 | Sprint 6-8 Evaluation | 未开始 | 通用框架、GitHub evaluator、Prompt evaluator |
 | Sprint 9-10 Alpha 发布 | 未开始 | 安装升级、安全审计、真实用户反馈闭环 |
@@ -116,14 +116,14 @@
 交付：
 
 - FTS 排序权重、snippet 安全和分类过滤组合。（title/content/AI summary 权重、secret snippet 抑制和 Library filter 组合搜索已实现）
-- 索引一致性检查与按对象/全库重建。
+- 索引一致性检查与按对象/全库重建。（missing/stale/orphaned/duplicate 只读检查已实现；rebuild/reindex 已有入口）
 - 5k、20k 对象基准数据集。
 - 搜索空态、失败态、重建进度和取消边界。
 
 验收：
 
 - 标题、正文、AI summary 的权重符合定义。（当前权重：title 8、author 3、content 1、AI summary 4）
-- 删除、重新解析和重新分析后索引一致。
+- 删除、重新解析和重新分析后索引一致。（health check 可检测 missing/stale/orphaned/duplicate FTS rows）
 - 20k 对象下常用查询达到文档化性能预算。
 - sqlite-vec 仍是可选项，不能阻塞纯 FTS 发布。
 

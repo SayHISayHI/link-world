@@ -73,6 +73,7 @@ pub fn run() {
             commands::operations::retry_background_job,
             commands::portable_export::export_library,
             commands::search::search_hybrid,
+            commands::search::check_search_index,
             commands::search::rebuild_search_index,
             commands::search::reindex_object
         ])
