@@ -343,6 +343,11 @@ Job handler rules:
 - Handler 失败时分类错误：retryable、blocked、terminal。
 - Handler 不允许直接向 UI 发业务数据，只发状态事件。
 
+- Startup must converge interrupted `running` jobs before normal background services are exposed:
+  - `capture.fetch_url` with remaining retry budget returns to `queued` and clears lock fields.
+  - `capture.fetch_url` with exhausted retry budget becomes `failed` and marks the object `failed`.
+  - running jobs without a registered recovery runner become `failed` with a user-readable reason.
+  - This prevents permanent `running` state after process crash or app restart.
 Recommended handlers:
 
 - `FetchUrlJobHandler`

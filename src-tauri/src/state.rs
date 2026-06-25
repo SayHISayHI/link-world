@@ -1,5 +1,6 @@
 use crate::domain::startup::{StartupIssue, StartupMode, StartupRecoveryKind, StartupStatus};
 use crate::errors::{AppError, AppResult};
+use crate::repositories::jobs::JobsRepository;
 use crate::runtime::models::ModelProviderRegistry;
 use crate::services::migration::MigrationService;
 use crate::services::restore::begin_pending_restore;
@@ -346,6 +347,9 @@ impl AppState {
             (Ok(storage), None) => storage,
             (Err(error), None) => return Err(error),
         };
+        JobsRepository::new(database.pool().clone())
+            .recover_interrupted_jobs_on_startup()
+            .await?;
         let model_registry = ModelProviderRegistry::new()?;
         let secrets = SecretStore::system()?;
 

@@ -107,6 +107,7 @@ Must cover:
 - evaluation writes run and artifacts.
 - portable export writes manifest/JSONL/metadata/markdown, skips secret objects, and omits source/evaluation storage URI, credential references and secret body content.
 - delete creates tombstone and purge removes derived data.
+- startup job recovery requeues interrupted `capture.fetch_url` jobs with retry budget, fails exhausted capture jobs, and fails running jobs without registered recovery runners.
 - FTS search uses parsed document and AI summary.
 
 ### 4.3 Job idempotency tests
@@ -115,6 +116,7 @@ Must verify:
 
 - repeated parse with same hash does not duplicate canonical parsed document.
 - repeated AI job either deduplicates by input hash or appends intentional version.
+- startup after crash leaves no permanent `running` background jobs.
 - repeated purge stays successful.
 - repeated event handling does not duplicate FTS rows.
 

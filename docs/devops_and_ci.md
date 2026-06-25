@@ -105,12 +105,14 @@ Migration tests:
 - Deletion purge removes FTS/vector/derived rows。
 - Portable export writes non-secret Markdown/JSON artifacts and verifies that metadata excludes credential references, internal jobs and local storage URI fields。
 
+- Startup job recovery converges interrupted `running` jobs so app restart cannot leave permanent running jobs.
 Test DB strategy:
 
 - Unit tests can use in-memory SQLite when possible。
 - Migration tests should also run against a temp file DB because WAL、FTS5、sqlite-vec behavior may differ from memory。
 - Focused commands: `cargo test storage::database::migration_tests` and `cargo test services::restore`。
 - Function-level phase simulation belongs in normal CI; real-process kill tests belong in the Windows packaging matrix。
+- Focused command: `cargo test repositories::jobs` for retry and startup-running-job convergence.
 
 ## 5. GitHub Actions Draft
 

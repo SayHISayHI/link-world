@@ -1,4 +1,4 @@
-use crate::domain::jobs::{BackgroundJob, RetriedBackgroundJob};
+use crate::domain::jobs::{BackgroundJob, RetriedBackgroundJob, StartupJobRecoverySummary};
 use crate::errors::{AppError, AppResult};
 use chrono::Utc;
 use sqlx::sqlite::SqliteRow;
@@ -8,6 +8,7 @@ use uuid::Uuid;
 const DEFAULT_JOB_LIMIT: i64 = 20;
 const MAX_JOB_LIMIT: i64 = 100;
 const RETRYABLE_CAPTURE_JOB_TYPE: &str = "capture.fetch_url";
+const STARTUP_INTERRUPTED_JOB_MESSAGE: &str = "job interrupted by application shutdown";
 
 #[derive(Debug, Clone)]
 pub struct JobsRepository {
@@ -78,6 +79,96 @@ impl JobsRepository {
         Ok(rows.into_iter().map(background_job_from_row).collect())
     }
 
+    pub async fn recover_interrupted_jobs_on_startup(
+        &self,
+    ) -> AppResult<StartupJobRecoverySummary> {
+        let now = Utc::now().to_rfc3339();
+        let mut tx = self.pool.begin().await?;
+
+        let requeued = sqlx::query(
+            r#"
+            UPDATE background_jobs
+            SET
+                status = 'queued',
+                next_run_at = NULL,
+                locked_at = NULL,
+                locked_by = NULL,
+                last_error = ?1,
+                updated_at = ?2
+            WHERE status = 'running'
+              AND job_type = 'capture.fetch_url'
+              AND attempt_count < max_attempts
+            "#,
+        )
+        .bind(format!(
+            "{STARTUP_INTERRUPTED_JOB_MESSAGE}; retry scheduled"
+        ))
+        .bind(&now)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+
+        let object_failed = sqlx::query(
+            r#"
+            UPDATE knowledge_objects
+            SET
+                lifecycle_status = 'failed',
+                failure_reason = ?1,
+                updated_at = ?2
+            WHERE id IN (
+                SELECT object_id
+                FROM background_jobs
+                WHERE status = 'running'
+                  AND job_type = 'capture.fetch_url'
+                  AND attempt_count >= max_attempts
+                  AND object_id IS NOT NULL
+            )
+              AND lifecycle_status != 'deleted'
+            "#,
+        )
+        .bind(format!(
+            "{STARTUP_INTERRUPTED_JOB_MESSAGE}; retry budget exhausted"
+        ))
+        .bind(&now)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+
+        let failed = sqlx::query(
+            r#"
+            UPDATE background_jobs
+            SET
+                status = 'failed',
+                locked_at = NULL,
+                locked_by = NULL,
+                last_error = CASE
+                    WHEN job_type = 'capture.fetch_url' AND attempt_count >= max_attempts
+                        THEN ?1
+                    ELSE ?2
+                END,
+                updated_at = ?3
+            WHERE status = 'running'
+            "#,
+        )
+        .bind(format!(
+            "{STARTUP_INTERRUPTED_JOB_MESSAGE}; retry budget exhausted"
+        ))
+        .bind(format!(
+            "{STARTUP_INTERRUPTED_JOB_MESSAGE}; no automatic recovery runner is registered"
+        ))
+        .bind(&now)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+
+        tx.commit().await?;
+
+        Ok(StartupJobRecoverySummary {
+            requeued_count: requeued,
+            failed_count: failed,
+            object_failed_count: object_failed,
+        })
+    }
     pub async fn retry_background_job(&self, job_id: &str) -> AppResult<RetriedBackgroundJob> {
         let now = Utc::now().to_rfc3339();
         let mut tx = self.pool.begin().await?;
@@ -223,6 +314,135 @@ mod tests {
     use crate::repositories::knowledge_objects::KnowledgeObjectRepository;
     use crate::storage::database::Database;
 
+    #[tokio::test]
+    async fn startup_requeues_interrupted_capture_job_with_attempts_remaining() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        sqlx::query(
+            r#"
+            INSERT INTO knowledge_objects (
+                id, user_id, object_type, title, privacy_level, lifecycle_status, captured_at, updated_at
+            ) VALUES (
+                'obj-interrupted-capture', 'local', 'article', 'Interrupted Capture', 'personal', 'captured', '2026-06-17T00:00:00Z', '2026-06-17T00:00:00Z'
+            )
+            "#,
+        )
+        .execute(database.pool())
+        .await
+        .expect("object insert should succeed");
+        sqlx::query(
+            r#"
+            INSERT INTO background_jobs (
+                id, job_type, status, object_id, payload_json, attempt_count, max_attempts, locked_at, locked_by, created_at, updated_at
+            ) VALUES (
+                'job-interrupted-capture', 'capture.fetch_url', 'running', 'obj-interrupted-capture', '{}', 1, 3, '2026-06-17T00:01:00Z', 'old-process', '2026-06-17T00:00:00Z', '2026-06-17T00:01:00Z'
+            )
+            "#,
+        )
+        .execute(database.pool())
+        .await
+        .expect("job insert should succeed");
+
+        let repository = JobsRepository::new(database.pool().clone());
+        let summary = repository
+            .recover_interrupted_jobs_on_startup()
+            .await
+            .expect("startup recovery should succeed");
+        let job = repository
+            .get_background_job("job-interrupted-capture")
+            .await
+            .expect("job should be readable");
+        let locked_by: Option<String> =
+            sqlx::query_scalar("SELECT locked_by FROM background_jobs WHERE id = ?1")
+                .bind("job-interrupted-capture")
+                .fetch_one(database.pool())
+                .await
+                .expect("locked_by should query");
+
+        assert_eq!(summary.requeued_count, 1);
+        assert_eq!(summary.failed_count, 0);
+        assert_eq!(summary.object_failed_count, 0);
+        assert_eq!(job.status, "queued");
+        assert!(job
+            .last_error
+            .unwrap_or_default()
+            .contains("retry scheduled"));
+        assert!(locked_by.is_none());
+    }
+
+    #[tokio::test]
+    async fn startup_fails_exhausted_capture_and_unregistered_running_jobs() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        sqlx::query(
+            r#"
+            INSERT INTO knowledge_objects (
+                id, user_id, object_type, title, privacy_level, lifecycle_status, captured_at, updated_at
+            ) VALUES
+                ('obj-exhausted-capture', 'local', 'article', 'Exhausted Capture', 'personal', 'captured', '2026-06-17T00:00:00Z', '2026-06-17T00:00:00Z'),
+                ('obj-running-ai', 'local', 'article', 'Running AI', 'personal', 'parsed', '2026-06-17T00:00:00Z', '2026-06-17T00:00:00Z')
+            "#,
+        )
+        .execute(database.pool())
+        .await
+        .expect("objects should insert");
+        sqlx::query(
+            r#"
+            INSERT INTO background_jobs (
+                id, job_type, status, object_id, payload_json, attempt_count, max_attempts, locked_at, locked_by, created_at, updated_at
+            ) VALUES
+                ('job-exhausted-capture', 'capture.fetch_url', 'running', 'obj-exhausted-capture', '{}', 3, 3, '2026-06-17T00:01:00Z', 'old-process', '2026-06-17T00:00:00Z', '2026-06-17T00:01:00Z'),
+                ('job-running-ai', 'ai.enrich_object', 'running', 'obj-running-ai', '{}', 1, 1, '2026-06-17T00:01:00Z', 'old-process', '2026-06-17T00:00:00Z', '2026-06-17T00:01:00Z')
+            "#,
+        )
+        .execute(database.pool())
+        .await
+        .expect("jobs should insert");
+
+        let repository = JobsRepository::new(database.pool().clone());
+        let summary = repository
+            .recover_interrupted_jobs_on_startup()
+            .await
+            .expect("startup recovery should succeed");
+        let capture_job = repository
+            .get_background_job("job-exhausted-capture")
+            .await
+            .expect("capture job should read");
+        let ai_job = repository
+            .get_background_job("job-running-ai")
+            .await
+            .expect("ai job should read");
+        let capture_status: String = sqlx::query_scalar(
+            "SELECT lifecycle_status FROM knowledge_objects WHERE id = 'obj-exhausted-capture'",
+        )
+        .fetch_one(database.pool())
+        .await
+        .expect("capture object status should query");
+        let ai_status: String = sqlx::query_scalar(
+            "SELECT lifecycle_status FROM knowledge_objects WHERE id = 'obj-running-ai'",
+        )
+        .fetch_one(database.pool())
+        .await
+        .expect("ai object status should query");
+
+        assert_eq!(summary.requeued_count, 0);
+        assert_eq!(summary.failed_count, 2);
+        assert_eq!(summary.object_failed_count, 1);
+        assert_eq!(capture_job.status, "failed");
+        assert_eq!(ai_job.status, "failed");
+        assert!(capture_job
+            .last_error
+            .unwrap_or_default()
+            .contains("retry budget exhausted"));
+        assert!(ai_job
+            .last_error
+            .unwrap_or_default()
+            .contains("no automatic recovery runner"));
+        assert_eq!(capture_status, "failed");
+        assert_eq!(ai_status, "parsed");
+    }
     #[tokio::test]
     async fn retry_background_job_resets_failed_capture_job_and_object() {
         let database = Database::initialize_in_memory()
