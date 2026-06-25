@@ -249,7 +249,7 @@ impl AIEnrichmentService {
                 failure_reason: None,
             }),
             Err(error) => {
-                let failure_reason = error.to_string();
+                let failure_reason = ai_failure_reason(&error);
                 self.repository
                     .fail_enrichment_job(&job_id, &failure_reason)
                     .await?;
@@ -464,7 +464,7 @@ pub fn spawn_ai_enrichment_runner(
             Err(error) => json!({
                 "objectId": object_id,
                 "status": "failed",
-                "failureReason": error.to_string(),
+                "failureReason": ai_failure_reason(&error),
             }),
         };
 
@@ -628,6 +628,71 @@ fn is_local_base_url(base_url: &str) -> bool {
         .is_some_and(|host| matches!(host.as_str(), "localhost" | "127.0.0.1" | "::1"))
 }
 
+fn ai_failure_reason(error: &AppError) -> String {
+    match error {
+        AppError::NetworkTimeout => {
+            "ai.timeout: The model provider request timed out. Retry later, choose another provider, or use a local model if the remote provider is unavailable.".to_string()
+        }
+        AppError::ModelAuth => {
+            "ai.model_auth: Model authentication failed. Check the provider API key in Settings, then run analysis again.".to_string()
+        }
+        AppError::ModelRateLimit => {
+            "ai.rate_limit: The model provider rate-limited this request. Wait and retry, or switch the default model provider in Settings.".to_string()
+        }
+        AppError::ModelNotFound => {
+            "ai.model_not_found: The configured model or provider endpoint was not found. Check the model name and base URL in Settings.".to_string()
+        }
+        AppError::ModelOutputSchema(_) => {
+            "ai.output_schema: The model returned a response that did not match Link World's analysis schema. Retry with the same provider or choose a stronger JSON-capable model.".to_string()
+        }
+        AppError::PolicyDenied(message) => ai_policy_failure_reason(message),
+        AppError::SecretStorage => {
+            "ai.secret_storage: Link World could not read the saved model credential. Re-save the provider API key in Settings.".to_string()
+        }
+        AppError::ObjectNotFound => {
+            "ai.input_unavailable: The selected object or parsed document is no longer available for AI analysis.".to_string()
+        }
+        AppError::Unknown(message) if looks_like_retryable_provider_failure(message) => {
+            "ai.provider_unavailable: The model provider returned a temporary server or network failure after retries. Retry later or switch providers.".to_string()
+        }
+        AppError::Database(_) | AppError::Filesystem(_) => {
+            "ai.local_failure: AI analysis could not update local state. Retry after checking local storage and diagnostics.".to_string()
+        }
+        _ => {
+            "ai.failed: AI analysis failed before a usable result was saved. Retry or check model provider settings.".to_string()
+        }
+    }
+}
+
+fn ai_policy_failure_reason(message: &str) -> String {
+    let lower_message = message.to_ascii_lowercase();
+
+    if lower_message.contains("no enabled chat model provider") {
+        return "ai.not_configured: No enabled default chat model is configured. Open Settings > Models and choose a default chat provider.".to_string();
+    }
+
+    if lower_message.contains("chat base url") || lower_message.contains("default chat model") {
+        return "ai.provider_config_invalid: The default chat provider is missing a valid base URL or model name. Update it in Settings, then run analysis again.".to_string();
+    }
+
+    if lower_message.contains("sensitive") || lower_message.contains("secret") {
+        return "ai.policy_denied: This object's privacy level blocks non-local AI analysis. Use a local model provider or change the object's privacy boundary before retrying.".to_string();
+    }
+
+    "ai.policy_denied: Link World policy blocked AI analysis for this object or provider configuration.".to_string()
+}
+
+fn looks_like_retryable_provider_failure(message: &str) -> bool {
+    let lower_message = message.to_ascii_lowercase();
+
+    lower_message.contains("http 500")
+        || lower_message.contains("http 502")
+        || lower_message.contains("http 503")
+        || lower_message.contains("http 504")
+        || lower_message.contains("network request failed")
+        || lower_message.contains("provider request failed")
+}
+
 fn build_general_enrichment_prompt(input: &AIEnrichmentInput) -> String {
     let text = truncate_chars(&input.text_content, MAX_MODEL_INPUT_CHARS);
     format!(
@@ -745,10 +810,11 @@ fn truncate_chars(text: &str, max_chars: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_general_enrichment_prompt, normalize_display_hints, parse_analysis_output,
-        validate_model_provider_config, AIEnrichmentService,
+        ai_failure_reason, build_general_enrichment_prompt, normalize_display_hints,
+        parse_analysis_output, validate_model_provider_config, AIEnrichmentService,
     };
     use crate::domain::ai::{AIEnrichmentInput, ModelApiFamily, ModelProviderConfig};
+    use crate::errors::AppError;
     use crate::state::SecretStore;
     use crate::storage::database::Database;
 
@@ -830,6 +896,46 @@ mod tests {
         assert!(validate_model_provider_config(&config).is_err());
     }
 
+    #[test]
+    fn ai_failure_reason_maps_provider_failures_to_stable_user_codes() {
+        let auth = ai_failure_reason(&AppError::ModelAuth);
+        assert!(auth.starts_with("ai.model_auth:"));
+        assert!(auth.contains("Settings"));
+
+        let timeout = ai_failure_reason(&AppError::NetworkTimeout);
+        assert!(timeout.starts_with("ai.timeout:"));
+        assert!(timeout.contains("Retry"));
+
+        let rate_limit = ai_failure_reason(&AppError::ModelRateLimit);
+        assert!(rate_limit.starts_with("ai.rate_limit:"));
+
+        let schema = ai_failure_reason(&AppError::ModelOutputSchema(
+            "provider returned raw invalid JSON with details".to_string(),
+        ));
+        assert!(schema.starts_with("ai.output_schema:"));
+        assert!(!schema.contains("raw invalid JSON"));
+
+        let unavailable = ai_failure_reason(&AppError::Unknown(
+            "model provider returned HTTP 503 Service Unavailable with body".to_string(),
+        ));
+        assert!(unavailable.starts_with("ai.provider_unavailable:"));
+        assert!(!unavailable.contains("body"));
+    }
+
+    #[test]
+    fn ai_failure_reason_maps_policy_failures_to_recovery_actions() {
+        let not_configured = ai_failure_reason(&AppError::PolicyDenied(
+            "no enabled chat model provider configured".to_string(),
+        ));
+        assert!(not_configured.starts_with("ai.not_configured:"));
+
+        let privacy = ai_failure_reason(&AppError::PolicyDenied(
+            "sensitive or secret objects cannot be sent to non-local model providers".to_string(),
+        ));
+        assert!(privacy.starts_with("ai.policy_denied:"));
+        assert!(privacy.contains("local model"));
+    }
+
     #[tokio::test]
     async fn auto_enrichment_skips_without_chat_config_and_does_not_create_job() {
         let database = Database::initialize_in_memory()
@@ -852,5 +958,62 @@ mod tests {
 
         assert!(run.is_none());
         assert_eq!(job_count, 0);
+    }
+
+    #[tokio::test]
+    async fn manual_enrichment_persists_stable_failure_reason_without_chat_config() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        sqlx::query(
+            r#"
+            INSERT INTO knowledge_objects (
+                id,
+                user_id,
+                object_type,
+                title,
+                privacy_level,
+                lifecycle_status,
+                captured_at,
+                updated_at
+            ) VALUES (
+                'obj-ai-failure',
+                'local',
+                'article',
+                'AI failure fixture',
+                'personal',
+                'parsed',
+                '2026-06-25T00:00:00Z',
+                '2026-06-25T00:00:00Z'
+            )
+            "#,
+        )
+        .execute(database.pool())
+        .await
+        .expect("fixture object should insert");
+        let service = AIEnrichmentService::new(database.pool().clone(), SecretStore::default())
+            .expect("AI service should initialize");
+
+        let run = service
+            .run_enrichment_for_object("obj-ai-failure")
+            .await
+            .expect("manual enrichment should record a failed job");
+
+        assert_eq!(run.status, "failed");
+        assert!(run
+            .failure_reason
+            .as_deref()
+            .unwrap_or_default()
+            .starts_with("ai.not_configured:"));
+
+        let last_error: String =
+            sqlx::query_scalar("SELECT last_error FROM background_jobs WHERE id = ?1")
+                .bind(&run.job_id)
+                .fetch_one(database.pool())
+                .await
+                .expect("AI job failure should be persisted");
+
+        assert!(last_error.starts_with("ai.not_configured:"));
+        assert!(!last_error.contains("no enabled chat model provider configured"));
     }
 }

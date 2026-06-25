@@ -422,6 +422,7 @@ Rules:
 - Provider 错误必须映射为 `AppError`。
 - Command read model 只能包含 `hasApiKey` / `isDefault`，不得包含 `apiKey` 或 `secretRef`。
 - Client 在 `AppState` 启动时构造并通过 `ModelProviderRegistry` 复用；请求 timeout 为 60 秒，可重试网络错误与 429/5xx，最多 3 次。
+- `ai.enrich_object` failed jobs must persist sanitized stable `ai.*` failure reasons. Required categories include timeout, auth, rate limit, model not found, invalid output schema, policy denied, not configured, provider unavailable, secret storage and local persistence failure. Raw provider response bodies, prompts, object content and API keys must not appear in `last_error` or emitted failure payloads.
 
 ## 14. Plugin Runtime
 

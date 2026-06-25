@@ -254,7 +254,9 @@ export interface AIEnrichmentRunResult {
   jobId: string;
   analysisId?: string;
   status: 'succeeded' | 'failed' | string;
-  // AI failure text is user-visible and must be sanitized; future versions may split this into typed code + message.
+  // Failed AI jobs use stable `ai.*` prefixes such as ai.timeout, ai.model_auth,
+  // ai.rate_limit, ai.output_schema, ai.not_configured and ai.policy_denied.
+  // Text after the prefix is sanitized user-facing recovery guidance.
   failureReason?: string;
 }
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'blocked';

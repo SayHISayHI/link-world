@@ -72,6 +72,7 @@ Document rendering rules:
 Rules:
 
 - AI panel must label model inference separately from original facts.
+- AI failure panels must format persisted `ai.*` failure reasons through the shared formatter so stable diagnostic codes do not become primary user-facing text.
 - Evaluation panel must show limitations when present.
 - Scores must not rely only on color.
 - Trace details can be collapsed but must be accessible.

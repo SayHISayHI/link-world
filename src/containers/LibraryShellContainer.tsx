@@ -17,6 +17,7 @@ import { useSearchHybrid } from "../hooks/commands/useSearchHybrid";
 import { useSubmitCapture } from "../hooks/commands/useSubmitCapture";
 import { useTriggerAIEnrichment } from "../hooks/commands/useTriggerAIEnrichment";
 import { useTriggerEvaluation } from "../hooks/commands/useTriggerEvaluation";
+import { formatAIFailureReason } from "../lib/aiFailures";
 import type { AppUiError } from "../lib/errors";
 import { useLibraryStore } from "../store/libraryStore";
 import { useSearchStore } from "../store/searchStore";
@@ -689,12 +690,16 @@ function aiRunFailureToError(run?: { status: string; failureReason?: string }): 
     return undefined;
   }
 
+  const failure = run.failureReason
+    ? formatAIFailureReason(run.failureReason)
+    : undefined;
+
   return {
-    code: "ERR_MODEL_OUTPUT_SCHEMA",
-    title: "AI analysis failed",
-    message: run.failureReason ?? "The model provider did not return a usable analysis.",
-    retryable: true,
-    action: "retry" as const,
+    code: failure?.code ?? "ERR_MODEL_OUTPUT_SCHEMA",
+    title: failure?.title ?? "AI analysis failed",
+    message: failure?.message ?? "The model provider did not return a usable analysis.",
+    retryable: failure?.retryable ?? true,
+    action: failure?.action ?? ("retry" as const),
   };
 }
 

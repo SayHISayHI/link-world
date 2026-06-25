@@ -95,6 +95,7 @@ Must cover:
 - parsed title, author and language metadata are persisted when available.
 - AI enrich writes analysis and trace.
 - provider registry maps every supported API family and preserves typed auth/rate-limit/timeout/schema errors.
+- AI enrichment failures persist stable sanitized `ai.*` reasons for timeout, auth, rate limit, missing model, invalid output schema, policy denial, missing default config, provider unavailability, secret storage and local persistence failures.
 - migration 0003 preserves old provider rows and defaults them to OpenAI Chat Completions.
 - migration fixtures use the production SQLx migrator truncated at versions 1/2/3, preserving real checksum metadata instead of hand-authored schemas.
 - v1 fixture carries 1000 objects plus snapshot/document/AI trace/Evaluation/failed job/FTS/provider/tombstone data; future unknown migration versions fail closed.
@@ -134,6 +135,7 @@ Component tests:
 - capture failure formatter maps stable `capture.*` prefixes to deterministic titles while preserving legacy free-text reasons.
 - `CaptureBar` renders formatted capture failure titles/messages and hides raw `capture.*` prefixes from the visible status copy.
 - `CaptureBar` renders duplicate URL submissions as an already-saved state and does not imply that a new capture job was created.
+- AI failure formatter maps stable `ai.*` prefixes to deterministic titles/actions while preserving legacy free-text reasons.
 - `MarkdownDocumentView` renders headings, lists, blockquotes, fenced code and GFM tables.
 - `MarkdownDocumentView` does not render raw HTML and rejects unsafe link or image protocols.
 - `MarkdownDocumentView` keeps remote images lazy, prevents referrer leakage and disables task-list inputs.
