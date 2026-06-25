@@ -231,6 +231,18 @@ export interface SearchIndexHealthResponse {
   duplicateObjectIds: string[];
 }
 
+export interface RebuildSearchIndexResponse {
+  jobId: string;
+  status: JobStatus;
+  stage: 'queued' | 'preparing' | 'indexing' | 'finalizing' | 'completed' | 'cancelled' | 'failed' | string;
+  expectedObjects: number;
+  indexedObjects: number;
+  progressPercent: number;
+  // false during finalizing because the staging FTS table is being atomically swapped into place.
+  cancellable: boolean;
+  failureReason?: string;
+}
+
 export type ModelApiFamily =
   | 'openai_chat_completions'
   | 'openai_responses'
@@ -285,6 +297,7 @@ export interface BackgroundJob {
     | 'ai.enrich_object'
     | 'embedding.create_chunks'
     | 'evaluation.run'
+    | 'search.rebuild_index'
     | 'search.reindex_object'
     | 'review.schedule_object'
     | 'storage.purge_deleted_object'
@@ -662,4 +675,20 @@ export interface MaintenanceCommands {
   // 只读检查 FTS 索引一致性；修复仍通过 rebuild/reindex 执行。
   // invoke('check_search_index')
   check_search_index: () => Promise<IpcResponse<SearchIndexHealthResponse>>;
+
+  // 启动全库 FTS rebuild。命令立即返回 running job，前端需轮询 status 或监听事件。
+  // invoke('rebuild_search_index')
+  rebuild_search_index: () => Promise<IpcResponse<RebuildSearchIndexResponse>>;
+
+  // 查询全库 FTS rebuild 进度。
+  // invoke('get_search_index_rebuild_status', { jobId })
+  get_search_index_rebuild_status: (args: {
+    jobId: string;
+  }) => Promise<IpcResponse<RebuildSearchIndexResponse>>;
+
+  // 取消全库 FTS rebuild；只在 cancellable=true 时生效。finalizing 阶段不取消。
+  // invoke('cancel_search_index_rebuild', { jobId })
+  cancel_search_index_rebuild: (args: {
+    jobId: string;
+  }) => Promise<IpcResponse<RebuildSearchIndexResponse>>;
 }

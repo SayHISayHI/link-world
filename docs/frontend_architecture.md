@@ -121,6 +121,9 @@ Rules:
 - 搜索结果只保存必要 snippet 和 object metadata。
 - Search command calls include the active Library filter when one is selected, so Sidebar filters and search results share backend semantics.
 - Search maintenance UI may display index health counts and capped object-id samples, but not parsed text or snippets from the health check.
+- Search empty state must be actionable: name the submitted query, suggest broader terms or clearing filters, and provide index check/rebuild actions.
+- Search failure state must show the structured command error plus check/rebuild actions; it must not silently fall back to stale results.
+- Search rebuild UI must display persisted backend progress and a cancel action only while `cancellable=true`. During `finalizing`, the UI must explain that the atomic swap cannot be cancelled.
 
 ### 3.4 Job state
 
@@ -440,6 +443,7 @@ Minimum frontend tests:
 - `MarkdownDocumentView` renders TOC, heading anchors, GFM tables, Callout and long-code controls。
 - unsafe HTML/URL、纯文本 fallback、AI hint 失效和 clipboard fallback 必须有组件测试。
 - `SearchCommand` handles loading, empty, failed, keyboard navigation。
+- `ObjectList` handles search empty, search failed, rebuild progress and rebuild cancellation boundary states。
 - `SettingsPanel` masks API key。
 - `PluginPermissionPanel` displays required vs optional permissions。
 - `DeleteObjectDialog` confirms destructive action。

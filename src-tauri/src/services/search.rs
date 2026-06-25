@@ -38,15 +38,29 @@ impl SearchService {
     pub async fn rebuild_search_index(&self) -> AppResult<RebuildSearchIndexResponse> {
         let job_id = Uuid::new_v4().to_string();
         let now = Utc::now().to_rfc3339();
-        let indexed_objects = self
-            .repository
-            .rebuild_index_with_job(&job_id, &now)
-            .await?;
+        self.repository.start_rebuild_index_job(&job_id, &now).await
+    }
 
-        Ok(RebuildSearchIndexResponse {
-            job_id,
-            indexed_objects,
-        })
+    pub async fn run_rebuild_search_index(
+        &self,
+        job_id: &str,
+    ) -> AppResult<RebuildSearchIndexResponse> {
+        self.repository.run_rebuild_index_job(job_id).await
+    }
+
+    pub async fn get_rebuild_search_index_status(
+        &self,
+        job_id: &str,
+    ) -> AppResult<RebuildSearchIndexResponse> {
+        self.repository.get_rebuild_index_status(job_id).await
+    }
+
+    pub async fn cancel_rebuild_search_index(
+        &self,
+        job_id: &str,
+    ) -> AppResult<RebuildSearchIndexResponse> {
+        let now = Utc::now().to_rfc3339();
+        self.repository.cancel_rebuild_index_job(job_id, &now).await
     }
 
     pub async fn check_search_index(&self) -> AppResult<SearchIndexHealthResponse> {

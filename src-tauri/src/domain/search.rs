@@ -14,7 +14,13 @@ pub struct SearchResult {
 #[serde(rename_all = "camelCase")]
 pub struct RebuildSearchIndexResponse {
     pub job_id: String,
+    pub status: String,
+    pub stage: String,
+    pub expected_objects: i64,
     pub indexed_objects: i64,
+    pub progress_percent: f64,
+    pub cancellable: bool,
+    pub failure_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

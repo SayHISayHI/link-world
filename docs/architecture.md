@@ -1243,6 +1243,7 @@ Job 类型：
 - `ai.enrich_object`
 - `embedding.create_chunks`
 - `evaluation.run`
+- `search.rebuild_index`
 - `search.reindex_object`
 - `review.schedule_object`
 - `storage.purge_deleted_object`

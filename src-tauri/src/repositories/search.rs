@@ -1,18 +1,30 @@
 use crate::domain::knowledge::KnowledgeObject;
-use crate::domain::search::{SearchIndexHealthResponse, SearchResult};
+use crate::domain::search::{RebuildSearchIndexResponse, SearchIndexHealthResponse, SearchResult};
 use crate::errors::{AppError, AppResult};
-use serde_json::json;
+use serde_json::{json, Value};
 use sqlx::sqlite::SqliteRow;
 use sqlx::{Row, Sqlite, SqlitePool, Transaction};
 
 const DEFAULT_SEARCH_LIMIT: i64 = 20;
 const MAX_SEARCH_LIMIT: i64 = 50;
+const SEARCH_REBUILD_JOB_TYPE: &str = "search.rebuild_index";
 const SEARCH_REINDEX_JOB_TYPE: &str = "search.reindex_object";
 const MAX_HEALTH_SAMPLE_IDS: i64 = 20;
+const REBUILD_BATCH_SIZE: i64 = 500;
 
 #[derive(Debug, Clone)]
 pub struct SearchRepository {
     pool: SqlitePool,
+}
+
+struct RebuildIndexJobUpdate<'a> {
+    status: &'a str,
+    stage: &'a str,
+    expected_objects: i64,
+    indexed_objects: i64,
+    cancellable: bool,
+    failure_reason: Option<&'a str>,
+    now: &'a str,
 }
 
 impl SearchRepository {
@@ -149,6 +161,186 @@ impl SearchRepository {
         Ok(indexed_objects)
     }
 
+    pub async fn start_rebuild_index_job(
+        &self,
+        job_id: &str,
+        now: &str,
+    ) -> AppResult<RebuildSearchIndexResponse> {
+        let expected_objects = count_expected_indexed_objects(&self.pool).await?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO background_jobs (
+                id,
+                job_type,
+                status,
+                object_id,
+                payload_json,
+                attempt_count,
+                max_attempts,
+                last_error,
+                created_at,
+                updated_at
+            ) VALUES (?1, ?2, 'running', NULL, ?3, 1, 1, NULL, ?4, ?4)
+            "#,
+        )
+        .bind(job_id)
+        .bind(SEARCH_REBUILD_JOB_TYPE)
+        .bind(
+            rebuild_payload_json("queued", expected_objects, 0, true)
+                .expect("rebuild payload should serialize"),
+        )
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+
+        self.get_rebuild_index_status(job_id).await
+    }
+
+    pub async fn get_rebuild_index_status(
+        &self,
+        job_id: &str,
+    ) -> AppResult<RebuildSearchIndexResponse> {
+        let row = sqlx::query(
+            r#"
+            SELECT status, job_type, payload_json, last_error
+            FROM background_jobs
+            WHERE id = ?1
+            "#,
+        )
+        .bind(job_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        let Some(row) = row else {
+            return Err(AppError::JobNotFound);
+        };
+
+        let job_type: String = row.get("job_type");
+        if job_type != SEARCH_REBUILD_JOB_TYPE {
+            return Err(AppError::PolicyDenied(format!(
+                "job {job_id} is not a search rebuild job"
+            )));
+        }
+
+        let status: String = row.get("status");
+        let payload_json: String = row.get("payload_json");
+        let payload = serde_json::from_str::<Value>(&payload_json).unwrap_or_else(|_| json!({}));
+        let expected_objects = payload
+            .get("expectedObjects")
+            .and_then(Value::as_i64)
+            .unwrap_or(0);
+        let indexed_objects = payload
+            .get("indexedObjects")
+            .and_then(Value::as_i64)
+            .unwrap_or(0);
+        let stage = payload
+            .get("stage")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+            .to_string();
+        let cancellable = payload
+            .get("cancellable")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let progress_percent = if expected_objects <= 0 {
+            if status == "succeeded" {
+                100.0
+            } else {
+                0.0
+            }
+        } else {
+            ((indexed_objects as f64 / expected_objects as f64) * 100.0).clamp(0.0, 100.0)
+        };
+
+        Ok(RebuildSearchIndexResponse {
+            job_id: job_id.to_string(),
+            status,
+            stage,
+            expected_objects,
+            indexed_objects,
+            progress_percent,
+            cancellable,
+            failure_reason: row.get("last_error"),
+        })
+    }
+
+    pub async fn cancel_rebuild_index_job(
+        &self,
+        job_id: &str,
+        now: &str,
+    ) -> AppResult<RebuildSearchIndexResponse> {
+        let status = self.get_rebuild_index_status(job_id).await?;
+
+        if !matches!(status.status.as_str(), "queued" | "running") || !status.cancellable {
+            return Ok(status);
+        }
+
+        self.update_rebuild_index_job(
+            job_id,
+            RebuildIndexJobUpdate {
+                status: "cancelled",
+                stage: "cancelled",
+                expected_objects: status.expected_objects,
+                indexed_objects: status.indexed_objects,
+                cancellable: false,
+                failure_reason: Some("search rebuild cancelled by user"),
+                now,
+            },
+        )
+        .await?;
+
+        self.get_rebuild_index_status(job_id).await
+    }
+
+    pub async fn run_rebuild_index_job(
+        &self,
+        job_id: &str,
+    ) -> AppResult<RebuildSearchIndexResponse> {
+        let started = self.get_rebuild_index_status(job_id).await?;
+        if started.status == "cancelled" {
+            return Ok(started);
+        }
+
+        let now = chrono::Utc::now().to_rfc3339();
+        self.update_rebuild_index_job(
+            job_id,
+            RebuildIndexJobUpdate {
+                status: "running",
+                stage: "preparing",
+                expected_objects: started.expected_objects,
+                indexed_objects: 0,
+                cancellable: true,
+                failure_reason: None,
+                now: &now,
+            },
+        )
+        .await?;
+
+        let result = self.populate_rebuild_staging_index(job_id).await;
+        if let Err(error) = result {
+            let now = chrono::Utc::now().to_rfc3339();
+            let _ = self
+                .update_rebuild_index_job(
+                    job_id,
+                    RebuildIndexJobUpdate {
+                        status: "failed",
+                        stage: "failed",
+                        expected_objects: started.expected_objects,
+                        indexed_objects: 0,
+                        cancellable: false,
+                        failure_reason: Some(&error.to_string()),
+                        now: &now,
+                    },
+                )
+                .await;
+            let _ = self.drop_rebuild_staging_index().await;
+            return Err(error);
+        }
+
+        self.get_rebuild_index_status(job_id).await
+    }
+
     pub async fn reindex_object_with_job(
         &self,
         object_id: &str,
@@ -186,21 +378,207 @@ impl SearchRepository {
         Ok(indexed)
     }
 
-    pub async fn check_index_health(&self) -> AppResult<SearchIndexHealthResponse> {
-        let expected_indexed_objects = sqlx::query_scalar::<_, i64>(
+    async fn populate_rebuild_staging_index(&self, job_id: &str) -> AppResult<()> {
+        let mut status = self.get_rebuild_index_status(job_id).await?;
+        if status.status == "cancelled" {
+            self.drop_rebuild_staging_index().await?;
+            return Ok(());
+        }
+
+        self.drop_rebuild_staging_index().await?;
+        sqlx::query(
             r#"
-            SELECT COUNT(*)
-            FROM knowledge_objects AS objects
-            WHERE objects.lifecycle_status != 'deleted'
-              AND EXISTS (
-                SELECT 1
-                FROM parsed_documents AS parsed
-                WHERE parsed.object_id = objects.id
-              )
+            CREATE VIRTUAL TABLE knowledge_fts_rebuild USING fts5(
+                object_id UNINDEXED,
+                parsed_document_id UNINDEXED,
+                title,
+                author,
+                content,
+                ai_summary,
+                tokenize='unicode61'
+            )
             "#,
         )
-        .fetch_one(&self.pool)
+        .execute(&self.pool)
         .await?;
+
+        let expected_objects = status.expected_objects;
+        let mut indexed_objects = 0;
+
+        while indexed_objects < expected_objects {
+            status = self.get_rebuild_index_status(job_id).await?;
+            if status.status == "cancelled" {
+                self.drop_rebuild_staging_index().await?;
+                return Ok(());
+            }
+
+            sqlx::query(
+                r#"
+                INSERT INTO knowledge_fts_rebuild (
+                    object_id,
+                    parsed_document_id,
+                    title,
+                    author,
+                    content,
+                    ai_summary
+                )
+                WITH eligible_objects AS (
+                    SELECT objects.id
+                    FROM knowledge_objects AS objects
+                    WHERE objects.lifecycle_status != 'deleted'
+                      AND EXISTS (
+                        SELECT 1
+                        FROM parsed_documents AS parsed
+                        WHERE parsed.object_id = objects.id
+                      )
+                    ORDER BY objects.id
+                    LIMIT ?1 OFFSET ?2
+                )
+                SELECT
+                    objects.id,
+                    parsed.id,
+                    COALESCE(NULLIF(parsed.title, ''), objects.title, objects.canonical_url, objects.id),
+                    objects.author,
+                    parsed.text_content,
+                    (
+                        SELECT analysis.summary
+                        FROM ai_analysis AS analysis
+                        WHERE analysis.object_id = objects.id
+                        ORDER BY analysis.created_at DESC
+                        LIMIT 1
+                    )
+                FROM eligible_objects
+                INNER JOIN knowledge_objects AS objects ON objects.id = eligible_objects.id
+                INNER JOIN parsed_documents AS parsed ON parsed.id = (
+                    SELECT latest.id
+                    FROM parsed_documents AS latest
+                    WHERE latest.object_id = objects.id
+                    ORDER BY latest.created_at DESC
+                    LIMIT 1
+                )
+                "#,
+            )
+            .bind(REBUILD_BATCH_SIZE)
+            .bind(indexed_objects)
+            .execute(&self.pool)
+            .await?;
+
+            indexed_objects = (indexed_objects + REBUILD_BATCH_SIZE).min(expected_objects);
+            let now = chrono::Utc::now().to_rfc3339();
+            self.update_rebuild_index_job(
+                job_id,
+                RebuildIndexJobUpdate {
+                    status: "running",
+                    stage: "indexing",
+                    expected_objects,
+                    indexed_objects,
+                    cancellable: true,
+                    failure_reason: None,
+                    now: &now,
+                },
+            )
+            .await?;
+        }
+
+        status = self.get_rebuild_index_status(job_id).await?;
+        if status.status == "cancelled" {
+            self.drop_rebuild_staging_index().await?;
+            return Ok(());
+        }
+
+        let now = chrono::Utc::now().to_rfc3339();
+        self.update_rebuild_index_job(
+            job_id,
+            RebuildIndexJobUpdate {
+                status: "running",
+                stage: "finalizing",
+                expected_objects,
+                indexed_objects,
+                cancellable: false,
+                failure_reason: None,
+                now: &now,
+            },
+        )
+        .await?;
+
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("DROP TABLE knowledge_fts")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("ALTER TABLE knowledge_fts_rebuild RENAME TO knowledge_fts")
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+
+        let actual_indexed_objects =
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(DISTINCT object_id) FROM knowledge_fts")
+                .fetch_one(&self.pool)
+                .await?;
+
+        let now = chrono::Utc::now().to_rfc3339();
+        self.update_rebuild_index_job(
+            job_id,
+            RebuildIndexJobUpdate {
+                status: "succeeded",
+                stage: "completed",
+                expected_objects,
+                indexed_objects: actual_indexed_objects,
+                cancellable: false,
+                failure_reason: None,
+                now: &now,
+            },
+        )
+        .await?;
+
+        Ok(())
+    }
+
+    async fn drop_rebuild_staging_index(&self) -> AppResult<()> {
+        sqlx::query("DROP TABLE IF EXISTS knowledge_fts_rebuild")
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    async fn update_rebuild_index_job(
+        &self,
+        job_id: &str,
+        update: RebuildIndexJobUpdate<'_>,
+    ) -> AppResult<()> {
+        sqlx::query(
+            r#"
+            UPDATE background_jobs
+            SET
+                status = ?2,
+                payload_json = ?3,
+                last_error = ?4,
+                updated_at = ?5
+            WHERE id = ?1
+              AND job_type = ?6
+            "#,
+        )
+        .bind(job_id)
+        .bind(update.status)
+        .bind(
+            rebuild_payload_json(
+                update.stage,
+                update.expected_objects,
+                update.indexed_objects,
+                update.cancellable,
+            )
+            .expect("rebuild payload should serialize"),
+        )
+        .bind(update.failure_reason)
+        .bind(update.now)
+        .bind(SEARCH_REBUILD_JOB_TYPE)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn check_index_health(&self) -> AppResult<SearchIndexHealthResponse> {
+        let expected_indexed_objects = count_expected_indexed_objects(&self.pool).await?;
 
         let actual_indexed_rows =
             sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM knowledge_fts")
@@ -513,6 +891,37 @@ fn normalize_filter(filter_type: Option<String>) -> Option<String> {
     filter_type
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty() && value != "all")
+}
+
+fn rebuild_payload_json(
+    stage: &str,
+    expected_objects: i64,
+    indexed_objects: i64,
+    cancellable: bool,
+) -> serde_json::Result<String> {
+    serde_json::to_string(&json!({
+        "stage": stage,
+        "expectedObjects": expected_objects,
+        "indexedObjects": indexed_objects,
+        "cancellable": cancellable,
+    }))
+}
+
+async fn count_expected_indexed_objects(pool: &SqlitePool) -> AppResult<i64> {
+    Ok(sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT COUNT(*)
+        FROM knowledge_objects AS objects
+        WHERE objects.lifecycle_status != 'deleted'
+          AND EXISTS (
+            SELECT 1
+            FROM parsed_documents AS parsed
+            WHERE parsed.object_id = objects.id
+          )
+        "#,
+    )
+    .fetch_one(pool)
+    .await?)
 }
 
 async fn count_missing_index_rows(pool: &SqlitePool) -> AppResult<i64> {
@@ -1018,6 +1427,144 @@ mod tests {
         assert_eq!(job.0, "succeeded");
         assert!(job.1.is_none());
         assert!(job.2.contains("\"indexedObjects\":1"));
+    }
+
+    #[tokio::test]
+    async fn staged_rebuild_reports_progress_and_swaps_search_index() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        seed_searchable_object(database.pool()).await;
+        let repository = SearchRepository::new(database.pool().clone());
+
+        let started = repository
+            .start_rebuild_index_job("job-staged-rebuild", "2026-06-17T00:00:02Z")
+            .await
+            .expect("staged rebuild should start");
+        let completed = repository
+            .run_rebuild_index_job("job-staged-rebuild")
+            .await
+            .expect("staged rebuild should complete");
+        let results = repository
+            .search_hybrid("durable workflows", Some(10), None)
+            .await
+            .expect("rebuilt index should be searchable");
+
+        assert_eq!(started.status, "running");
+        assert_eq!(started.stage, "queued");
+        assert_eq!(started.expected_objects, 1);
+        assert!(started.cancellable);
+        assert_eq!(completed.status, "succeeded");
+        assert_eq!(completed.stage, "completed");
+        assert_eq!(completed.expected_objects, 1);
+        assert_eq!(completed.indexed_objects, 1);
+        assert_eq!(completed.progress_percent, 100.0);
+        assert!(!completed.cancellable);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].object.id, "obj-search");
+    }
+
+    #[tokio::test]
+    async fn staged_rebuild_handles_empty_library() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        let repository = SearchRepository::new(database.pool().clone());
+
+        let started = repository
+            .start_rebuild_index_job("job-empty-rebuild", "2026-06-17T00:00:02Z")
+            .await
+            .expect("empty rebuild should start");
+        let completed = repository
+            .run_rebuild_index_job("job-empty-rebuild")
+            .await
+            .expect("empty rebuild should complete");
+        let health = repository
+            .check_index_health()
+            .await
+            .expect("empty index health should be readable");
+
+        assert_eq!(started.expected_objects, 0);
+        assert_eq!(completed.status, "succeeded");
+        assert_eq!(completed.indexed_objects, 0);
+        assert_eq!(completed.progress_percent, 100.0);
+        assert!(health.healthy);
+        assert_eq!(health.actual_indexed_rows, 0);
+    }
+
+    #[tokio::test]
+    async fn cancelling_staged_rebuild_preserves_existing_search_index() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        seed_searchable_object(database.pool()).await;
+        reindex(database.pool(), "obj-search").await;
+        sqlx::query(
+            r#"
+            INSERT INTO parsed_documents (
+                id, object_id, title, text_content, word_count, content_hash, parser_id, parser_version, created_at
+            ) VALUES (
+                'parsed-search-new', 'obj-search', 'Workflow Notes',
+                'New staged rebuild marker should not appear after cancellation.',
+                9, 'hash-search-new', 'test.parser', '0.1.0', '2026-06-17T00:01:00Z'
+            )
+            "#,
+        )
+        .execute(database.pool())
+        .await
+        .expect("new parsed document should insert");
+        let repository = SearchRepository::new(database.pool().clone());
+
+        repository
+            .start_rebuild_index_job("job-cancel-rebuild", "2026-06-17T00:00:02Z")
+            .await
+            .expect("staged rebuild should start");
+        let cancelled = repository
+            .cancel_rebuild_index_job("job-cancel-rebuild", "2026-06-17T00:00:03Z")
+            .await
+            .expect("staged rebuild should cancel");
+        let completed = repository
+            .run_rebuild_index_job("job-cancel-rebuild")
+            .await
+            .expect("cancelled rebuild runner should converge");
+        let old_results = repository
+            .search_hybrid("durable workflows", Some(10), None)
+            .await
+            .expect("old index should remain searchable");
+        let new_results = repository
+            .search_hybrid("staged rebuild marker", Some(10), None)
+            .await
+            .expect("cancelled rebuild should not publish staging index");
+
+        assert_eq!(cancelled.status, "cancelled");
+        assert_eq!(completed.status, "cancelled");
+        assert_eq!(old_results.len(), 1);
+        assert!(new_results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn completed_staged_rebuild_is_not_cancellable() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        seed_searchable_object(database.pool()).await;
+        let repository = SearchRepository::new(database.pool().clone());
+
+        repository
+            .start_rebuild_index_job("job-terminal-rebuild", "2026-06-17T00:00:02Z")
+            .await
+            .expect("staged rebuild should start");
+        repository
+            .run_rebuild_index_job("job-terminal-rebuild")
+            .await
+            .expect("staged rebuild should complete");
+        let status = repository
+            .cancel_rebuild_index_job("job-terminal-rebuild", "2026-06-17T00:00:03Z")
+            .await
+            .expect("terminal rebuild status should be readable");
+
+        assert_eq!(status.status, "succeeded");
+        assert!(!status.cancellable);
     }
 
     #[tokio::test]

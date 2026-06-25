@@ -68,6 +68,7 @@ export function LibraryShellContainer() {
   const [hasMoreObjects, setHasMoreObjects] = useState(false);
   const [searchMaintenanceMode, setSearchMaintenanceMode] = useState<"check" | "rebuild">();
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const lastCompletedSearchRebuildJobRef = useRef<string>();
   const { objects, selectedObjectId, selectedDetail, selectObject, setObjects, setSelectedDetail } = useLibraryStore();
   const { query: searchQuery, setQuery: setSearchQuery } = useSearchStore();
   const { data, error, loading, ping } = usePing();
@@ -117,6 +118,7 @@ export function LibraryShellContainer() {
     data: rebuildSearchIndexResult,
     error: rebuildSearchIndexError,
     loading: rebuildSearchIndexLoading,
+    cancelSearchIndexRebuild,
     rebuildSearchIndex,
   } = useRebuildSearchIndex();
   const {
@@ -191,6 +193,19 @@ export function LibraryShellContainer() {
       window.clearTimeout(timeoutId);
     };
   }, [refreshSearchResults, resetSearch, searchQuery]);
+
+  useEffect(() => {
+    if (!rebuildSearchIndexResult || rebuildSearchIndexResult.status !== "succeeded") {
+      return;
+    }
+
+    if (lastCompletedSearchRebuildJobRef.current === rebuildSearchIndexResult.jobId) {
+      return;
+    }
+
+    lastCompletedSearchRebuildJobRef.current = rebuildSearchIndexResult.jobId;
+    void Promise.all([refreshRecentObjects(), refreshSearchResults()]);
+  }, [rebuildSearchIndexResult, refreshRecentObjects, refreshSearchResults]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -494,13 +509,18 @@ export function LibraryShellContainer() {
 
   const handleRebuildSearchIndex = useCallback(async () => {
     setSearchMaintenanceMode("rebuild");
-    const response = await rebuildSearchIndex();
-    if (!response) {
+    await rebuildSearchIndex();
+  }, [rebuildSearchIndex]);
+
+  const handleCancelSearchIndexRebuild = useCallback(async () => {
+    const jobId = rebuildSearchIndexResult?.jobId;
+    if (!jobId) {
       return;
     }
 
-    await Promise.all([refreshRecentObjects(), refreshSearchResults()]);
-  }, [rebuildSearchIndex, refreshRecentObjects, refreshSearchResults]);
+    setSearchMaintenanceMode("rebuild");
+    await cancelSearchIndexRebuild(jobId);
+  }, [cancelSearchIndexRebuild, rebuildSearchIndexResult?.jobId]);
 
   const handleCheckSearchIndex = useCallback(async () => {
     setSearchMaintenanceMode("check");
@@ -600,6 +620,7 @@ export function LibraryShellContainer() {
             searchError={searchError}
             searchMaintenanceLoading={rebuildSearchIndexLoading || searchIndexHealthLoading}
             searchMaintenanceError={rebuildSearchIndexError ?? searchIndexHealthError}
+            searchRebuildStatus={rebuildSearchIndexResult}
             searchMaintenanceMessage={searchMaintenanceMessage(
               searchMaintenanceMode,
               rebuildSearchIndexResult,
@@ -612,6 +633,7 @@ export function LibraryShellContainer() {
               setSearchQuery("");
               resetSearch();
             }}
+            onCancelSearchIndexRebuild={handleCancelSearchIndexRebuild}
             onCheckSearchIndex={handleCheckSearchIndex}
             onRebuildSearchIndex={handleRebuildSearchIndex}
             onLoadMore={() => {
@@ -689,7 +711,7 @@ function searchMaintenanceMessage(
   health?: SearchIndexHealthResponse,
 ) {
   if (mode === "rebuild" && rebuildResult) {
-    return `Indexed ${rebuildResult.indexedObjects} objects`;
+    return undefined;
   }
 
   if (mode !== "check" || !health) {

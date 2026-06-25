@@ -74,6 +74,7 @@ stateDiagram-v2
   failed --> queued: retry scheduled
   blocked --> queued: user resolved blocker
   queued --> cancelled: user/system cancellation
+  running --> cancelled: cancellable maintenance job stopped before commit
   failed --> cancelled: max attempts exceeded and user cancels
 ```
 
@@ -87,6 +88,8 @@ stateDiagram-v2
 | `failed` | failed with retry or terminal error | show reason and retry if allowed |
 | `blocked` | needs user action | show action, e.g. configure model |
 | `cancelled` | intentionally stopped | show in diagnostics only |
+
+Search full-index rebuild is a maintenance job exception: while `cancellable=true` and before the atomic `finalizing` swap, the Library UI may show a cancel action and then a short preserved-index confirmation. After `finalizing` begins, cancellation is disabled.
 
 ### 3.2 Retry classification
 

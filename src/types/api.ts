@@ -360,7 +360,13 @@ export interface SearchResult {
 
 export interface RebuildSearchIndexResponse {
   jobId: string;
+  status: JobStatus;
+  stage: "queued" | "preparing" | "indexing" | "finalizing" | "completed" | "cancelled" | "failed" | string;
+  expectedObjects: number;
   indexedObjects: number;
+  progressPercent: number;
+  cancellable: boolean;
+  failureReason?: string;
 }
 
 export interface SearchIndexHealthResponse {
@@ -393,6 +399,7 @@ export interface BackgroundJob {
     | "ai.enrich_object"
     | "embedding.create_chunks"
     | "evaluation.run"
+    | "search.rebuild_index"
     | "search.reindex_object"
     | "review.schedule_object"
     | "storage.purge_deleted_object"

@@ -33,7 +33,7 @@
 | Component | Purpose | Required states |
 | --- | --- | --- |
 | `ObjectListContainer` | fetch and own list state | loading, empty, failed |
-| `ObjectList` | render paged/filterable object rows | empty, loading more, end of page |
+| `ObjectList` | render paged/filterable object rows and search maintenance actions | empty, search empty, search failed, rebuild progress, rebuild cancellation boundary, loading more, end of page |
 | `ObjectListItem` | object summary row | selected, failed, archived |
 | `ObjectDetailContainer` | fetch detail | loading, failed, deleted |
 | `ObjectDetail` | render selected object content and failure/recovery state | empty, parsed, failed, deleted |
@@ -188,7 +188,7 @@ MVP must implement:
 - `Sidebar`
 - `ThreePaneLayout`
 - `ObjectListContainer`
-- `ObjectList`（包括后端 filter、30 条分页和 Load more）
+- `ObjectList`（包括后端 filter、30 条分页、Load more、搜索空态/失败态、索引重建进度和取消边界）
 - `ObjectListItem`
 - `ObjectDetailContainer`
 - `MarkdownDocumentView`

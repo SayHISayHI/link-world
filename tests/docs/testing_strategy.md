@@ -117,6 +117,7 @@ Must cover:
 - FTS search composes with Library filters for object type, `inbox` lifecycle and `failed` lifecycle semantics.
 - search index health detects missing, stale, orphaned and duplicate FTS rows without returning content snippets.
 - search benchmark fixtures generate a deterministic corpus that covers object type filters, failed lifecycle filtering, secret snippets, parsed content and AI summary matches; CI runs the small smoke corpus, while 5k and 20k object benchmarks stay `#[ignore]` and are run manually before search/schema releases.
+- staged full-index rebuild reports persisted progress, publishes through an atomic FTS swap, preserves the existing index when cancelled before finalizing, and makes completed rebuilds non-cancellable.
 
 ### 4.3 Job idempotency tests
 
@@ -151,6 +152,7 @@ Component tests:
 - `EvaluationPanel` shows verdict, evidence and limitations.
 - model provider settings list multiple stable ids without returning API keys, create/edit/delete configs, enforce one explicit default, allow protocol selection, clear key drafts after save and invalidate stale connection-test success after edits.
 - Sidebar filters All/Inbox/Articles/GitHub/Prompts/Failed through backend semantics; ObjectList appends 30-item pages without duplicates.
+- `ObjectList` renders actionable search empty/error states and displays rebuild progress, cancel action and non-cancellable finalizing boundary.
 - `PluginPermissionPanel` distinguishes required vs optional permissions.
 
 Interaction tests:

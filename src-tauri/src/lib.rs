@@ -75,6 +75,8 @@ pub fn run() {
             commands::search::search_hybrid,
             commands::search::check_search_index,
             commands::search::rebuild_search_index,
+            commands::search::get_search_index_rebuild_status,
+            commands::search::cancel_search_index_rebuild,
             commands::search::reindex_object
         ])
         .run(tauri::generate_context!())

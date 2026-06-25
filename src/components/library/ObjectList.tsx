@@ -1,6 +1,6 @@
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, XCircle } from "lucide-react";
 import type { RefObject } from "react";
-import type { KnowledgeObject, SearchResult } from "../../types/api";
+import type { KnowledgeObject, RebuildSearchIndexResponse, SearchResult } from "../../types/api";
 import { formatRelativeStatus } from "../../lib/formatting";
 import { cn } from "../../lib/cn";
 import type { AppUiError } from "../../lib/errors";
@@ -29,10 +29,12 @@ interface ObjectListProps {
   searchMaintenanceLoading: boolean;
   searchMaintenanceError?: AppUiError;
   searchMaintenanceMessage?: string;
+  searchRebuildStatus?: RebuildSearchIndexResponse;
   onCaptureValueChange: (value: string) => void;
   onCaptureSubmit: () => void;
   onSearchValueChange: (value: string) => void;
   onClearSearch: () => void;
+  onCancelSearchIndexRebuild: () => void;
   onCheckSearchIndex: () => void;
   onRebuildSearchIndex: () => void;
   onLoadMore: () => void;
@@ -58,10 +60,12 @@ export function ObjectList({
   searchMaintenanceLoading,
   searchMaintenanceError,
   searchMaintenanceMessage,
+  searchRebuildStatus,
   onCaptureValueChange,
   onCaptureSubmit,
   onSearchValueChange,
   onClearSearch,
+  onCancelSearchIndexRebuild,
   onCheckSearchIndex,
   onRebuildSearchIndex,
   onLoadMore,
@@ -70,6 +74,9 @@ export function ObjectList({
   const searchActive = searchValue.trim().length > 0;
   const displayObjects = searchActive ? searchResults.map((result) => result.object) : objects;
   const resultByObjectId = new Map(searchResults.map((result) => [result.object.id, result]));
+  const rebuildRunning =
+    searchRebuildStatus?.status === "queued" || searchRebuildStatus?.status === "running";
+  const rebuildProgress = Math.round(searchRebuildStatus?.progressPercent ?? 0);
 
   return (
     <div className="h-screen overflow-y-auto p-3">
@@ -109,7 +116,7 @@ export function ObjectList({
           </button>
           <button
             className="flex h-9 shrink-0 items-center gap-1 rounded-md border border-border px-3 text-xs text-muted-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={searchMaintenanceLoading}
+            disabled={searchMaintenanceLoading || rebuildRunning}
             onClick={onRebuildSearchIndex}
             title="Rebuild search index"
             type="button"
@@ -117,7 +124,42 @@ export function ObjectList({
             <RefreshCw className={cn("h-3.5 w-3.5", searchMaintenanceLoading && "animate-spin")} aria-hidden="true" />
             Rebuild
           </button>
+          {rebuildRunning && searchRebuildStatus?.cancellable ? (
+            <button
+              className="flex h-9 shrink-0 items-center gap-1 rounded-md border border-red-200 px-3 text-xs text-red-700 hover:bg-red-50"
+              onClick={onCancelSearchIndexRebuild}
+              title="Cancel search index rebuild"
+              type="button"
+            >
+              <XCircle className="h-3.5 w-3.5" aria-hidden="true" />
+              Cancel
+            </button>
+          ) : null}
         </div>
+        {searchRebuildStatus ? (
+          <div className="mt-2 rounded-md border border-border bg-background p-2">
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <span className="text-muted-foreground">{formatRebuildStatus(searchRebuildStatus)}</span>
+              <span className="shrink-0 font-medium text-foreground">{rebuildProgress}%</span>
+            </div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+              <div
+                className={cn(
+                  "h-full rounded-full transition-all",
+                  searchRebuildStatus.status === "failed" || searchRebuildStatus.status === "cancelled"
+                    ? "bg-red-400"
+                    : "bg-accent",
+                )}
+                style={{ width: `${Math.min(Math.max(rebuildProgress, 0), 100)}%` }}
+              />
+            </div>
+            {rebuildRunning && !searchRebuildStatus.cancellable ? (
+              <p className="mt-2 text-[11px] leading-4 text-muted-foreground">
+                Finalizing is atomic and cannot be cancelled without risking a partially swapped index.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         {searchMaintenanceError ? (
           <div className="mt-2 rounded-md border border-red-200 bg-red-50 p-2 text-xs leading-5 text-red-800">
             <p className="font-medium">{searchMaintenanceError.title}</p>
@@ -147,6 +189,23 @@ export function ObjectList({
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-800">
           <p className="font-medium">{searchError.title}</p>
           <p className="mt-1">{searchError.message}</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              className="rounded-md border border-red-200 px-2 py-1 text-[11px] font-medium hover:bg-red-100"
+              onClick={onCheckSearchIndex}
+              type="button"
+            >
+              Check index
+            </button>
+            <button
+              className="rounded-md border border-red-200 px-2 py-1 text-[11px] font-medium hover:bg-red-100"
+              disabled={rebuildRunning}
+              onClick={onRebuildSearchIndex}
+              type="button"
+            >
+              Rebuild index
+            </button>
+          </div>
         </div>
       ) : null}
 
@@ -165,7 +224,28 @@ export function ObjectList({
 
       {searchActive && !searchLoading && !searchError && searchResults.length === 0 ? (
         <div className="rounded-md border border-dashed border-border bg-surface p-4 text-xs leading-5 text-muted-foreground">
-          No matching objects in the local FTS index.
+          <p className="font-medium text-foreground">No matching objects</p>
+          <p className="mt-1">
+            No local FTS result matched "{searchValue.trim()}". Try broader terms, clear the current filter, or check
+            the index if this content should already be parsed.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              className="rounded-md border border-border px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted"
+              onClick={onCheckSearchIndex}
+              type="button"
+            >
+              Check index
+            </button>
+            <button
+              className="rounded-md border border-border px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted disabled:opacity-60"
+              disabled={rebuildRunning}
+              onClick={onRebuildSearchIndex}
+              type="button"
+            >
+              Rebuild index
+            </button>
+          </div>
         </div>
       ) : null}
 
@@ -224,4 +304,29 @@ export function ObjectList({
       ) : null}
     </div>
   );
+}
+
+function formatRebuildStatus(status: RebuildSearchIndexResponse) {
+  if (status.status === "succeeded") {
+    return `Search index rebuilt: ${status.indexedObjects}/${status.expectedObjects} objects indexed.`;
+  }
+
+  if (status.status === "cancelled") {
+    return "Search index rebuild cancelled. Existing search index was preserved.";
+  }
+
+  if (status.status === "failed") {
+    return status.failureReason
+      ? `Search index rebuild failed: ${status.failureReason}`
+      : "Search index rebuild failed.";
+  }
+
+  const stageLabel: Record<string, string> = {
+    finalizing: "Finalizing atomic index swap",
+    indexing: "Indexing searchable objects",
+    preparing: "Preparing staging index",
+    queued: "Starting rebuild",
+  };
+
+  return `${stageLabel[status.stage] ?? "Rebuilding search index"}: ${status.indexedObjects}/${status.expectedObjects} objects indexed.`;
 }

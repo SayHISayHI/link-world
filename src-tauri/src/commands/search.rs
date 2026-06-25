@@ -30,20 +30,39 @@ pub async fn rebuild_search_index(
 ) -> Result<IpcResponse<RebuildSearchIndexResponse>, String> {
     let result = async {
         let service = SearchService::from_state(state.inner())?;
-        service.rebuild_search_index().await
+        let response = service.rebuild_search_index().await?;
+        spawn_search_index_rebuild_runner(app_handle.clone(), service, response.job_id.clone());
+        Ok(response)
     }
     .await;
 
-    if let Ok(response) = &result {
-        let _ = app_handle.emit(
-            "search://index-rebuilt",
-            json!({
-                "jobId": response.job_id,
-                "indexedObjects": response.indexed_objects,
-            }),
-        );
-        let _ = app_handle.emit("library://objects-updated", ());
+    Ok(map_ipc_result(result))
+}
+
+#[tauri::command]
+pub async fn get_search_index_rebuild_status(
+    state: tauri::State<'_, AppState>,
+    job_id: String,
+) -> Result<IpcResponse<RebuildSearchIndexResponse>, String> {
+    let result = async {
+        let service = SearchService::from_state(state.inner())?;
+        service.get_rebuild_search_index_status(&job_id).await
     }
+    .await;
+
+    Ok(map_ipc_result(result))
+}
+
+#[tauri::command]
+pub async fn cancel_search_index_rebuild(
+    state: tauri::State<'_, AppState>,
+    job_id: String,
+) -> Result<IpcResponse<RebuildSearchIndexResponse>, String> {
+    let result = async {
+        let service = SearchService::from_state(state.inner())?;
+        service.cancel_rebuild_search_index(&job_id).await
+    }
+    .await;
 
     Ok(map_ipc_result(result))
 }
@@ -59,6 +78,46 @@ pub async fn check_search_index(
     .await;
 
     Ok(map_ipc_result(result))
+}
+
+fn spawn_search_index_rebuild_runner(
+    app_handle: tauri::AppHandle,
+    service: SearchService,
+    job_id: String,
+) {
+    tauri::async_runtime::spawn(async move {
+        let result = service.run_rebuild_search_index(&job_id).await;
+        match result {
+            Ok(response) => {
+                let _ = app_handle.emit("search://index-rebuild-status", &response);
+                if response.status == "succeeded" {
+                    let _ = app_handle.emit(
+                        "search://index-rebuilt",
+                        json!({
+                            "jobId": response.job_id,
+                            "status": response.status,
+                            "stage": response.stage,
+                            "indexedObjects": response.indexed_objects,
+                            "expectedObjects": response.expected_objects,
+                        }),
+                    );
+                    let _ = app_handle.emit("library://objects-updated", ());
+                }
+            }
+            Err(error) => {
+                let _ = app_handle.emit(
+                    "search://index-rebuild-status",
+                    json!({
+                        "jobId": job_id,
+                        "status": "failed",
+                        "stage": "failed",
+                        "failureReason": error.to_string(),
+                        "cancellable": false,
+                    }),
+                );
+            }
+        }
+    });
 }
 
 #[tauri::command]
