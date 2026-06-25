@@ -4,7 +4,9 @@ use crate::domain::capture::{
     CaptureSubmission, RawCaptureItem, SubmitCaptureResponse,
 };
 use crate::errors::{AppError, AppResult};
-use crate::repositories::capture::{CaptureFetchCompletion, CaptureRepository};
+use crate::repositories::capture::{
+    CaptureFetchCompletion, CaptureRepository, ExistingCaptureRecord,
+};
 use crate::services::ai::{spawn_ai_enrichment_runner, AIEnrichmentService};
 use crate::services::document_parser::{parse_html_document, DocumentHints, ParsedWebDocument};
 use crate::state::AppState;
@@ -52,6 +54,19 @@ impl CaptureService {
 
     pub async fn submit(&self, item: RawCaptureItem) -> AppResult<SubmitCaptureResponse> {
         validate_capture_item(&item)?;
+
+        let user_id = item
+            .user_id
+            .clone()
+            .unwrap_or_else(|| LOCAL_USER_ID.to_string());
+        let canonical_url = normalized_capture_canonical_url(&item);
+
+        if let Some(existing) = self
+            .find_duplicate_url_capture(&item, &user_id, canonical_url.as_deref())
+            .await?
+        {
+            return Ok(existing);
+        }
 
         let object_id = Uuid::new_v4().to_string();
         let snapshot_id = Uuid::new_v4().to_string();
@@ -103,16 +118,10 @@ impl CaptureService {
         let submission = CaptureSubmission {
             object_id: object_id.clone(),
             object_type: infer_object_type(&item),
-            user_id: item
-                .user_id
-                .clone()
-                .unwrap_or_else(|| LOCAL_USER_ID.to_string()),
+            user_id,
             title: normalized_title(&item)
                 .or_else(|| parsed.as_ref().and_then(|document| document.title.clone())),
-            canonical_url: item
-                .canonical_url
-                .clone()
-                .or_else(|| item.source_url.clone()),
+            canonical_url,
             source_platform: item.source_platform.clone(),
             author: item.author.clone(),
             privacy_level: item.privacy_level.clone(),
@@ -135,12 +144,13 @@ impl CaptureService {
 
         let response = SubmitCaptureResponse {
             object_id: object_id.clone(),
-            snapshot_id,
+            snapshot_id: Some(snapshot_id),
             parsed_document_id: submission
                 .parsed_document
                 .as_ref()
                 .map(|document| document.id.clone()),
-            job_id,
+            job_id: Some(job_id),
+            deduplicated: false,
         };
 
         let mut tx = self.pool.begin().await?;
@@ -148,6 +158,29 @@ impl CaptureService {
         tx.commit().await?;
 
         Ok(response)
+    }
+
+    async fn find_duplicate_url_capture(
+        &self,
+        item: &RawCaptureItem,
+        user_id: &str,
+        canonical_url: Option<&str>,
+    ) -> AppResult<Option<SubmitCaptureResponse>> {
+        if !is_deduplicated_url_capture(item) {
+            return Ok(None);
+        }
+
+        let Some(canonical_url) = canonical_url else {
+            return Ok(None);
+        };
+
+        let mut tx = self.pool.begin().await?;
+        let existing =
+            CaptureRepository::find_active_by_canonical_url(&mut tx, user_id, canonical_url)
+                .await?;
+        tx.commit().await?;
+
+        Ok(existing.map(existing_capture_response))
     }
 
     pub async fn run_fetch_job(&self, job_id: &str) -> AppResult<Option<CaptureFetchJobRunResult>> {
@@ -572,6 +605,48 @@ fn has_meaningful_capture_input(item: &RawCaptureItem) -> bool {
 
 fn has_text(value: &Option<String>) -> bool {
     value.as_ref().is_some_and(|text| !text.trim().is_empty())
+}
+
+fn is_deduplicated_url_capture(item: &RawCaptureItem) -> bool {
+    item.source_type == "url" && !has_text(&item.raw_text) && !has_text(&item.raw_html)
+}
+
+fn normalized_capture_canonical_url(item: &RawCaptureItem) -> Option<String> {
+    item.canonical_url
+        .as_deref()
+        .or(item.source_url.as_deref())
+        .and_then(normalize_capture_url)
+}
+
+fn normalize_capture_url(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let Ok(mut url) = Url::parse(trimmed) else {
+        return Some(trimmed.to_string());
+    };
+
+    url.set_fragment(None);
+    if matches!(
+        (url.scheme(), url.port()),
+        ("http", Some(80)) | ("https", Some(443))
+    ) {
+        let _ = url.set_port(None);
+    }
+
+    Some(url.to_string())
+}
+
+fn existing_capture_response(existing: ExistingCaptureRecord) -> SubmitCaptureResponse {
+    SubmitCaptureResponse {
+        object_id: existing.object_id,
+        snapshot_id: existing.snapshot_id,
+        parsed_document_id: existing.parsed_document_id,
+        job_id: existing.job_id,
+        deduplicated: true,
+    }
 }
 
 fn build_inline_parsed_document(
@@ -1130,6 +1205,90 @@ return answer;</code></pre>
     }
 
     #[tokio::test]
+    async fn submit_url_capture_deduplicates_normalized_canonical_url() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        let object_store = test_object_store();
+        let service = CaptureService::new(database.pool().clone(), object_store);
+
+        let first = service
+            .submit(RawCaptureItem {
+                id: None,
+                user_id: None,
+                source_type: "url".to_string(),
+                source_platform: Some("web".to_string()),
+                source_url: Some("https://Example.com:443/article#comments".to_string()),
+                canonical_url: None,
+                title: None,
+                author: None,
+                captured_at: Some("2026-06-16T00:00:00Z".to_string()),
+                raw_html: None,
+                raw_text: None,
+                assets: Vec::new(),
+                metadata: json!({}),
+                privacy_level: "personal".to_string(),
+                permission_context: confirmed_permission(),
+            })
+            .await
+            .expect("first capture should be submitted");
+        let first_job_id = first
+            .job_id
+            .clone()
+            .expect("first URL capture should create a fetch job");
+
+        let second = service
+            .submit(RawCaptureItem {
+                id: None,
+                user_id: None,
+                source_type: "url".to_string(),
+                source_platform: Some("web".to_string()),
+                source_url: Some("https://example.com/article".to_string()),
+                canonical_url: Some("https://example.com/article#later".to_string()),
+                title: None,
+                author: None,
+                captured_at: Some("2026-06-16T00:01:00Z".to_string()),
+                raw_html: None,
+                raw_text: None,
+                assets: Vec::new(),
+                metadata: json!({}),
+                privacy_level: "personal".to_string(),
+                permission_context: confirmed_permission(),
+            })
+            .await
+            .expect("duplicate capture should return existing object");
+
+        assert!(!first.deduplicated);
+        assert!(second.deduplicated);
+        assert_eq!(second.object_id, first.object_id);
+        assert_eq!(second.job_id.as_deref(), Some(first_job_id.as_str()));
+
+        let object_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM knowledge_objects")
+            .fetch_one(database.pool())
+            .await
+            .expect("object count should be readable");
+        let snapshot_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM source_snapshots")
+            .fetch_one(database.pool())
+            .await
+            .expect("snapshot count should be readable");
+        let job_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM background_jobs")
+            .fetch_one(database.pool())
+            .await
+            .expect("job count should be readable");
+        let canonical_url: String =
+            sqlx::query_scalar("SELECT canonical_url FROM knowledge_objects WHERE id = ?1")
+                .bind(&first.object_id)
+                .fetch_one(database.pool())
+                .await
+                .expect("canonical URL should be readable");
+
+        assert_eq!(object_count, 1);
+        assert_eq!(snapshot_count, 1);
+        assert_eq!(job_count, 1);
+        assert_eq!(canonical_url, "https://example.com/article");
+    }
+
+    #[tokio::test]
     async fn run_fetch_job_fetches_html_and_marks_object_parsed() {
         let database = Database::initialize_in_memory()
             .await
@@ -1171,9 +1330,13 @@ return answer;</code></pre>
             .expect("capture should be submitted");
 
         assert!(response.parsed_document_id.is_none());
+        let job_id = response
+            .job_id
+            .clone()
+            .expect("new URL capture should create a fetch job");
 
         let run_result = service
-            .run_fetch_job(&response.job_id)
+            .run_fetch_job(&job_id)
             .await
             .expect("job runner should not error")
             .expect("job should be claimed");
@@ -1201,7 +1364,7 @@ return answer;</code></pre>
                 .expect("object author should be readable");
         let job_status: String =
             sqlx::query_scalar("SELECT status FROM background_jobs WHERE id = ?1")
-                .bind(&response.job_id)
+                .bind(&job_id)
                 .fetch_one(database.pool())
                 .await
                 .expect("job status should be readable");
@@ -1272,9 +1435,13 @@ return answer;</code></pre>
             })
             .await
             .expect("capture should be submitted");
+        let job_id = response
+            .job_id
+            .clone()
+            .expect("new URL capture should create a fetch job");
 
         let run_result = service
-            .run_fetch_job(&response.job_id)
+            .run_fetch_job(&job_id)
             .await
             .expect("job runner should record failure")
             .expect("job should be claimed");
@@ -1330,9 +1497,13 @@ return answer;</code></pre>
             })
             .await
             .expect("capture should be submitted");
+        let job_id = response
+            .job_id
+            .clone()
+            .expect("new URL capture should create a fetch job");
 
         let run_result = service
-            .run_fetch_job(&response.job_id)
+            .run_fetch_job(&job_id)
             .await
             .expect("job runner should record failure")
             .expect("job should be claimed");
@@ -1358,7 +1529,7 @@ return answer;</code></pre>
                 .expect("object status should be readable");
         let job_status: String =
             sqlx::query_scalar("SELECT status FROM background_jobs WHERE id = ?1")
-                .bind(&response.job_id)
+                .bind(&job_id)
                 .fetch_one(database.pool())
                 .await
                 .expect("job status should be readable");
@@ -1400,9 +1571,13 @@ return answer;</code></pre>
             })
             .await
             .expect("capture should be submitted");
+        let job_id = response
+            .job_id
+            .clone()
+            .expect("new URL capture should create a fetch job");
 
         let run_result = service
-            .run_fetch_job(&response.job_id)
+            .run_fetch_job(&job_id)
             .await
             .expect("job runner should record failure")
             .expect("job should be claimed");

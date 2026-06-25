@@ -15,9 +15,17 @@ pub async fn submit_capture(
         let ai_service = AIEnrichmentService::from_state(state.inner())?;
         let response = service.submit(item).await?;
 
-        if response.parsed_document_id.is_none() {
-            spawn_fetch_job_runner(app_handle, service, ai_service, response.job_id.clone());
-        } else {
+        if response.deduplicated {
+            return Ok::<SubmitCaptureResponse, AppError>(response);
+        }
+
+        if let Some(job_id) = response
+            .job_id
+            .clone()
+            .filter(|_| response.parsed_document_id.is_none())
+        {
+            spawn_fetch_job_runner(app_handle, service, ai_service, job_id);
+        } else if response.parsed_document_id.is_some() {
             spawn_ai_enrichment_runner(app_handle, ai_service, response.object_id.clone());
         }
 

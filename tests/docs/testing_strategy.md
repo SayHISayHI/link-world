@@ -110,6 +110,7 @@ Must cover:
 - delete creates tombstone and purge removes derived data.
 - startup job recovery requeues interrupted `capture.fetch_url` jobs with retry budget, fails exhausted capture jobs, and fails running jobs without registered recovery runners.
 - capture fetch failures for verification pages, HTTP 403 and unsupported schemes persist actionable failure reasons and do not create parsed documents.
+- repeated manual URL capture with the same normalized canonical URL returns the existing object, sets `deduplicated=true`, and does not create another snapshot or background job.
 - FTS search uses parsed document and AI summary.
 
 ### 4.3 Job idempotency tests
@@ -132,6 +133,7 @@ Component tests:
 - `ObjectDetail` formats persisted `capture.*` failure reasons as recovery-oriented user text and does not expose raw diagnostic prefixes as primary copy.
 - capture failure formatter maps stable `capture.*` prefixes to deterministic titles while preserving legacy free-text reasons.
 - `CaptureBar` renders formatted capture failure titles/messages and hides raw `capture.*` prefixes from the visible status copy.
+- `CaptureBar` renders duplicate URL submissions as an already-saved state and does not imply that a new capture job was created.
 - `MarkdownDocumentView` renders headings, lists, blockquotes, fenced code and GFM tables.
 - `MarkdownDocumentView` does not render raw HTML and rejects unsafe link or image protocols.
 - `MarkdownDocumentView` keeps remote images lazy, prevents referrer leakage and disables task-list inputs.

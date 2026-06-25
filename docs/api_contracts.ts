@@ -82,6 +82,17 @@ export interface RawCaptureItem {
   permissionContext: PermissionContext;
 }
 
+export interface SubmitCaptureResponse {
+  objectId: string;
+  // Present for newly stored captures and best-effort for deduplicated existing objects.
+  snapshotId?: string;
+  parsedDocumentId?: string;
+  // Present only when a concrete background job exists; omitted for duplicate URL submissions without a job.
+  jobId?: string;
+  // true means the backend selected an existing active object for the same normalized canonical URL.
+  deduplicated: boolean;
+}
+
 export interface CaptureAsset {
   id: string;
   kind: 'image' | 'video' | 'audio' | 'file' | 'snapshot';
@@ -453,9 +464,9 @@ export interface SystemCommands {
  * 模块：Capture (采集引擎)
  */
 export interface CaptureCommands {
-  // 提交一个新的采集请求。后端将存储快照并异步开始解析流程。
+  // 提交采集请求。普通 URL capture 会创建对象和后台 job；重复 normalized canonical URL 会返回已有对象并设置 deduplicated=true。
   // invoke('submit_capture', { item: RawCaptureItem })
-  submit_capture: (args: { item: RawCaptureItem }) => Promise<IpcResponse<{ objectId: string }>>;
+  submit_capture: (args: { item: RawCaptureItem }) => Promise<IpcResponse<SubmitCaptureResponse>>;
 }
 
 /**

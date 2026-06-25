@@ -37,4 +37,23 @@ describe("CaptureBar", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(onSubmit).toHaveBeenCalledOnce();
   });
+
+  it("renders duplicate URL submissions as an existing saved item", () => {
+    render(
+      <CaptureBar
+        value=""
+        loading={false}
+        job={{
+          status: "deduplicated",
+          lifecycleStatus: "already saved",
+        }}
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Already saved")).toBeInTheDocument();
+    expect(screen.getByText(/existing library item/)).toBeInTheDocument();
+    expect(screen.queryByText(/Capture job deduplicated/)).not.toBeInTheDocument();
+  });
 });

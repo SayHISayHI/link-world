@@ -154,9 +154,10 @@ export interface RawCaptureItem {
 
 export interface SubmitCaptureResponse {
   objectId: string;
-  snapshotId: string;
+  snapshotId?: string;
   parsedDocumentId?: string;
-  jobId: string;
+  jobId?: string;
+  deduplicated: boolean;
 }
 
 export type ObjectLifecycle =

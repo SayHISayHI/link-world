@@ -20,10 +20,11 @@ export function CaptureBar({ value, loading, error, job, onChange, onSubmit }: C
   const failure = job?.failureReason
     ? formatCaptureFailureReason(job.failureReason)
     : undefined;
+  const isDeduplicated = job?.status === "deduplicated";
   const jobTone =
     job?.status === "failed"
       ? "bg-red-50 text-red-800"
-      : job?.status === "succeeded"
+      : job?.status === "succeeded" || isDeduplicated
         ? "bg-emerald-50 text-emerald-800"
         : "bg-muted text-muted-foreground";
 
@@ -50,9 +51,14 @@ export function CaptureBar({ value, loading, error, job, onChange, onSubmit }: C
       </div>
       {job ? (
         <div className={`mt-2 rounded-sm px-2 py-1 text-xs leading-5 ${jobTone}`}>
-          <p className="font-medium">{failure?.title ?? `Capture job ${job.status}`}</p>
+          <p className="font-medium">
+            {failure?.title ?? (isDeduplicated ? "Already saved" : `Capture job ${job.status}`)}
+          </p>
           {failure ? <p>{failure.message}</p> : null}
-          {!failure && job.lifecycleStatus ? <p>Object is now {job.lifecycleStatus}.</p> : null}
+          {!failure && isDeduplicated ? (
+            <p>Opened the existing library item instead of creating a duplicate.</p>
+          ) : null}
+          {!failure && !isDeduplicated && job.lifecycleStatus ? <p>Object is now {job.lifecycleStatus}.</p> : null}
         </div>
       ) : null}
       {error ? (

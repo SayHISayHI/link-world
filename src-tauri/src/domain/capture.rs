@@ -48,9 +48,12 @@ pub struct PermissionContext {
 #[serde(rename_all = "camelCase")]
 pub struct SubmitCaptureResponse {
     pub object_id: String,
-    pub snapshot_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub snapshot_id: Option<String>,
     pub parsed_document_id: Option<String>,
-    pub job_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub job_id: Option<String>,
+    pub deduplicated: bool,
 }
 
 #[derive(Debug, Clone)]

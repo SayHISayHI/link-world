@@ -21,7 +21,65 @@ pub struct CaptureFetchCompletion<'a> {
     pub now: &'a str,
 }
 
+pub struct ExistingCaptureRecord {
+    pub object_id: String,
+    pub snapshot_id: Option<String>,
+    pub parsed_document_id: Option<String>,
+    pub job_id: Option<String>,
+}
+
 impl CaptureRepository {
+    pub async fn find_active_by_canonical_url(
+        tx: &mut Transaction<'_, Sqlite>,
+        user_id: &str,
+        canonical_url: &str,
+    ) -> AppResult<Option<ExistingCaptureRecord>> {
+        let row = sqlx::query(
+            r#"
+            SELECT
+                objects.id AS object_id,
+                (
+                    SELECT snapshots.id
+                    FROM source_snapshots AS snapshots
+                    WHERE snapshots.object_id = objects.id
+                    ORDER BY snapshots.captured_at DESC, snapshots.id DESC
+                    LIMIT 1
+                ) AS snapshot_id,
+                (
+                    SELECT parsed.id
+                    FROM parsed_documents AS parsed
+                    WHERE parsed.object_id = objects.id
+                    ORDER BY parsed.created_at DESC, parsed.id DESC
+                    LIMIT 1
+                ) AS parsed_document_id,
+                (
+                    SELECT jobs.id
+                    FROM background_jobs AS jobs
+                    WHERE jobs.object_id = objects.id
+                    ORDER BY jobs.created_at DESC, jobs.id DESC
+                    LIMIT 1
+                ) AS job_id
+            FROM knowledge_objects AS objects
+            WHERE objects.user_id = ?1
+              AND objects.canonical_url = ?2
+              AND objects.lifecycle_status != 'deleted'
+            ORDER BY objects.updated_at DESC, objects.captured_at DESC, objects.id DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(user_id)
+        .bind(canonical_url)
+        .fetch_optional(&mut **tx)
+        .await?;
+
+        Ok(row.map(|row| ExistingCaptureRecord {
+            object_id: row.get("object_id"),
+            snapshot_id: row.get("snapshot_id"),
+            parsed_document_id: row.get("parsed_document_id"),
+            job_id: row.get("job_id"),
+        }))
+    }
+
     pub async fn insert_submission(
         tx: &mut Transaction<'_, Sqlite>,
         submission: &CaptureSubmission,

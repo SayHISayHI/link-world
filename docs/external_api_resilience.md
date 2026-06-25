@@ -130,7 +130,7 @@ Rules:
 - Re-running AI job should create new analysis version or detect duplicate input hash.
 - Re-running parse should create new `parsed_documents` only when content hash differs.
 - Re-running evaluation should create new `evaluation_runs`.
-- Re-running capture should not duplicate same canonical URL unless user explicitly saves again.
+- Re-running manual URL capture should not duplicate the same normalized canonical URL unless user explicitly saves again; the default response returns the existing object with `deduplicated=true` and does not spawn a new fetch job.
 
 ## 10. Observability
 

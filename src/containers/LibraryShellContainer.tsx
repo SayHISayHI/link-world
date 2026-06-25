@@ -26,7 +26,7 @@ import type { BackgroundJob, KnowledgeObject } from "../types/api";
 const LIBRARY_PAGE_SIZE = 30;
 
 interface CaptureJobCompletedPayload {
-  jobId: string;
+  jobId?: string;
   status: "succeeded" | "failed" | "skipped" | string;
   objectId?: string;
   lifecycleStatus?: string;
@@ -349,6 +349,7 @@ export function LibraryShellContainer() {
       return;
     }
 
+    setLastCaptureJob(undefined);
     const response = await submitCapture({
       sourceType: "url",
       sourceUrl: url,
@@ -368,6 +369,13 @@ export function LibraryShellContainer() {
     }
 
     setCaptureUrl("");
+    if (response.deduplicated) {
+      setLastCaptureJob({
+        status: "deduplicated",
+        objectId: response.objectId,
+        lifecycleStatus: "already saved",
+      });
+    }
     selectObject(response.objectId);
     await refreshRecentObjects();
   }, [captureUrl, refreshRecentObjects, selectObject, submitCapture]);

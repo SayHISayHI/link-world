@@ -80,7 +80,7 @@ Rules:
 
 | Component | Purpose | Required states |
 | --- | --- | --- |
-| `CaptureBar` | submit URL and surface latest capture job outcome | idle, submitting, queued, running, failed |
+| `CaptureBar` | submit URL and surface latest capture job outcome | idle, submitting, queued, running, failed, deduplicated |
 | `AddUrlDialog` | submit URL | idle, submitting, failed |
 | `CaptureDropZone` | future file import | idle, dragging, rejected |
 | `SelectionCapturePreview` | browser extension payload preview | ready, failed |
@@ -91,6 +91,7 @@ Rules:
 - Capture acknowledgement should be fast and not wait for parsing.
 - Failed capture must show fallback action if browser extension can help.
 - Persisted `capture.*` failure reasons are diagnostic protocol values; capture UI must render them through the shared formatter and avoid exposing raw prefixes as user-facing copy.
+- Duplicate URL submissions must show an explicit already-saved state and open the existing object instead of silently creating or implying a new capture.
 
 ## 7. Search Components
 
