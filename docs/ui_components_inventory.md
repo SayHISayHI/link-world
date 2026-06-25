@@ -36,6 +36,7 @@
 | `ObjectList` | render paged/filterable object rows | empty, loading more, end of page |
 | `ObjectListItem` | object summary row | selected, failed, archived |
 | `ObjectDetailContainer` | fetch detail | loading, failed, deleted |
+| `ObjectDetail` | render selected object content and failure/recovery state | empty, parsed, failed, deleted |
 | `ObjectDetailHeader` | title/source/actions | stale, failed |
 | `MarkdownDocumentView` | lazy safe Markdown/AST reader | empty, plain-text fallback, AI/AST mode |
 | `DocumentToc` | h2-h4 section navigation | hidden, collapsed, expanded |
@@ -51,6 +52,7 @@ Document rendering rules:
 - AI 布局生效时显示低干扰来源标识，低置信度或旧文档提示不得改变布局。
 - 目录、标题锚点、代码操作和折叠控件必须支持键盘与 accessible name。
 - renderer 不渲染原始 HTML，不允许危险 URL 协议，也不允许 AI 绕过安全组件。
+- Object failure panels must format persisted `capture.*` failure reasons through the shared formatter so stable diagnostic codes do not become primary user-facing text.
 
 ## 5. AI and Evaluation Components
 
@@ -78,6 +80,7 @@ Rules:
 
 | Component | Purpose | Required states |
 | --- | --- | --- |
+| `CaptureBar` | submit URL and surface latest capture job outcome | idle, submitting, queued, running, failed |
 | `AddUrlDialog` | submit URL | idle, submitting, failed |
 | `CaptureDropZone` | future file import | idle, dragging, rejected |
 | `SelectionCapturePreview` | browser extension payload preview | ready, failed |
@@ -87,6 +90,7 @@ Rules:
 
 - Capture acknowledgement should be fast and not wait for parsing.
 - Failed capture must show fallback action if browser extension can help.
+- Persisted `capture.*` failure reasons are diagnostic protocol values; capture UI must render them through the shared formatter and avoid exposing raw prefixes as user-facing copy.
 
 ## 7. Search Components
 

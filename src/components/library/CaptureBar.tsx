@@ -1,5 +1,6 @@
 import { Plus } from "lucide-react";
 import type { AppUiError } from "../../lib/errors";
+import { formatCaptureFailureReason } from "../../lib/captureFailures";
 import { Button } from "../ui/button";
 
 interface CaptureBarProps {
@@ -16,6 +17,9 @@ interface CaptureBarProps {
 }
 
 export function CaptureBar({ value, loading, error, job, onChange, onSubmit }: CaptureBarProps) {
+  const failure = job?.failureReason
+    ? formatCaptureFailureReason(job.failureReason)
+    : undefined;
   const jobTone =
     job?.status === "failed"
       ? "bg-red-50 text-red-800"
@@ -46,9 +50,9 @@ export function CaptureBar({ value, loading, error, job, onChange, onSubmit }: C
       </div>
       {job ? (
         <div className={`mt-2 rounded-sm px-2 py-1 text-xs leading-5 ${jobTone}`}>
-          <p className="font-medium">Capture job {job.status}</p>
-          {job.failureReason ? <p>{job.failureReason}</p> : null}
-          {!job.failureReason && job.lifecycleStatus ? <p>Object is now {job.lifecycleStatus}.</p> : null}
+          <p className="font-medium">{failure?.title ?? `Capture job ${job.status}`}</p>
+          {failure ? <p>{failure.message}</p> : null}
+          {!failure && job.lifecycleStatus ? <p>Object is now {job.lifecycleStatus}.</p> : null}
         </div>
       ) : null}
       {error ? (

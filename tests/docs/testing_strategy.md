@@ -129,6 +129,9 @@ Component tests:
 - `ObjectListItem` renders all lifecycle states.
 - `ObjectDetail` handles loading, empty, failed and deleted.
 - `ObjectDetail` renders Markdown when available and falls back to parsed plain text.
+- `ObjectDetail` formats persisted `capture.*` failure reasons as recovery-oriented user text and does not expose raw diagnostic prefixes as primary copy.
+- capture failure formatter maps stable `capture.*` prefixes to deterministic titles while preserving legacy free-text reasons.
+- `CaptureBar` renders formatted capture failure titles/messages and hides raw `capture.*` prefixes from the visible status copy.
 - `MarkdownDocumentView` renders headings, lists, blockquotes, fenced code and GFM tables.
 - `MarkdownDocumentView` does not render raw HTML and rejects unsafe link or image protocols.
 - `MarkdownDocumentView` keeps remote images lazy, prevents referrer leakage and disables task-list inputs.

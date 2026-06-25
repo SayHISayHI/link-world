@@ -8,6 +8,7 @@ import type {
   PingResponse,
 } from "../../types/api";
 import type { AppUiError } from "../../lib/errors";
+import { formatCaptureFailureReason } from "../../lib/captureFailures";
 import { formatRelativeStatus } from "../../lib/formatting";
 import { AIAnalysisPanel } from "../analysis/AIAnalysisPanel";
 import { EvaluationPanel } from "../evaluation/EvaluationPanel";
@@ -85,6 +86,9 @@ export function ObjectDetail({
   }
 
   const title = object.title ?? object.canonicalUrl ?? object.id;
+  const captureFailure = object.failureReason
+    ? formatCaptureFailureReason(object.failureReason)
+    : undefined;
   const parsedDocument = detail?.parsedDocument;
   const latestAnalysis = detail?.aiAnalyses[0];
   const displayHints = parsedDocument
@@ -125,12 +129,12 @@ export function ObjectDetail({
               <Activity className="h-4 w-4" aria-hidden="true" />
               {statusText}
             </div>
-            {object.failureReason ? (
+            {captureFailure ? (
               <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-800">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="font-medium">Capture failed</p>
-                    <p className="mt-1">{object.failureReason}</p>
+                    <p className="font-medium">{captureFailure.title}</p>
+                    <p className="mt-1">{captureFailure.message}</p>
                   </div>
                   {retryJob ? (
                     <Button

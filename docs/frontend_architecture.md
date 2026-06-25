@@ -312,6 +312,7 @@ Failure UI must show:
 - 错误码或诊断 ID。
 - retry action, if retryable。
 - fallback action, e.g. browser capture。
+- persisted `capture.*` failure reasons must be formatted through the shared capture failure formatter before rendering; user-facing surfaces show a clear title/recovery message and must not expose the raw stable prefix as primary copy。
 
 禁止：
 
@@ -431,6 +432,7 @@ Minimum frontend tests:
 
 - `ObjectList` renders lifecycle states。
 - `ObjectDetail` renders parsed document, AI analysis, evaluation。
+- `ObjectDetail` and capture submission UI render persisted `capture.*` failure reasons as user-facing recovery text, not raw backend prefixes。
 - `MarkdownDocumentView` renders TOC, heading anchors, GFM tables, Callout and long-code controls。
 - unsafe HTML/URL、纯文本 fallback、AI hint 失效和 clipboard fallback 必须有组件测试。
 - `SearchCommand` handles loading, empty, failed, keyboard navigation。
