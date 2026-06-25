@@ -46,7 +46,7 @@
 | Sprint 1C 导航与列表边界 | 已实现，待 UI 回归 | All/Inbox/Articles/GitHub/Prompts/Failed 后端过滤；30 条分页 |
 | Sprint 1D 文档契约 | 已同步 | API、架构、安全、PRD、UI、数据库与本路线图 |
 | Sprint 2 数据安全 | 执行中 | 备份/两阶段恢复/rollback、0001–0003 fixture、启动迁移保护、启动恢复界面与便携导出已实现；真实 Windows 故障矩阵待实现 |
-| Sprint 3 采集可靠性 | 执行中 | 启动时 running job 收敛已实现；超时分类、受限页面、扩展回退、重复 URL 边界待实现 |
+| Sprint 3 采集可靠性 | 执行中 | 启动时 running job 收敛、capture 超时/HTTP/受限页/空正文分类与扩展回退提示已实现；重复 URL 边界待实现 |
 | Sprint 4 搜索质量 | 未开始 | FTS 排序、过滤、索引修复与大库性能 |
 | Sprint 5 可观测性 | 未开始 | 诊断页、健康状态、脱敏支持包 |
 | Sprint 6-8 Evaluation | 未开始 | 通用框架、GitHub evaluator、Prompt evaluator |
@@ -98,15 +98,15 @@
 
 交付：
 
-- URL 获取、解析、AI job 的超时、取消和重试分类。
+- URL 获取、解析、AI job 的超时、取消和重试分类。（capture fetch timeout/HTTP/受限页/空正文/unsupported scheme 分类已实现；AI job 分类待扩展）
 - 应用重启后 queued/running job 的恢复策略。（running job 启动收敛已实现：capture 可重试则回 queued，耗尽或未注册 runner 则 failed）
-- 受限页面给出浏览器扩展回退动作。
+- 受限页面给出浏览器扩展回退动作。（HTTP 401/403、verification/CAPTCHA/challenge 页面已实现）
 - 重复 URL 的幂等边界和用户可见策略。
-- capture/parse 错误码与状态机回归测试。
+- capture/parse 错误码与状态机回归测试。（`capture.*` failureReason code 已覆盖核心路径）
 
 验收：
 
-- 离线、DNS、403、超时、无正文和损坏 HTML 都得到稳定状态。
+- 离线/DNS、403、超时、无正文和损坏 HTML 都得到稳定状态。（capture 网络/HTTP/parse 分类自动化已覆盖主要分支，真实离线环境仍需手动矩阵）
 - 单个失败任务不阻塞其他对象。
 - 重启后无永久 running job。（repository 自动化已覆盖）
 - 日志不包含正文、cookie、token 或第三方原始错误 body。

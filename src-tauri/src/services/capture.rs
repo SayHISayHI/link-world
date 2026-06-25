@@ -166,7 +166,10 @@ impl CaptureService {
 
         match outcome {
             Ok(parsed) => self.complete_fetch_job(job, parsed).await.map(Some),
-            Err(error) => self.fail_fetch_job(job, error.to_string()).await.map(Some),
+            Err(error) => self
+                .fail_fetch_job(job, capture_failure_reason(&error))
+                .await
+                .map(Some),
         }
     }
 
@@ -238,10 +241,7 @@ impl CaptureService {
         let text_content = parsed.text_content.trim().to_string();
         if text_content.is_empty() {
             return self
-                .fail_fetch_job(
-                    job,
-                    "fetched HTML did not contain readable text".to_string(),
-                )
+                .fail_fetch_job(job, capture_no_readable_text_failure_reason())
                 .await;
         }
 
@@ -399,9 +399,104 @@ fn build_http_client() -> AppResult<reqwest::Client> {
 fn map_reqwest_error(error: reqwest::Error) -> AppError {
     if error.is_timeout() {
         AppError::NetworkTimeout
+    } else if error.is_connect() {
+        AppError::ParseFailed("network connection failed".to_string())
+    } else if error.is_decode() {
+        AppError::ParseFailed("response body could not be decoded".to_string())
     } else {
-        AppError::ParseFailed(error.to_string())
+        AppError::ParseFailed("network request failed".to_string())
     }
+}
+
+fn capture_failure_reason(error: &AppError) -> String {
+    match error {
+        AppError::NetworkTimeout => format!(
+            "capture.timeout: URL fetch timed out after {FETCH_TIMEOUT_SECONDS} seconds. Retry later, or if the page loads in your browser, save it with the browser extension."
+        ),
+        AppError::ParseFailed(message) => capture_parse_failure_reason(message),
+        AppError::PolicyDenied(message) => capture_policy_failure_reason(message),
+        other => format!(
+            "capture.failed: Capture failed before parsing could complete. Retry the capture or use the browser extension. Details: {other}"
+        ),
+    }
+}
+
+fn capture_parse_failure_reason(message: &str) -> String {
+    if let Some(status_code) = parse_http_status_code(message) {
+        return capture_http_status_failure_reason(status_code);
+    }
+
+    let lower_message = message.to_lowercase();
+    if lower_message.contains("verification page")
+        || lower_message.contains("captcha")
+        || lower_message.contains("challenge")
+    {
+        return "capture.restricted_page: The fetched page appears to be a login, CAPTCHA, anti-bot, or environment verification page. Open it in your browser and save it with the browser extension after access is confirmed.".to_string();
+    }
+
+    if lower_message.contains("no readable text")
+        || lower_message.contains("did not contain readable text")
+    {
+        return capture_no_readable_text_failure_reason();
+    }
+
+    if lower_message.contains("network connection failed") {
+        return "capture.network_unreachable: Link World could not connect to the host. Check network, DNS, VPN, or proxy settings, then retry.".to_string();
+    }
+
+    if lower_message.contains("could not be decoded") {
+        return "capture.invalid_response: The server response could not be decoded as readable HTML. Try the browser extension capture path or save selected text manually.".to_string();
+    }
+
+    "capture.parse_failed: Link World could not extract readable content from the fetched page. Try the browser extension capture path, selected text capture, or a different source URL.".to_string()
+}
+
+fn capture_policy_failure_reason(message: &str) -> String {
+    if message.contains("unsupported URL scheme") {
+        return "capture.unsupported_scheme: Only http and https URLs can be fetched automatically. Save local files, app links, or other schemes through import or selected text capture.".to_string();
+    }
+
+    if message.contains("fetched HTML exceeds") {
+        return "capture.too_large: The fetched page is larger than the capture safety limit. Use selected text or browser extension capture for the relevant section.".to_string();
+    }
+
+    format!(
+        "capture.policy_denied: Capture was blocked by a safety policy. Retry with a user-confirmed URL, selected text, or browser extension capture. Details: {message}"
+    )
+}
+
+fn capture_http_status_failure_reason(status_code: u16) -> String {
+    match status_code {
+        401 | 403 => format!(
+            "capture.http_forbidden: The server returned HTTP {status_code}, so Link World cannot fetch the page without browser/session access. Open it in your browser and save it with the browser extension."
+        ),
+        404 | 410 => format!(
+            "capture.http_not_found: The server returned HTTP {status_code}. Check whether the URL is still valid, or save a browser-visible copy if you can access it."
+        ),
+        408 | 425 | 429 => format!(
+            "capture.http_retryable: The server returned HTTP {status_code}. Wait and retry; if the page is visible in your browser, use the browser extension capture path."
+        ),
+        500..=599 => format!(
+            "capture.http_server_error: The server returned HTTP {status_code}. Retry later; the saved object remains available for retry."
+        ),
+        _ => format!(
+            "capture.http_error: The server returned HTTP {status_code}. Retry later or use the browser extension capture path if the page is visible in your browser."
+        ),
+    }
+}
+
+fn parse_http_status_code(message: &str) -> Option<u16> {
+    let marker = "URL returned HTTP ";
+    let after_marker = message.split_once(marker)?.1;
+    let digits = after_marker
+        .chars()
+        .take_while(|character| character.is_ascii_digit())
+        .collect::<String>();
+    digits.parse().ok()
+}
+
+fn capture_no_readable_text_failure_reason() -> String {
+    "capture.no_readable_text: The fetched page did not contain enough readable article text. Try the browser extension capture path, selected text capture, or a more direct article URL.".to_string()
 }
 
 async fn parse_fetched_html(html: String) -> AppResult<FetchedHtmlDocument> {
@@ -754,9 +849,11 @@ fn build_fetch_failed_event(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_inline_parsed_document, parse_fetched_html_sync, CaptureService, HTML_FETCH_PARSER_ID,
+        build_inline_parsed_document, capture_failure_reason, parse_fetched_html_sync,
+        CaptureService, HTML_FETCH_PARSER_ID,
     };
     use crate::domain::capture::{PermissionContext, RawCaptureItem};
+    use crate::errors::AppError;
     use crate::repositories::search::SearchRepository;
     use crate::storage::database::Database;
     use crate::storage::object_store::ObjectStore;
@@ -797,6 +894,19 @@ mod tests {
         assert!(parsed.text_content.contains("structured capture checklist"));
         assert!(!parsed.text_content.contains("document.addEventListener"));
         assert!(!parsed.text_content.contains("--weui"));
+    }
+
+    #[test]
+    fn capture_failure_reason_classifies_timeout_and_empty_content() {
+        let timeout = capture_failure_reason(&AppError::NetworkTimeout);
+        assert!(timeout.contains("capture.timeout"));
+        assert!(timeout.contains("browser extension"));
+
+        let empty = capture_failure_reason(&AppError::ParseFailed(
+            "fetched HTML did not contain readable text".to_string(),
+        ));
+        assert!(empty.contains("capture.no_readable_text"));
+        assert!(empty.contains("selected text capture"));
     }
 
     #[test]
@@ -1175,7 +1285,12 @@ return answer;</code></pre>
             .failure_reason
             .as_deref()
             .unwrap_or_default()
-            .contains("verification page"));
+            .contains("capture.restricted_page"));
+        assert!(run_result
+            .failure_reason
+            .as_deref()
+            .unwrap_or_default()
+            .contains("browser extension"));
 
         let parsed_count: i64 =
             sqlx::query_scalar("SELECT COUNT(*) FROM parsed_documents WHERE object_id = ?1")
@@ -1224,6 +1339,16 @@ return answer;</code></pre>
 
         assert_eq!(run_result.status, "failed");
         assert_eq!(run_result.lifecycle_status, "failed");
+        assert!(run_result
+            .failure_reason
+            .as_deref()
+            .unwrap_or_default()
+            .contains("capture.unsupported_scheme"));
+        assert!(run_result
+            .failure_reason
+            .as_deref()
+            .unwrap_or_default()
+            .contains("selected text capture"));
 
         let lifecycle_status: String =
             sqlx::query_scalar("SELECT lifecycle_status FROM knowledge_objects WHERE id = ?1")
@@ -1242,6 +1367,59 @@ return answer;</code></pre>
         assert_eq!(job_status, "failed");
     }
 
+    #[tokio::test]
+    async fn run_fetch_job_marks_restricted_http_status_with_extension_fallback() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        let object_store = test_object_store();
+        let service = CaptureService::new(database.pool().clone(), object_store);
+        let url = start_test_http_server(
+            "403 Forbidden",
+            r#"<!doctype html><html><body>Forbidden</body></html>"#,
+        )
+        .await;
+
+        let response = service
+            .submit(RawCaptureItem {
+                id: None,
+                user_id: None,
+                source_type: "url".to_string(),
+                source_platform: Some("web".to_string()),
+                source_url: Some(url.clone()),
+                canonical_url: Some(url),
+                title: None,
+                author: None,
+                captured_at: None,
+                raw_html: None,
+                raw_text: None,
+                assets: Vec::new(),
+                metadata: json!({}),
+                privacy_level: "personal".to_string(),
+                permission_context: confirmed_permission(),
+            })
+            .await
+            .expect("capture should be submitted");
+
+        let run_result = service
+            .run_fetch_job(&response.job_id)
+            .await
+            .expect("job runner should record failure")
+            .expect("job should be claimed");
+
+        assert_eq!(run_result.status, "failed");
+        assert!(run_result
+            .failure_reason
+            .as_deref()
+            .unwrap_or_default()
+            .contains("capture.http_forbidden"));
+        assert!(run_result
+            .failure_reason
+            .as_deref()
+            .unwrap_or_default()
+            .contains("browser extension"));
+    }
+
     fn confirmed_permission() -> PermissionContext {
         PermissionContext {
             acquisition_mode: "user_action".to_string(),
@@ -1258,6 +1436,10 @@ return answer;</code></pre>
     }
 
     async fn start_test_html_server(body: &'static str) -> String {
+        start_test_http_server("200 OK", body).await
+    }
+
+    async fn start_test_http_server(status: &'static str, body: &'static str) -> String {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("test server should bind");
@@ -1273,7 +1455,7 @@ return answer;</code></pre>
             let mut buffer = [0_u8; 1024];
             let _ = socket.read(&mut buffer).await;
             let response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                 body.len(),
                 body
             );

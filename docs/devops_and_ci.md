@@ -106,6 +106,7 @@ Migration tests:
 - Portable export writes non-secret Markdown/JSON artifacts and verifies that metadata excludes credential references, internal jobs and local storage URI fields。
 
 - Startup job recovery converges interrupted `running` jobs so app restart cannot leave permanent running jobs.
+- Capture fetch failure classification covers timeout, unreachable network, HTTP forbidden, restricted verification pages, unsupported schemes and no-readable-text cases without logging raw response bodies.
 Test DB strategy:
 
 - Unit tests can use in-memory SQLite when possible。
@@ -113,6 +114,7 @@ Test DB strategy:
 - Focused commands: `cargo test storage::database::migration_tests` and `cargo test services::restore`。
 - Function-level phase simulation belongs in normal CI; real-process kill tests belong in the Windows packaging matrix。
 - Focused command: `cargo test repositories::jobs` for retry and startup-running-job convergence.
+- Focused command: `cargo test services::capture` for parser reuse and capture failure classification.
 
 ## 5. GitHub Actions Draft
 

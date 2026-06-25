@@ -243,6 +243,7 @@ export interface AIEnrichmentRunResult {
   jobId: string;
   analysisId?: string;
   status: 'succeeded' | 'failed' | string;
+  // AI failure text is user-visible and must be sanitized; future versions may split this into typed code + message.
   failureReason?: string;
 }
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'blocked';
@@ -265,6 +266,8 @@ export interface BackgroundJob {
   attemptCount: number;
   maxAttempts: number;
   nextRunAt?: string;
+  // For capture.fetch_url, failed jobs use stable `capture.*` prefixes such as
+  // capture.timeout, capture.http_forbidden, capture.restricted_page and capture.no_readable_text.
   lastError?: string;
   createdAt: string;
   updatedAt: string;

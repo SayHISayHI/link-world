@@ -79,6 +79,7 @@ Must cover:
 - document parser preserves headings, paragraphs, lists, blockquotes, code blocks and tables.
 - document parser removes duplicate leading titles and ignores script, style and navigation noise.
 - verification-page detection rejects real challenges without rejecting substantive articles that discuss authentication or CAPTCHA topics.
+- capture failure classification emits stable `capture.*` user-facing reasons for timeout, unreachable network, HTTP 403, verification pages, unsupported schemes, oversized responses and no-readable-text pages.
 - document parser rejects unsafe link and image protocols in generated Markdown.
 
 ### 4.2 Integration tests
@@ -108,6 +109,7 @@ Must cover:
 - portable export writes manifest/JSONL/metadata/markdown, skips secret objects, and omits source/evaluation storage URI, credential references and secret body content.
 - delete creates tombstone and purge removes derived data.
 - startup job recovery requeues interrupted `capture.fetch_url` jobs with retry budget, fails exhausted capture jobs, and fails running jobs without registered recovery runners.
+- capture fetch failures for verification pages, HTTP 403 and unsupported schemes persist actionable failure reasons and do not create parsed documents.
 - FTS search uses parsed document and AI summary.
 
 ### 4.3 Job idempotency tests
