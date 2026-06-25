@@ -211,6 +211,7 @@ export interface EvaluationArtifact {
 export interface SearchResult {
   object: KnowledgeObject;
   matchedFields: string[];
+  // Omitted for secret objects even when the object itself is returned by local search.
   snippet?: string;
   score: number;
 }

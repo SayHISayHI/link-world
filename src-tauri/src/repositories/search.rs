@@ -48,8 +48,11 @@ impl SearchRepository {
                 fts.author AS indexed_author,
                 fts.content AS indexed_content,
                 fts.ai_summary AS indexed_ai_summary,
-                snippet(knowledge_fts, -1, '[', ']', '...', 16) AS snippet,
-                bm25(knowledge_fts) AS rank
+                CASE
+                    WHEN objects.privacy_level = 'secret' THEN NULL
+                    ELSE snippet(knowledge_fts, -1, '[', ']', '...', 16)
+                END AS snippet,
+                bm25(knowledge_fts, 0.0, 0.0, 8.0, 3.0, 1.0, 4.0) AS rank
             FROM knowledge_fts AS fts
             INNER JOIN knowledge_objects AS objects ON objects.id = fts.object_id
             WHERE knowledge_fts MATCH ?1
@@ -419,6 +422,74 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn search_ranks_title_matches_above_repeated_content_matches() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        seed_custom_searchable_object(
+            database.pool(),
+            "obj-title-rank",
+            "Priority Alpha",
+            "Short body without the ranking term.",
+            "personal",
+        )
+        .await;
+        seed_custom_searchable_object(
+            database.pool(),
+            "obj-content-rank",
+            "Background Notes",
+            "priority priority priority priority priority content-only match",
+            "personal",
+        )
+        .await;
+        reindex(database.pool(), "obj-title-rank").await;
+        reindex(database.pool(), "obj-content-rank").await;
+        let repository = SearchRepository::new(database.pool().clone());
+
+        let results = repository
+            .search_hybrid("priority", Some(10))
+            .await
+            .expect("weighted search should work");
+
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].object.id, "obj-title-rank");
+        assert!(results[0]
+            .matched_fields
+            .iter()
+            .any(|field| field == "title"));
+    }
+
+    #[tokio::test]
+    async fn search_suppresses_secret_object_snippets() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        seed_custom_searchable_object(
+            database.pool(),
+            "obj-secret-search",
+            "Private Launch Plan",
+            "private launch code alpha should never appear in snippets",
+            "secret",
+        )
+        .await;
+        reindex(database.pool(), "obj-secret-search").await;
+        let repository = SearchRepository::new(database.pool().clone());
+
+        let results = repository
+            .search_hybrid("private launch", Some(10))
+            .await
+            .expect("secret object search should work");
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].object.id, "obj-secret-search");
+        assert!(results[0].snippet.is_none());
+        assert!(results[0]
+            .matched_fields
+            .iter()
+            .any(|field| field == "content" || field == "title"));
+    }
+
+    #[tokio::test]
     async fn deleted_object_is_removed_from_search_index() {
         let database = Database::initialize_in_memory()
             .await
@@ -578,6 +649,52 @@ mod tests {
         .execute(pool)
         .await
         .expect("parsed document should insert");
+    }
+
+    async fn seed_custom_searchable_object(
+        pool: &sqlx::SqlitePool,
+        object_id: &str,
+        title: &str,
+        text_content: &str,
+        privacy_level: &str,
+    ) {
+        let parsed_id = format!("parsed-{object_id}");
+        let hash = format!("hash-{object_id}");
+
+        sqlx::query(
+            r#"
+            INSERT INTO knowledge_objects (
+                id, user_id, object_type, title, author, privacy_level, lifecycle_status, captured_at, updated_at
+            ) VALUES (
+                ?1, 'local', 'article', ?2, 'Author', ?3, 'parsed',
+                '2026-06-17T00:00:00Z', '2026-06-17T00:00:00Z'
+            )
+            "#,
+        )
+        .bind(object_id)
+        .bind(title)
+        .bind(privacy_level)
+        .execute(pool)
+        .await
+        .expect("custom object should insert");
+
+        sqlx::query(
+            r#"
+            INSERT INTO parsed_documents (
+                id, object_id, title, text_content, word_count, content_hash, parser_id, parser_version, created_at
+            ) VALUES (
+                ?1, ?2, ?3, ?4, 8, ?5, 'test.parser', '0.1.0', '2026-06-17T00:00:00Z'
+            )
+            "#,
+        )
+        .bind(parsed_id)
+        .bind(object_id)
+        .bind(title)
+        .bind(text_content)
+        .bind(hash)
+        .execute(pool)
+        .await
+        .expect("custom parsed document should insert");
     }
 
     async fn seed_unparsed_object(pool: &sqlx::SqlitePool, object_id: &str) {
