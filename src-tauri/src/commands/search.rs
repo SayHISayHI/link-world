@@ -10,10 +10,11 @@ pub async fn search_hybrid(
     state: tauri::State<'_, AppState>,
     query: String,
     limit: Option<i64>,
+    filter_type: Option<String>,
 ) -> Result<IpcResponse<Vec<SearchResult>>, String> {
     let result = async {
         let service = SearchService::from_state(state.inner())?;
-        service.search_hybrid(&query, limit).await
+        service.search_hybrid(&query, limit, filter_type).await
     }
     .await;
 

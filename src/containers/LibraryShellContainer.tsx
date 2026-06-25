@@ -155,8 +155,8 @@ export function LibraryShellContainer() {
       return Promise.resolve([]);
     }
 
-    return searchHybrid({ query, limit: 25 });
-  }, [resetSearch, searchHybrid, searchQuery]);
+    return searchHybrid({ query, filterType: libraryFilter, limit: 25 });
+  }, [libraryFilter, resetSearch, searchHybrid, searchQuery]);
 
   useEffect(() => {
     void refreshRecentObjects();

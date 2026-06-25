@@ -111,6 +111,7 @@ Rules:
 - Keyboard navigation required.
 - Result snippets must not reveal secret content.
 - Search rows may still show secret object metadata when policy allows local search, but body snippets must be omitted for `secret` objects.
+- Search results must compose with the active Library filter instead of bypassing Sidebar navigation semantics.
 
 ## 8. Settings Components
 

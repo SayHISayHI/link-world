@@ -26,8 +26,11 @@ impl SearchService {
         &self,
         query: &str,
         limit: Option<i64>,
+        filter_type: Option<String>,
     ) -> AppResult<Vec<SearchResult>> {
-        self.repository.search_hybrid(query, limit).await
+        self.repository
+            .search_hybrid(query, limit, filter_type)
+            .await
     }
 
     pub async fn rebuild_search_index(&self) -> AppResult<RebuildSearchIndexResponse> {

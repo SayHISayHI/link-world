@@ -737,7 +737,7 @@ mod tests {
         assert_eq!(stored_display_hints, analysis.display_hints_json);
 
         let search_results = SearchRepository::new(database.pool().clone())
-            .search_hybrid("Searchable summary", Some(10))
+            .search_hybrid("Searchable summary", Some(10), None)
             .await
             .expect("AI summary should be searchable");
         assert_eq!(search_results.len(), 1);

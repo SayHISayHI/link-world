@@ -1047,7 +1047,7 @@ mod tests {
 
         let search_repository = SearchRepository::new(database.pool().clone());
         let before_delete = search_repository
-            .search_hybrid("disappear search index", Some(10))
+            .search_hybrid("disappear search index", Some(10), None)
             .await
             .expect("search should work");
         assert_eq!(before_delete.len(), 1);
@@ -1058,7 +1058,7 @@ mod tests {
             .expect("soft delete should succeed");
 
         let after_delete = search_repository
-            .search_hybrid("disappear search index", Some(10))
+            .search_hybrid("disappear search index", Some(10), None)
             .await
             .expect("search should work");
         assert!(after_delete.is_empty());

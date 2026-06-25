@@ -12,6 +12,7 @@ interface SearchHybridState {
 interface SearchHybridArgs {
   query: string;
   limit?: number;
+  filterType?: string;
 }
 
 export function useSearchHybrid() {
@@ -30,6 +31,7 @@ export function useSearchHybrid() {
       const data = await invokeCommand<SearchHybridArgs, SearchResult[]>("search_hybrid", {
         query,
         limit: args.limit,
+        filterType: args.filterType,
       });
       setState({ data, loading: false });
       return data;

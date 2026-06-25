@@ -1163,7 +1163,7 @@ return answer;</code></pre>
         assert_eq!(job_type, "search.reindex_object");
 
         let search_results = SearchRepository::new(database.pool().clone())
-            .search_hybrid("useful content", Some(10))
+            .search_hybrid("useful content", Some(10), None)
             .await
             .expect("inline parsed capture should be searchable");
         assert_eq!(search_results.len(), 1);
@@ -1389,7 +1389,7 @@ return answer;</code></pre>
         assert!(parsed_text.contains("local job runner"));
 
         let search_results = SearchRepository::new(database.pool().clone())
-            .search_hybrid("local job runner", Some(10))
+            .search_hybrid("local job runner", Some(10), None)
             .await
             .expect("fetched parsed content should be searchable");
         assert_eq!(search_results.len(), 1);

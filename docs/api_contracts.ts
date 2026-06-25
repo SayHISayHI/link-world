@@ -494,9 +494,13 @@ export interface LibraryCommands {
     evaluations: EvaluationRun[];
   }>>;
 
-  // 执行基于 SQLite FTS5 和可选向量索引的混合搜索
-  // invoke('search_hybrid', { query, limit })
-  search_hybrid: (args: { query: string; limit: number }) => Promise<IpcResponse<SearchResult[]>>;
+  // 执行基于 SQLite FTS5 和可选向量索引的混合搜索；filterType 复用 Library 列表语义。
+  // invoke('search_hybrid', { query, limit, filterType })
+  search_hybrid: (args: {
+    query: string;
+    limit: number;
+    filterType?: KnowledgeObjectType | 'inbox' | 'failed';
+  }) => Promise<IpcResponse<SearchResult[]>>;
 }
 
 /**

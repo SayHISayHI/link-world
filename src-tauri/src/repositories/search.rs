@@ -23,12 +23,14 @@ impl SearchRepository {
         &self,
         query: &str,
         limit: Option<i64>,
+        filter_type: Option<String>,
     ) -> AppResult<Vec<SearchResult>> {
         let Some(fts_query) = build_fts_query(query) else {
             return Ok(Vec::new());
         };
         let terms = normalized_terms(query);
         let limit = clamp_limit(limit);
+        let filter_type = normalize_filter(filter_type);
         let rows = sqlx::query(
             r#"
             SELECT
@@ -57,12 +59,19 @@ impl SearchRepository {
             INNER JOIN knowledge_objects AS objects ON objects.id = fts.object_id
             WHERE knowledge_fts MATCH ?1
               AND objects.lifecycle_status != 'deleted'
+              AND (
+                ?3 IS NULL
+                OR (?3 = 'inbox' AND objects.lifecycle_status IN ('captured', 'parsed'))
+                OR (?3 = 'failed' AND objects.lifecycle_status = 'failed')
+                OR objects.object_type = ?3
+              )
             ORDER BY rank ASC, objects.updated_at DESC
             LIMIT ?2
             "#,
         )
         .bind(fts_query)
         .bind(limit)
+        .bind(filter_type)
         .fetch_all(&self.pool)
         .await
         .map_err(map_search_error)?;
@@ -358,6 +367,12 @@ fn clamp_limit(limit: Option<i64>) -> i64 {
         .clamp(1, MAX_SEARCH_LIMIT)
 }
 
+fn normalize_filter(filter_type: Option<String>) -> Option<String> {
+    filter_type
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty() && value != "all")
+}
+
 fn map_search_error(error: sqlx::Error) -> AppError {
     match error {
         sqlx::Error::Database(database_error) => {
@@ -382,7 +397,7 @@ mod tests {
         let repository = SearchRepository::new(database.pool().clone());
 
         let content_results = repository
-            .search_hybrid("durable workflows", Some(10))
+            .search_hybrid("durable workflows", Some(10), None)
             .await
             .expect("content search should work");
 
@@ -410,7 +425,7 @@ mod tests {
         reindex(database.pool(), "obj-search").await;
 
         let summary_results = repository
-            .search_hybrid("Traceable summaries", Some(10))
+            .search_hybrid("Traceable summaries", Some(10), None)
             .await
             .expect("summary search should work");
 
@@ -429,17 +444,21 @@ mod tests {
         seed_custom_searchable_object(
             database.pool(),
             "obj-title-rank",
+            "article",
             "Priority Alpha",
             "Short body without the ranking term.",
             "personal",
+            "parsed",
         )
         .await;
         seed_custom_searchable_object(
             database.pool(),
             "obj-content-rank",
+            "article",
             "Background Notes",
             "priority priority priority priority priority content-only match",
             "personal",
+            "parsed",
         )
         .await;
         reindex(database.pool(), "obj-title-rank").await;
@@ -447,7 +466,7 @@ mod tests {
         let repository = SearchRepository::new(database.pool().clone());
 
         let results = repository
-            .search_hybrid("priority", Some(10))
+            .search_hybrid("priority", Some(10), None)
             .await
             .expect("weighted search should work");
 
@@ -467,16 +486,18 @@ mod tests {
         seed_custom_searchable_object(
             database.pool(),
             "obj-secret-search",
+            "article",
             "Private Launch Plan",
             "private launch code alpha should never appear in snippets",
             "secret",
+            "parsed",
         )
         .await;
         reindex(database.pool(), "obj-secret-search").await;
         let repository = SearchRepository::new(database.pool().clone());
 
         let results = repository
-            .search_hybrid("private launch", Some(10))
+            .search_hybrid("private launch", Some(10), None)
             .await
             .expect("secret object search should work");
 
@@ -487,6 +508,83 @@ mod tests {
             .matched_fields
             .iter()
             .any(|field| field == "content" || field == "title"));
+    }
+
+    #[tokio::test]
+    async fn search_respects_type_lifecycle_and_inbox_filters() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        seed_custom_searchable_object(
+            database.pool(),
+            "obj-article-filter",
+            "article",
+            "Article Filter",
+            "shared filter marker in an article",
+            "personal",
+            "parsed",
+        )
+        .await;
+        seed_custom_searchable_object(
+            database.pool(),
+            "obj-github-filter",
+            "github_repo",
+            "GitHub Filter",
+            "shared filter marker in a repository",
+            "personal",
+            "parsed",
+        )
+        .await;
+        seed_custom_searchable_object(
+            database.pool(),
+            "obj-failed-filter",
+            "article",
+            "Failed Filter",
+            "shared filter marker in a failed object",
+            "personal",
+            "failed",
+        )
+        .await;
+        reindex(database.pool(), "obj-article-filter").await;
+        reindex(database.pool(), "obj-github-filter").await;
+        reindex(database.pool(), "obj-failed-filter").await;
+        let repository = SearchRepository::new(database.pool().clone());
+
+        let github_results = repository
+            .search_hybrid(
+                "shared filter marker",
+                Some(10),
+                Some("github_repo".to_string()),
+            )
+            .await
+            .expect("type-filtered search should work");
+        let failed_results = repository
+            .search_hybrid("shared filter marker", Some(10), Some("failed".to_string()))
+            .await
+            .expect("failed-filtered search should work");
+        let inbox_results = repository
+            .search_hybrid("shared filter marker", Some(10), Some("inbox".to_string()))
+            .await
+            .expect("inbox-filtered search should work");
+
+        assert_eq!(
+            github_results
+                .iter()
+                .map(|result| result.object.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["obj-github-filter"]
+        );
+        assert_eq!(
+            failed_results
+                .iter()
+                .map(|result| result.object.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["obj-failed-filter"]
+        );
+        assert_eq!(inbox_results.len(), 2);
+        assert!(inbox_results
+            .iter()
+            .all(|result| result.object.lifecycle_status == "parsed"));
     }
 
     #[tokio::test]
@@ -510,7 +608,7 @@ mod tests {
 
         let repository = SearchRepository::new(database.pool().clone());
         let results = repository
-            .search_hybrid("durable", Some(10))
+            .search_hybrid("durable", Some(10), None)
             .await
             .expect("search should work");
 
@@ -535,11 +633,11 @@ mod tests {
         assert_eq!(indexed_objects, 1);
 
         let durable_results = repository
-            .search_hybrid("durable workflows", Some(10))
+            .search_hybrid("durable workflows", Some(10), None)
             .await
             .expect("active object should be searchable");
         let deleted_results = repository
-            .search_hybrid("deleted marker", Some(10))
+            .search_hybrid("deleted marker", Some(10), None)
             .await
             .expect("deleted object search should work");
         let job: (String, Option<String>, String) = sqlx::query_as(
@@ -654,9 +752,11 @@ mod tests {
     async fn seed_custom_searchable_object(
         pool: &sqlx::SqlitePool,
         object_id: &str,
+        object_type: &str,
         title: &str,
         text_content: &str,
         privacy_level: &str,
+        lifecycle_status: &str,
     ) {
         let parsed_id = format!("parsed-{object_id}");
         let hash = format!("hash-{object_id}");
@@ -666,14 +766,16 @@ mod tests {
             INSERT INTO knowledge_objects (
                 id, user_id, object_type, title, author, privacy_level, lifecycle_status, captured_at, updated_at
             ) VALUES (
-                ?1, 'local', 'article', ?2, 'Author', ?3, 'parsed',
+                ?1, 'local', ?2, ?3, 'Author', ?4, ?5,
                 '2026-06-17T00:00:00Z', '2026-06-17T00:00:00Z'
             )
             "#,
         )
         .bind(object_id)
+        .bind(object_type)
         .bind(title)
         .bind(privacy_level)
+        .bind(lifecycle_status)
         .execute(pool)
         .await
         .expect("custom object should insert");

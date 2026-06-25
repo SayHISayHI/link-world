@@ -119,6 +119,7 @@ Rules:
 - 输入防抖。
 - 空查询不调用后端。
 - 搜索结果只保存必要 snippet 和 object metadata。
+- Search command calls include the active Library filter when one is selected, so Sidebar filters and search results share backend semantics.
 
 ### 3.4 Job state
 

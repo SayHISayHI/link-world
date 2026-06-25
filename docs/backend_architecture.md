@@ -174,6 +174,7 @@ Rules:
 - Repository 不做业务判断，只返回 typed row 或 domain DTO。
 - FTS、vector、cache 是派生索引，不得作为正文 source of truth。
 - FTS ranking uses explicit field weights: title 8, author 3, parsed content 1 and latest AI summary 4. `object_id` and `parsed_document_id` remain unindexed identifiers. Search snippets must be derived from FTS at query time and suppressed for `secret` objects so result rows do not reveal secret body content.
+- Search filter composition reuses Library navigation semantics: `inbox` means `captured` or `parsed`, `failed` means lifecycle failed, and other values are matched against `object_type`.
 
 Recommended repositories:
 
