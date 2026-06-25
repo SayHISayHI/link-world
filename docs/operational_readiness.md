@@ -149,6 +149,9 @@ Local Edition 必须支持：
 发布前采样验证：
 
 - 1000 个对象列表和搜索。
+- 250 个对象搜索基准 smoke：`cargo test repositories::search::tests::search_benchmark_fixture_supports_repeatable_corpus`。
+- 5000 个对象搜索基准：`cargo test repositories::search::tests::search_benchmark_5k_objects_reports_budget -- --ignored --nocapture`，最大单次查询预算 <= 250ms。
+- 20000 个对象搜索基准：`cargo test repositories::search::tests::search_benchmark_20k_objects_reports_budget -- --ignored --nocapture`，最大单次查询预算 <= 500ms。
 - 5000 个对象列表滚动。
 - 100 个 failed jobs 的诊断页。
 - 50MB 对象存储下启动。

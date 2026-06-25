@@ -115,6 +115,11 @@ Test DB strategy:
 - Function-level phase simulation belongs in normal CI; real-process kill tests belong in the Windows packaging matrix。
 - Focused command: `cargo test repositories::jobs` for retry and startup-running-job convergence.
 - Focused command: `cargo test services::capture` for parser reuse and capture failure classification.
+- Focused command: `cargo test repositories::search::tests::search_benchmark_fixture_supports_repeatable_corpus` for the CI-safe search benchmark smoke.
+- Manual pre-release search benchmarks:
+  - `cargo test repositories::search::tests::search_benchmark_5k_objects_reports_budget -- --ignored --nocapture`
+  - `cargo test repositories::search::tests::search_benchmark_20k_objects_reports_budget -- --ignored --nocapture`
+  - 5k budget: max single query <= 250ms; 20k budget: max single query <= 500ms.
 
 ## 5. GitHub Actions Draft
 

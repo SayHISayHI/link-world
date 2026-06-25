@@ -624,6 +624,7 @@ fn map_search_error(error: sqlx::Error) -> AppError {
 mod tests {
     use super::SearchRepository;
     use crate::storage::database::Database;
+    use std::time::{Duration, Instant};
 
     #[tokio::test]
     async fn search_hits_parsed_content_and_ai_summary() {
@@ -1077,6 +1078,375 @@ mod tests {
             deleted_error,
             crate::errors::AppError::ObjectNotFound
         ));
+    }
+
+    #[tokio::test]
+    async fn search_benchmark_fixture_supports_repeatable_corpus() {
+        let report = run_search_benchmark(250).await;
+
+        assert_eq!(report.object_count, 250);
+        assert_eq!(report.indexed_objects, 250);
+        assert_eq!(report.health_expected_objects, 250);
+        assert_eq!(report.health_actual_rows, 250);
+        assert!(report.health_healthy);
+        assert!(report.queries.iter().all(|query| query.result_count > 0));
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn search_benchmark_5k_objects_reports_budget() {
+        let report = run_search_benchmark(5_000).await;
+        eprintln!("{}", report.summary());
+        report.assert_within_query_budget(Duration::from_millis(250));
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn search_benchmark_20k_objects_reports_budget() {
+        let report = run_search_benchmark(20_000).await;
+        eprintln!("{}", report.summary());
+        report.assert_within_query_budget(Duration::from_millis(500));
+    }
+
+    #[derive(Debug)]
+    struct SearchBenchmarkReport {
+        object_count: usize,
+        indexed_objects: i64,
+        health_expected_objects: i64,
+        health_actual_rows: i64,
+        health_healthy: bool,
+        seed_elapsed: Duration,
+        rebuild_elapsed: Duration,
+        queries: Vec<SearchBenchmarkQuery>,
+    }
+
+    impl SearchBenchmarkReport {
+        fn max_query_elapsed(&self) -> Duration {
+            self.queries
+                .iter()
+                .map(|query| query.elapsed)
+                .max()
+                .unwrap_or_default()
+        }
+
+        fn assert_within_query_budget(&self, budget: Duration) {
+            assert!(
+                self.health_healthy,
+                "benchmark corpus should leave a healthy search index"
+            );
+            assert_eq!(
+                self.indexed_objects, self.object_count as i64,
+                "all benchmark objects should be indexed"
+            );
+            assert!(
+                self.queries.iter().all(|query| query.result_count > 0),
+                "all benchmark queries should return at least one result: {}",
+                self.summary()
+            );
+            assert!(
+                self.max_query_elapsed() <= budget,
+                "max search query elapsed {:?} exceeded budget {:?}: {}",
+                self.max_query_elapsed(),
+                budget,
+                self.summary()
+            );
+        }
+
+        fn summary(&self) -> String {
+            let queries = self
+                .queries
+                .iter()
+                .map(|query| {
+                    format!(
+                        "{} query=\"{}\" filter={} results={} elapsed={}ms",
+                        query.name,
+                        query.query,
+                        query.filter_type.unwrap_or("all"),
+                        query.result_count,
+                        query.elapsed.as_millis()
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("; ");
+
+            format!(
+                "search benchmark objects={} indexed={} seed={}ms rebuild={}ms max_query={}ms queries=[{}]",
+                self.object_count,
+                self.indexed_objects,
+                self.seed_elapsed.as_millis(),
+                self.rebuild_elapsed.as_millis(),
+                self.max_query_elapsed().as_millis(),
+                queries
+            )
+        }
+    }
+
+    #[derive(Debug)]
+    struct SearchBenchmarkQuery {
+        name: &'static str,
+        query: &'static str,
+        filter_type: Option<&'static str>,
+        result_count: usize,
+        elapsed: Duration,
+    }
+
+    async fn run_search_benchmark(object_count: usize) -> SearchBenchmarkReport {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+
+        let seed_started = Instant::now();
+        seed_benchmark_objects(database.pool(), object_count).await;
+        let seed_elapsed = seed_started.elapsed();
+
+        let repository = SearchRepository::new(database.pool().clone());
+        let rebuild_started = Instant::now();
+        let indexed_objects = repository
+            .rebuild_index_with_job(
+                &format!("job-search-benchmark-{object_count}"),
+                "2026-06-17T00:00:02Z",
+            )
+            .await
+            .expect("benchmark search index should rebuild");
+        let rebuild_elapsed = rebuild_started.elapsed();
+
+        let health = repository
+            .check_index_health()
+            .await
+            .expect("benchmark search index health should be readable");
+
+        let queries = vec![
+            run_benchmark_query(&repository, "common", "durable workflow", None).await,
+            run_benchmark_query(&repository, "rare", "priority alpha", None).await,
+            run_benchmark_query(
+                &repository,
+                "type-filter",
+                "repository benchmark",
+                Some("github_repo"),
+            )
+            .await,
+            run_benchmark_query(&repository, "summary", "retention capsule", None).await,
+            run_benchmark_query(
+                &repository,
+                "failed-filter",
+                "failure boundary",
+                Some("failed"),
+            )
+            .await,
+        ];
+
+        SearchBenchmarkReport {
+            object_count,
+            indexed_objects,
+            health_expected_objects: health.expected_indexed_objects,
+            health_actual_rows: health.actual_indexed_rows,
+            health_healthy: health.healthy,
+            seed_elapsed,
+            rebuild_elapsed,
+            queries,
+        }
+    }
+
+    async fn run_benchmark_query(
+        repository: &SearchRepository,
+        name: &'static str,
+        query: &'static str,
+        filter_type: Option<&'static str>,
+    ) -> SearchBenchmarkQuery {
+        let started = Instant::now();
+        let results = repository
+            .search_hybrid(query, Some(20), filter_type.map(str::to_string))
+            .await
+            .expect("benchmark query should work");
+        let elapsed = started.elapsed();
+
+        SearchBenchmarkQuery {
+            name,
+            query,
+            filter_type,
+            result_count: results.len(),
+            elapsed,
+        }
+    }
+
+    async fn seed_benchmark_objects(pool: &sqlx::SqlitePool, object_count: usize) {
+        let mut tx = pool.begin().await.expect("benchmark tx should begin");
+
+        for index in 0..object_count {
+            let object_id = format!("bench-object-{index:05}");
+            let parsed_id = format!("bench-parsed-{index:05}");
+            let analysis_id = format!("bench-analysis-{index:05}");
+            let object_type = benchmark_object_type(index);
+            let lifecycle_status = benchmark_lifecycle_status(index);
+            let privacy_level = benchmark_privacy_level(index);
+            let title = benchmark_title(index, object_type);
+            let text_content = benchmark_text(index, object_type, lifecycle_status);
+            let word_count = text_content.split_whitespace().count() as i64;
+            let content_hash = format!("bench-hash-{index:05}");
+            let captured_at = format!("2026-06-17T00:{:02}:{:02}Z", (index / 60) % 60, index % 60);
+            let canonical_url = format!("https://example.invalid/benchmark/{index:05}");
+
+            sqlx::query(
+                r#"
+                INSERT INTO knowledge_objects (
+                    id,
+                    user_id,
+                    object_type,
+                    title,
+                    canonical_url,
+                    source_platform,
+                    author,
+                    privacy_level,
+                    lifecycle_status,
+                    captured_at,
+                    updated_at
+                ) VALUES (
+                    ?1, 'local', ?2, ?3, ?4, 'benchmark', ?5, ?6, ?7, ?8, ?8
+                )
+                "#,
+            )
+            .bind(&object_id)
+            .bind(object_type)
+            .bind(&title)
+            .bind(canonical_url)
+            .bind(format!("Benchmark Author {}", index % 17))
+            .bind(privacy_level)
+            .bind(lifecycle_status)
+            .bind(&captured_at)
+            .execute(&mut *tx)
+            .await
+            .expect("benchmark object should insert");
+
+            sqlx::query(
+                r#"
+                INSERT INTO parsed_documents (
+                    id,
+                    object_id,
+                    title,
+                    text_content,
+                    word_count,
+                    content_hash,
+                    parser_id,
+                    parser_version,
+                    created_at
+                ) VALUES (
+                    ?1, ?2, ?3, ?4, ?5, ?6, 'benchmark.parser', '0.1.0', ?7
+                )
+                "#,
+            )
+            .bind(parsed_id)
+            .bind(&object_id)
+            .bind(title)
+            .bind(text_content)
+            .bind(word_count)
+            .bind(content_hash)
+            .bind(&captured_at)
+            .execute(&mut *tx)
+            .await
+            .expect("benchmark parsed document should insert");
+
+            if index % 5 == 0 {
+                sqlx::query(
+                    r#"
+                    INSERT INTO ai_analysis (
+                        id,
+                        object_id,
+                        analysis_type,
+                        schema_version,
+                        summary,
+                        tags_json,
+                        key_points_json,
+                        claims_json,
+                        action_items_json,
+                        risks_json,
+                        created_at
+                    ) VALUES (
+                        ?1,
+                        ?2,
+                        'general_summary',
+                        1,
+                        ?3,
+                        '[]',
+                        '[]',
+                        '[]',
+                        '[]',
+                        '[]',
+                        ?4
+                    )
+                    "#,
+                )
+                .bind(analysis_id)
+                .bind(&object_id)
+                .bind(format!(
+                    "Retention capsule summary for benchmark object {index:05} with stable recall markers."
+                ))
+                .bind(&captured_at)
+                .execute(&mut *tx)
+                .await
+                .expect("benchmark ai analysis should insert");
+            }
+        }
+
+        tx.commit().await.expect("benchmark tx should commit");
+    }
+
+    fn benchmark_object_type(index: usize) -> &'static str {
+        match index % 4 {
+            0 => "article",
+            1 => "github_repo",
+            2 => "prompt",
+            _ => "article",
+        }
+    }
+
+    fn benchmark_lifecycle_status(index: usize) -> &'static str {
+        if index % 13 == 0 {
+            "failed"
+        } else {
+            "parsed"
+        }
+    }
+
+    fn benchmark_privacy_level(index: usize) -> &'static str {
+        if index % 19 == 0 {
+            "secret"
+        } else if index % 7 == 0 {
+            "sensitive"
+        } else {
+            "personal"
+        }
+    }
+
+    fn benchmark_title(index: usize, object_type: &str) -> String {
+        match object_type {
+            "github_repo" => format!("Repository Benchmark Workflow {index:05}"),
+            "prompt" => format!("Prompt Benchmark Capsule {index:05}"),
+            _ => format!("Article Benchmark Durable Workflow {index:05}"),
+        }
+    }
+
+    fn benchmark_text(index: usize, object_type: &str, lifecycle_status: &str) -> String {
+        let type_marker = match object_type {
+            "github_repo" => {
+                " repository benchmark includes github metadata readme stars forks and release notes"
+            }
+            "prompt" => " prompt benchmark includes instruction quality examples and test cases",
+            _ => " article benchmark includes citations paragraphs headings and parser output",
+        };
+        let lifecycle_marker = if lifecycle_status == "failed" {
+            " failure boundary retryable capture diagnostics visible recovery action"
+        } else {
+            " successful parse boundary visible knowledge library object"
+        };
+        let rare_marker = if index % 97 == 0 {
+            " priority alpha rare marker"
+        } else {
+            ""
+        };
+
+        format!(
+            "Durable workflow evidence common benchmark content {index:05}. Search quality regression corpus includes local first notes parser output recall checks ranking coverage and stable snippets.{type_marker}.{lifecycle_marker}.{rare_marker}"
+        )
     }
 
     async fn seed_searchable_object(pool: &sqlx::SqlitePool) {

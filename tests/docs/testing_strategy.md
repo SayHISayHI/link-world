@@ -116,6 +116,7 @@ Must cover:
 - FTS search ranks title matches above repeated body-only matches according to documented weights, and suppresses snippets for `secret` objects.
 - FTS search composes with Library filters for object type, `inbox` lifecycle and `failed` lifecycle semantics.
 - search index health detects missing, stale, orphaned and duplicate FTS rows without returning content snippets.
+- search benchmark fixtures generate a deterministic corpus that covers object type filters, failed lifecycle filtering, secret snippets, parsed content and AI summary matches; CI runs the small smoke corpus, while 5k and 20k object benchmarks stay `#[ignore]` and are run manually before search/schema releases.
 
 ### 4.3 Job idempotency tests
 
@@ -209,6 +210,7 @@ Fixture categories:
 - AI model responses.
 - evaluation results.
 - database seed records.
+- deterministic search benchmark records for small smoke, 5k and 20k object corpora.
 - valid and tampered backup manifests/object payloads.
 - generated database fixtures from every published migration baseline; current automated baselines are 0001/0002/0003.
 - real-process forced termination at prepared, moving-live, live-moved and candidate-installed boundaries in the Windows installation test matrix.
