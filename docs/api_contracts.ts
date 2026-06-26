@@ -359,14 +359,64 @@ export interface PluginPermission {
   required: boolean;
 }
 
+export interface DatabaseHealth {
+  healthy: boolean;
+  quickCheck: string;
+  foreignKeyViolations: number;
+  appliedMigrationVersion?: number;
+  sizeBytes?: number;
+}
+
+export interface ObjectStoreHealth {
+  healthy: boolean;
+  sizeBytes?: number;
+  fileCount: number;
+  issue?: string;
+}
+
+export interface FailedJobSummary {
+  jobId: string;
+  jobType: string;
+  status: JobStatus;
+  objectId?: string;
+  // Sanitized; URL query/fragment and credential references are redacted.
+  lastError?: string;
+  updatedAt: string;
+}
+
+export interface JobMetrics {
+  queued: number;
+  running: number;
+  failed: number;
+  blocked: number;
+  cancelled: number;
+  recentFailures: FailedJobSummary[];
+}
+
+export interface ModelMetrics {
+  configuredCount: number;
+  enabledCount: number;
+  defaultChatConfigured: boolean;
+  // `not_configured_normal_degradation` is healthy for non-AI workflows.
+  status: 'configured' | 'not_configured_normal_degradation' | 'missing_default_chat_config' | string;
+}
+
+export interface DiagnosticsPrivacySummary {
+  supportBundleAvailable: boolean;
+  redaction: string[];
+}
+
 export interface LocalMetricsSnapshot {
-  captureSuccessRate?: number;
-  parseSuccessRate?: number;
-  aiEnrichmentSuccessRate?: number;
-  evaluationSuccessRate?: number;
-  jobQueueDepth: number;
-  databaseSizeBytes?: number;
-  objectStoreSizeBytes?: number;
+  appVersion: string;
+  // Local display only. Future exported support bundles must redact local absolute paths.
+  dataDir: string;
+  databasePath: string;
+  objectStorePath: string;
+  databaseHealth: DatabaseHealth;
+  objectStoreHealth: ObjectStoreHealth;
+  jobs: JobMetrics;
+  models: ModelMetrics;
+  privacy: DiagnosticsPrivacySummary;
 }
 
 

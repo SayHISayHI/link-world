@@ -1,3 +1,4 @@
+use crate::domain::diagnostics::LocalMetricsSnapshot;
 use crate::domain::startup::StartupStatus;
 use crate::errors::{map_ipc_result, IpcResponse};
 use crate::services::system::SystemService;
@@ -24,6 +25,20 @@ pub fn restart_app(app_handle: tauri::AppHandle) -> IpcResponse<bool> {
         tauri::process::restart(&app_handle.env());
     });
     map_ipc_result(Ok(true))
+}
+
+#[tauri::command]
+pub async fn get_local_metrics_snapshot(
+    state: tauri::State<'_, AppState>,
+    startup: tauri::State<'_, StartupState>,
+) -> Result<IpcResponse<LocalMetricsSnapshot>, String> {
+    let result = async {
+        let service = SystemService::new(state.inner());
+        service.local_metrics_snapshot(startup.data_dir()).await
+    }
+    .await;
+
+    Ok(map_ipc_result(result))
 }
 
 #[tauri::command]

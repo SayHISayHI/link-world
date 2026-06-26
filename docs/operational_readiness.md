@@ -1,6 +1,6 @@
 # Link World 运营就绪与发布标准
 
-状态: Draft  
+状态: Draft
 目标: 定义从 MVP 到商业化版本必须满足的工程运营标准。
 
 ## 1. Release Readiness
@@ -49,7 +49,7 @@ MVP 主支持：
 - 当前 provider、API protocol、base URL、model 与凭据是否已配置；不得显示 secret 内容。
 - 插件列表和权限状态。
 
-当前实现状态：Models 已提供正式 Settings route、多配置、默认项、连接测试和 credential 状态；Storage 已支持创建、列出、验证、两阶段恢复和自动 rollback，真实 Windows 故障矩阵仍是发布门禁；Privacy、Capture、Plugins、Diagnostics、About 仅提供明确的里程碑占位，不计为已交付。
+当前实现状态：Models 已提供正式 Settings route、多配置、默认项、连接测试和 credential 状态；Storage 已支持创建、列出、验证、两阶段恢复和自动 rollback，真实 Windows 故障矩阵仍是发布门禁；Diagnostics 已提供本地健康快照、DB/object store/job/model 摘要、失败 job 打开对象与 capture retry 入口，但支持包导出、结构化日志/correlation id 和 readiness 自动化仍未完成；Privacy、Capture、Plugins、About 仅提供明确的里程碑占位，不计为已交付。
 
 ### 3.2 Logs
 
@@ -152,6 +152,7 @@ Local Edition 必须支持：
 - 250 个对象搜索基准 smoke：`cargo test repositories::search::tests::search_benchmark_fixture_supports_repeatable_corpus`。
 - 5000 个对象搜索基准：`cargo test repositories::search::tests::search_benchmark_5k_objects_reports_budget -- --ignored --nocapture`，最大单次查询预算 <= 250ms。
 - 20000 个对象搜索基准：`cargo test repositories::search::tests::search_benchmark_20k_objects_reports_budget -- --ignored --nocapture`，最大单次查询预算 <= 500ms。
+- 2026-06-26 手动验收结果：5k benchmark 最大单次查询 82ms，20k benchmark 最大单次查询 64ms，均低于预算。
 - 5000 个对象列表滚动。
 - 100 个 failed jobs 的诊断页。
 - 50MB 对象存储下启动。
@@ -168,7 +169,7 @@ Local Edition 必须支持：
 - 应用版本。
 - OS 版本。
 - schema version。
-- 最近错误码。
+- 最近错误码或 sanitized failed job summary。
 - 任务状态摘要。
 - 插件列表。
 - 已脱敏日志。
@@ -182,3 +183,5 @@ Local Edition 必须支持：
 - 正文。
 - source snapshots。
 - embeddings。
+- URL query/fragment。
+- credential reference。

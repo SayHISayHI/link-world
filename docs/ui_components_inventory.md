@@ -1,6 +1,6 @@
 # Link World UI 组件清单与规范
 
-状态: Draft  
+状态: Draft
 适用范围: React / shadcn/ui / Tailwind / Lucide
 
 ## 1. Purpose
@@ -122,7 +122,8 @@ Rules:
 | `ModelSettings` | provider list, create/edit/delete/default, protocol, base URL, model and connection test |
 | `StorageSettings` | create/list/verify local restore points, confirm restore, display restart/rollback result, trigger portable Markdown/JSON export, and communicate content boundary; `startupRecovery` mode hides create backup and export |
 | `StartupRecoveryScreen` | boot-safe recovery surface shown before normal Library mounts; displays redacted startup issue, verified backup id, restart and restricted restore actions |
-| `SettingsBoundary` | explicit placeholder for privacy/capture/plugins/diagnostics/about until implemented |
+| `DiagnosticsSettings` | local diagnostics health, sanitized failed job summary, model degradation, support-bundle boundary |
+| `SettingsBoundary` | explicit placeholder for privacy/capture/plugins/about until implemented |
 
 Rules:
 
@@ -203,4 +204,4 @@ MVP must implement:
 - `SettingsPanel`
 - `ModelSettings`
 - `SettingsBoundary`
-- `DiagnosticsPanel`
+- `DiagnosticsSettings`

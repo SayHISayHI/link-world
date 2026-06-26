@@ -592,6 +592,10 @@ export function LibraryShellContainer() {
           <SettingsPanel
             panel={panel}
             onPanelChange={(nextPanel) => setRoute({ name: "settings", panel: nextPanel })}
+            onOpenObject={(objectId) => {
+              selectObject(objectId);
+              setRoute({ name: "library", filter: "all" });
+            }}
           />
         </div>
       </AppShell>
@@ -779,4 +783,3 @@ function findRetryableCaptureJob(jobs: BackgroundJob[], objectId?: string) {
       ["failed", "cancelled", "blocked"].includes(job.status),
   );
 }
-

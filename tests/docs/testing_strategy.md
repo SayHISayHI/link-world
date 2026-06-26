@@ -1,6 +1,6 @@
 # Link World 测试规范
 
-状态: Draft  
+状态: Draft
 适用范围: Rust backend、React frontend、Tauri IPC、浏览器扩展、Loopback Capture、文档解析器、AI prompts、evaluators、database migrations
 
 ## 1. Purpose
@@ -117,6 +117,8 @@ Must cover:
 - FTS search composes with Library filters for object type, `inbox` lifecycle and `failed` lifecycle semantics.
 - search index health detects missing, stale, orphaned and duplicate FTS rows without returning content snippets.
 - search benchmark fixtures generate a deterministic corpus that covers object type filters, failed lifecycle filtering, secret snippets, parsed content and AI summary matches; CI runs the small smoke corpus, while 5k and 20k object benchmarks stay `#[ignore]` and are run manually before search/schema releases.
+- Latest manual Week 4 search benchmark acceptance on 2026-06-26: 5k max single query 82ms against the 250ms budget; 20k max single query 64ms against the 500ms budget.
+- local diagnostics snapshot redacts URL query/fragment and model credential references from failed job summaries, and does not read source snapshots, parsed documents, embeddings or API key values.
 - staged full-index rebuild reports persisted progress, publishes through an atomic FTS swap, preserves the existing index when cancelled before finalizing, and makes completed rebuilds non-cancellable.
 
 ### 4.3 Job idempotency tests
@@ -148,6 +150,7 @@ Component tests:
 - long code blocks support copy and collapse interactions without loading a syntax-highlighting engine.
 - valid AI display hints apply only to their source parsed document; stale, invalid and low-confidence hints fall back to AST inference.
 - `StorageSettings` portable export button calls `usePortableExport`, displays exported object/secret-skip summary, and is hidden in startup recovery mode.
+- `DiagnosticsSettings` loads local metrics, renders DB/object store/job/model health, treats missing model config as normal degradation, redacts URL query and credential references, and exposes failed job open/retry actions.
 - `AIAnalysisPanel` shows run state, summary and trace, contains no provider credential form, and links to Settings.
 - `EvaluationPanel` shows verdict, evidence and limitations.
 - model provider settings list multiple stable ids without returning API keys, create/edit/delete configs, enforce one explicit default, allow protocol selection, clear key drafts after save and invalidate stale connection-test success after edits.

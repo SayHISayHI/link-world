@@ -11,6 +11,7 @@ import type {
   ModelProviderConfigView,
 } from "../../types/api";
 import { Button } from "../ui/button";
+import { DiagnosticsSettings } from "./DiagnosticsSettings";
 import { StorageSettings } from "./StorageSettings";
 
 export type SettingsPanelName =
@@ -25,6 +26,7 @@ export type SettingsPanelName =
 interface SettingsPanelProps {
   panel: SettingsPanelName;
   onPanelChange: (panel: SettingsPanelName) => void;
+  onOpenObject?: (objectId: string) => void;
 }
 
 const settingsSections: Array<{ id: SettingsPanelName; label: string }> = [
@@ -46,7 +48,7 @@ const emptyDraft: ModelProviderConfig = {
   enabled: true,
 };
 
-export function SettingsPanel({ panel, onPanelChange }: SettingsPanelProps) {
+export function SettingsPanel({ panel, onPanelChange, onOpenObject }: SettingsPanelProps) {
   return (
     <div className="flex h-screen min-w-0 bg-background">
       <aside className="w-52 shrink-0 border-r border-border bg-surface p-4">
@@ -69,6 +71,8 @@ export function SettingsPanel({ panel, onPanelChange }: SettingsPanelProps) {
           <ModelSettings />
         ) : panel === "storage" ? (
           <StorageSettings />
+        ) : panel === "diagnostics" ? (
+          <DiagnosticsSettings onOpenObject={onOpenObject} />
         ) : (
           <SettingsBoundary panel={panel} />
         )}
@@ -368,10 +372,10 @@ function ModelSettings() {
 function SettingsBoundary({
   panel,
 }: {
-  panel: Exclude<SettingsPanelName, "models" | "storage">;
+  panel: Exclude<SettingsPanelName, "models" | "storage" | "diagnostics">;
 }) {
   const copy: Record<
-    Exclude<SettingsPanelName, "models" | "storage">,
+    Exclude<SettingsPanelName, "models" | "storage" | "diagnostics">,
     [string, string]
   > = {
     privacy: [
@@ -380,7 +384,6 @@ function SettingsBoundary({
     ],
     capture: ["Capture", "Capture source defaults and extension connectivity will be managed here."],
     plugins: ["Plugins", "Plugin manifests, permissions, updates, and isolation status will be managed here."],
-    diagnostics: ["Diagnostics", "Runtime health, job failures, and redacted support bundles will be managed here."],
     about: ["About", "Version, release channel, licenses, and update controls will be managed here."],
   };
   const [title, description] = copy[panel];
@@ -428,4 +431,3 @@ function normalizeDraft(draft: ModelProviderConfig): ModelProviderConfig {
 
 const inputClass =
   "h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-accent";
-

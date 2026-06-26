@@ -1,6 +1,6 @@
 # Link World 安全与隐私策略红线
 
-状态: Draft  
+状态: Draft
 关系: 本文档是 `security_privacy_compliance.md` 的执行策略版，偏向实现红线和检查项。
 
 ## 1. Non-Negotiable Rules
@@ -107,7 +107,8 @@ Browser extension must not:
 ## 7. Document Rendering and AI Display Policy
 
 - Markdown 阅读器必须跳过原始 HTML，禁止启用 `rehype-raw` 或等效的任意 HTML 执行路径。
-- 链接只允许 `http`、`https`、`mailto`；图片只允许 `http`、`https`，并强制 lazy loading、async decoding 和 `no-referrer`。
+- 链接只允许 `http`、`https`、`mailto`；图片只允许 `http`、`https`，并强制 lazy loading、async decoding 和
+o-referrer`。
 - Callout 等项目扩展只允许编译期固定插件，禁止运行时安装或执行不受信任的渲染插件。
 - AI display hints 只建议文档级展示模式，不得修改 Markdown、AST、URL、图片属性、组件映射或清洗策略。
 - 仅应用绑定当前 parsed document 且置信度至少为 `0.75` 的合法提示；缺失、未知 mode、越界 confidence 和过期提示必须忽略。
@@ -122,7 +123,7 @@ Diagnostics package may contain:
 - schema version.
 - feature flags.
 - plugin manifests.
-- failed job summaries.
+- failed job summaries with URL query/fragment and credential references redacted.
 - redacted logs.
 
 Diagnostics package must not contain:
@@ -133,6 +134,8 @@ Diagnostics package must not contain:
 - API keys.
 - tokens/cookies/sessions.
 - embeddings.
+- URL query or fragment values.
+- credential references such as model-provider keyring ids.
 
 ## 9. Deletion Policy
 

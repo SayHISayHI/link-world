@@ -1,7 +1,7 @@
 # Link World Post-MVP 10 周实施路线图
 
-状态：执行中  
-基线日期：2026-06-23  
+状态：执行中
+基线日期：2026-06-23
 目标版本：可邀请测试的 Windows Local Alpha
 
 ## 1. 产品目标与成功标准
@@ -47,8 +47,8 @@
 | Sprint 1D 文档契约 | 已同步 | API、架构、安全、PRD、UI、数据库与本路线图 |
 | Sprint 2 数据安全 | 执行中 | 备份/两阶段恢复/rollback、0001–0003 fixture、启动迁移保护、启动恢复界面与便携导出已实现；真实 Windows 故障矩阵待实现 |
 | Sprint 3 采集可靠性 | 执行中 | 启动时 running job 收敛、capture 超时/HTTP/受限页/空正文分类与扩展回退提示已实现；手动 URL 去重边界已实现；AI job failureReason 分类已实现 |
-| Sprint 4 搜索质量 | 已实现，待真实 UI 回归 | FTS 字段权重、secret snippet 抑制、Library filter 组合搜索、索引一致性检查、可重复大库搜索基准、搜索空态/失败态、重建进度和取消边界已实现 |
-| Sprint 5 可观测性 | 未开始 | 诊断页、健康状态、脱敏支持包 |
+| Sprint 4 搜索质量 | 已完成 | FTS 字段权重、secret snippet 抑制、Library filter 组合搜索、索引一致性检查、可重复大库搜索基准、搜索空态/失败态、重建进度和取消边界已实现；5k/20k benchmark 已实测通过 |
+| Sprint 5 可观测性 | 执行中 | Diagnostics 设置页、本地健康快照、DB/object store/job/model 摘要和失败 job 打开/重试入口已实现；支持包导出、结构化日志/correlation id 和 readiness 自动化待实现 |
 | Sprint 6-8 Evaluation | 未开始 | 通用框架、GitHub evaluator、Prompt evaluator |
 | Sprint 9-10 Alpha 发布 | 未开始 | 安装升级、安全审计、真实用户反馈闭环 |
 
@@ -124,7 +124,7 @@
 
 - 标题、正文、AI summary 的权重符合定义。（当前权重：title 8、author 3、content 1、AI summary 4）
 - 删除、重新解析和重新分析后索引一致。（health check 可检测 missing/stale/orphaned/duplicate FTS rows）
-- 20k 对象下常用查询达到文档化性能预算。（手动运行 `search_benchmark_20k_objects_reports_budget`；当前预算为 20k 最大单次查询 <= 500ms、5k 最大单次查询 <= 250ms）
+- 20k 对象下常用查询达到文档化性能预算。（2026-06-26 手动运行 `search_benchmark_5k_objects_reports_budget` 与 `search_benchmark_20k_objects_reports_budget` 均通过；5k 最大单次查询 82ms <= 250ms，20k 最大单次查询 64ms <= 500ms）
 - Rebuild 进度可见、取消不发布半成品索引，finalizing 的不可取消边界对用户可见。
 - sqlite-vec 仍是可选项，不能阻塞纯 FTS 发布。
 
@@ -132,16 +132,16 @@
 
 交付：
 
-- Diagnostics 设置页：版本、数据路径、数据库健康、对象存储健康、job 失败摘要。
-- 脱敏支持包与用户确认流程。
+- Diagnostics 设置页：版本、数据路径、数据库健康、对象存储健康、job 失败摘要。（本地快照与 Settings UI 已实现）
+- 脱敏支持包与用户确认流程。（当前仅实现页面 redaction boundary；导出与确认流程待实现）
 - 关键流程结构化日志和稳定 correlation id。
 - operational readiness 清单自动化。
 
 验收：
 
 - 支持包不含正文、URL query、API Key、credential reference 或 embedding。
-- 用户可从失败项进入对应对象或重试动作。
-- 无模型配置被视为正常能力降级，不是系统故障。
+- 用户可从失败项进入对应对象或重试动作。（Diagnostics failed job summary 已支持打开对象；capture.fetch_url 支持 retry）
+- 无模型配置被视为正常能力降级，不是系统故障。（Diagnostics model status 使用 not_configured_normal_degradation）
 
 ### Week 6：Evaluation 通用框架
 

@@ -1,6 +1,6 @@
 # Link World 前端架构规范
 
-状态: Draft  
+状态: Draft
 适用范围: React 18+ / Vite / Tauri / TypeScript / Zustand / Tailwind / shadcn/ui
 
 ## 1. Purpose
@@ -185,6 +185,8 @@ Hook examples:
 - `useObjectJobs`
 - `useModelProviderConfig`
 - `useModelProviderConfigs`
+- `useLocalMetricsSnapshot`
+  - owns `get_local_metrics_snapshot` state for Diagnostics; snapshot contains aggregate health and sanitized failed job summaries only.
 - `useBackups`
   - owns create/verify/prepare/restart command state and the last restore result; payload content never enters React state.
 - startup hooks are owned by `App` / recovery surfaces; `get_startup_status` gates whether the normal Library shell may mount.
@@ -277,7 +279,8 @@ Rules:
 - 固定项目插件在编译期注册，不提供运行时第三方渲染插件安装接口。
 - 目录只收录 `h2-h4`，至少三个条目时显示；标题 ID 使用稳定 GitHub slug 规则。
 - 相对链接和图片以对象 canonical URL 为基准解析；链接只允许 `http`、`https`、`mailto`，图片只允许 `http`、`https`。
-- 图片必须使用 lazy loading、async decoding 和 `no-referrer`。
+- 图片必须使用 lazy loading、async decoding 和
+o-referrer`。
 - 超过 40 行的代码块支持折叠和复制；复制失败必须显示明确状态。
 - 文档模式限定为 `article`、`tutorial`、`reference`、`code-heavy`，默认由 AST 结构确定。
 - AST 推断顺序固定：代码字符占比至少 30% 或代码块至少 4 个为 `code-heavy`；表格至少 2 个，或至少 6 个且平均不足 600 字符的短章节为 `reference`；至少 2 个标题且有 4 个有序列表项为 `tutorial`；其余为 `article`。
@@ -445,6 +448,7 @@ Minimum frontend tests:
 - `SearchCommand` handles loading, empty, failed, keyboard navigation。
 - `ObjectList` handles search empty, search failed, rebuild progress and rebuild cancellation boundary states。
 - `SettingsPanel` masks API key。
+- `DiagnosticsSettings` renders local health, sanitized failed job summaries, normal model-configuration degradation and support-bundle redaction boundary。
 - `PluginPermissionPanel` displays required vs optional permissions。
 - `DeleteObjectDialog` confirms destructive action。
 
