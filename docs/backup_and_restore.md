@@ -1,8 +1,8 @@
 # 本地备份与恢复规范
 
-状态：Restore lifecycle、启动迁移保护、启动恢复界面与便携导出已实现；真实 Windows 故障矩阵待回归
+状态：Restore lifecycle、启动迁移保护、启动恢复界面与便携导出已实现；Sprint 2 readiness 自动化门禁已建立；真实 Windows 故障矩阵待回归
 当前范围：创建、列出、验证、预检、重启恢复、失败回滚、迁移前 restore point、启动失败 recovery UI 和 Markdown/JSON 便携导出
-尚未实现：自动保留策略、真实安装升级/进程故障矩阵
+尚未实现：自动保留策略、真实安装升级/进程故障矩阵执行证据
 
 ## 1. 目标
 
@@ -170,6 +170,7 @@ apply 流程：
 - prepared 候选在启动校验失败：删除候选与 marker，在线数据保持不变，结果为 failed。
 - 进程在 moving-live 或 live-moved 阶段中断：下次启动根据 rollback 目录恢复已移动的旧 payload，结果为 rolled_back。
 - 候选安装后数据库初始化、migration、quick_check、foreign_key_check 或 ObjectStore 初始化失败：先关闭新 pool，再恢复 rollback 数据并重新初始化旧数据。
+- Windows restore 文件替换、删除和 rename 对短暂文件锁执行有界重试，覆盖 SQLite handle、Defender 或索引器导致的 transient `os error 32/33`。
 - 可选 WAL/SHM 按实际阶段处理；moving-live 中尚未移动的旧 sidecar 必须保留，不能当作候选 sidecar 删除。
 - 自动回滚成功后应用继续使用旧数据启动；若 rollback payload 本身缺失，启动失败而不是在不一致数据上继续运行。
 - safety restore point 不随事务清理，可用于人工恢复和问题调查。
@@ -286,8 +287,9 @@ Recovery UI 的后端命令边界：
 
 发布前仍需完成：
 
+- Sprint 2 自动化门禁：`npm run readiness:sprint2`，输出 JSON 报告并作为发布候选 artifact 保存。
 - 空对象存储、嵌套 evaluation artifact 和额外/缺失 payload 的独立 fixture。
 - 0001/0002/0003 migration fixture 已自动化；新增 migration 时必须持续追加上一发布版本。
-- 真实进程在四个 phase 边界被强制终止的 Windows 安装包集成测试；当前是函数级确定性中断模拟。
-- 非 ASCII Windows 用户目录、Defender、长路径、磁盘空间不足和只读目录。
+- 真实进程在四个 phase 边界被强制终止的 Windows 安装包集成测试；当前是函数级确定性中断模拟，真实矩阵以 `docs/sprint2_windows_fault_matrix.md` 为准。
+- 非 ASCII Windows 用户目录、Defender、长路径、磁盘空间不足和只读目录，真实矩阵以 `docs/sprint2_windows_fault_matrix.md` 为准。
 - 真实安装包的进程重启、连接池释放和 capture server 停止回归。

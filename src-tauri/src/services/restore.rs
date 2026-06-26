@@ -11,8 +11,9 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use uuid::Uuid;
 
 const RESTORE_DIR_NAME: &str = "restore";
@@ -30,6 +31,8 @@ const PHASE_FILES: [&str; 4] = [
     PHASE_LIVE_MOVED,
     PHASE_CANDIDATE_INSTALLED,
 ];
+const WINDOWS_FILE_OPERATION_RETRIES: usize = 20;
+const WINDOWS_FILE_OPERATION_RETRY_DELAY: Duration = Duration::from_millis(25);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RestorePhase {
@@ -536,7 +539,7 @@ fn restore_rollback_file(
 ) -> AppResult<()> {
     if rollback_path.exists() {
         remove_file_if_exists(live_path)?;
-        fs::rename(rollback_path, live_path)?;
+        rename_path(rollback_path, live_path)?;
     } else if required {
         return Err(AppError::RestoreInvalid(
             "rollback payload is missing".to_string(),
@@ -554,7 +557,7 @@ fn restore_rollback_directory(
 ) -> AppResult<()> {
     if rollback_path.exists() {
         remove_dir_if_exists(live_path)?;
-        fs::rename(rollback_path, live_path)?;
+        rename_path(rollback_path, live_path)?;
     } else if required {
         return Err(AppError::RestoreInvalid(
             "rollback payload is missing".to_string(),
@@ -575,13 +578,13 @@ fn move_required(source: &Path, destination: &Path) -> AppResult<()> {
 
 fn move_optional(source: &Path, destination: &Path) -> AppResult<()> {
     if source.exists() {
-        fs::rename(source, destination)?;
+        rename_path(source, destination)?;
     }
     Ok(())
 }
 
 fn transition_phase(restore_root: &Path, from: RestorePhase, to: RestorePhase) -> AppResult<()> {
-    fs::rename(
+    rename_path(
         restore_root.join(from.file_name()),
         restore_root.join(to.file_name()),
     )?;
@@ -696,7 +699,7 @@ fn write_last_status(data_dir: &Path, status: RestoreStatus) -> AppResult<()> {
     let temporary = restore_root.join(format!(".last-result-{}.tmp", Uuid::new_v4()));
     write_new_json(&temporary, &status)?;
     remove_file_if_exists(&path)?;
-    fs::rename(temporary, path)?;
+    rename_path(&temporary, &path)?;
     Ok(())
 }
 
@@ -716,7 +719,7 @@ fn rollback_dir_name(transaction_id: &str) -> String {
 }
 
 fn remove_file_if_exists(path: &Path) -> AppResult<()> {
-    match fs::remove_file(path) {
+    match retry_windows_file_operation(|| fs::remove_file(path)) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error.into()),
@@ -724,11 +727,41 @@ fn remove_file_if_exists(path: &Path) -> AppResult<()> {
 }
 
 fn remove_dir_if_exists(path: &Path) -> AppResult<()> {
-    match fs::remove_dir_all(path) {
+    match retry_windows_file_operation(|| fs::remove_dir_all(path)) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error.into()),
     }
+}
+
+fn rename_path(source: impl AsRef<Path>, destination: impl AsRef<Path>) -> AppResult<()> {
+    retry_windows_file_operation(|| fs::rename(source.as_ref(), destination.as_ref()))?;
+    Ok(())
+}
+
+fn retry_windows_file_operation(mut operation: impl FnMut() -> io::Result<()>) -> io::Result<()> {
+    let mut attempts = 0;
+    loop {
+        match operation() {
+            Ok(()) => return Ok(()),
+            Err(error)
+                if should_retry_file_operation(&error)
+                    && attempts < WINDOWS_FILE_OPERATION_RETRIES =>
+            {
+                attempts += 1;
+                std::thread::sleep(WINDOWS_FILE_OPERATION_RETRY_DELAY);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+fn should_retry_file_operation(error: &io::Error) -> bool {
+    if !cfg!(windows) {
+        return false;
+    }
+
+    matches!(error.raw_os_error(), Some(32 | 33))
 }
 
 fn hash_file_entry(path: &Path, relative_path: String) -> AppResult<BackupFileEntry> {

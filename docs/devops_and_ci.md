@@ -111,6 +111,7 @@ Test DB strategy:
 
 - Unit tests can use in-memory SQLite when possible。
 - Migration tests should also run against a temp file DB because WAL、FTS5、sqlite-vec behavior may differ from memory。
+- Sprint 2 readiness automation: `npm run readiness:sprint2` runs the focused backup/migration/restore/export/redaction gate and writes a JSON report to the system temp directory unless `-OutputPath` is supplied. This is the default local pre-release gate for data safety, but it does not replace the real Windows installer fault matrix in `docs/sprint2_windows_fault_matrix.md`.
 - Focused commands: `cargo test storage::database::migration_tests` and `cargo test services::restore`。
 - Function-level phase simulation belongs in normal CI; real-process kill tests belong in the Windows packaging matrix。
 - Focused command: `cargo test repositories::jobs` for retry and startup-running-job convergence.

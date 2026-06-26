@@ -45,7 +45,7 @@
 | Sprint 1B 凭据持久化 | 已实现，待真实机回归 | Windows Credential Manager；数据库只保存引用 |
 | Sprint 1C 导航与列表边界 | 已实现，待 UI 回归 | All/Inbox/Articles/GitHub/Prompts/Failed 后端过滤；30 条分页 |
 | Sprint 1D 文档契约 | 已同步 | API、架构、安全、PRD、UI、数据库与本路线图 |
-| Sprint 2 数据安全 | 执行中 | 备份/两阶段恢复/rollback、0001–0003 fixture、启动迁移保护、启动恢复界面与便携导出已实现；真实 Windows 故障矩阵待实现 |
+| Sprint 2 数据安全 | 执行中 | 备份/两阶段恢复/rollback、0001–0003 fixture、启动迁移保护、启动恢复界面与便携导出已实现；readiness 自动化门禁已建立；真实 Windows 安装包故障矩阵待执行 |
 | Sprint 3 采集可靠性 | 执行中 | 启动时 running job 收敛、capture 超时/HTTP/受限页/空正文分类与扩展回退提示已实现；手动 URL 去重边界已实现；AI job failureReason 分类已实现 |
 | Sprint 4 搜索质量 | 已完成 | FTS 字段权重、secret snippet 抑制、Library filter 组合搜索、索引一致性检查、可重复大库搜索基准、搜索空态/失败态、重建进度和取消边界已实现；5k/20k benchmark 已实测通过 |
 | Sprint 5 可观测性 | 执行中 | Diagnostics 设置页、本地健康快照、DB/object store/job/model 摘要和失败 job 打开/重试入口已实现；支持包导出、结构化日志/correlation id 和 readiness 自动化待实现 |
@@ -79,7 +79,7 @@
 
 - 数据目录清单与版本信息。
 - 原子备份：SQLite 一致性快照、对象存储清单、manifest hash。（已实现）
-- 恢复前校验、safety backup、私有候选迁移、重启切换、phase recovery 和失败回滚。（已实现；真实 Windows 回归待完成）
+- 恢复前校验、safety backup、私有候选迁移、重启切换、phase recovery 和失败回滚。（已实现；readiness 自动化门禁已建立；真实 Windows 回归待完成）
 - JSON/Markdown 导出最小闭环；secret 默认不导出，且不导出 credential reference、内部 job 或本机对象存储路径。（已实现）
 - 0001/0002/0003 历史 schema 到 latest 的生成式 migration fixture。（已实现）
 - 启动迁移失败进入受限 recovery UI，隐藏 create backup，展示 verified backup ID，并只开放 verify/restore/restart。（已实现；真实安装升级待回归）
@@ -91,7 +91,7 @@
 - 备份中断不产生“看似成功”的半成品。
 - 启动 migration fail closed 后不进入普通 Library，recovery UI 可列出并验证 restore point，显式准备恢复或重启重试。（组件与后端自动化已通过；真实安装包回归待完成）
 - existing v1 启动升级前备份保持旧 schema；fresh DB 不备份；running guard 中断 fail closed；已提交 migration 的遗留 guard 可收敛。（自动化已通过）
-- 恢复失败时原数据目录仍可启动。（自动化故障注入已通过；安装包与强制终止矩阵待完成）
+- 恢复失败时原数据目录仍可启动。（自动化故障注入已通过；`npm run readiness:sprint2` 已作为聚合门禁；安装包与强制终止矩阵待完成）
 - 本地 restore point 不含 API Key value，但为无损恢复包含用户内容和 opaque credential reference；便携导出不含 credential reference，默认排除 secret 对象。
 
 ### Week 3：采集与后台任务可靠性

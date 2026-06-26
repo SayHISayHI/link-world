@@ -119,6 +119,7 @@ Must cover:
 - search benchmark fixtures generate a deterministic corpus that covers object type filters, failed lifecycle filtering, secret snippets, parsed content and AI summary matches; CI runs the small smoke corpus, while 5k and 20k object benchmarks stay `#[ignore]` and are run manually before search/schema releases.
 - Latest manual Week 4 search benchmark acceptance on 2026-06-26: 5k max single query 82ms against the 250ms budget; 20k max single query 64ms against the 500ms budget.
 - local diagnostics snapshot redacts URL query/fragment and model credential references from failed job summaries, and does not read source snapshots, parsed documents, embeddings or API key values.
+- Sprint 2 readiness automation is available through `npm run readiness:sprint2`; it aggregates focused backup, restore, migration, portable export and startup recovery redaction gates into a JSON report, while the real Windows installer/process-kill matrix remains a release-candidate manual gate.
 - staged full-index rebuild reports persisted progress, publishes through an atomic FTS swap, preserves the existing index when cancelled before finalizing, and makes completed rebuilds non-cancellable.
 
 ### 4.3 Job idempotency tests

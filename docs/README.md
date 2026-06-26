@@ -38,13 +38,15 @@
    - 发布就绪、环境矩阵、诊断、备份恢复、迁移策略和事故处理。
 17. [devops_and_ci.md](./devops_and_ci.md)
    - CI、构建矩阵、测试门槛、打包、签名、发布、回滚和诊断包。
-18. [plugins/plugin_development_guide.md](./plugins/plugin_development_guide.md)
+18. [sprint2_windows_fault_matrix.md](./sprint2_windows_fault_matrix.md)
+   - Sprint 2 数据安全、迁移、恢复在 Windows 安装包和真实进程故障下的发布验收矩阵。
+19. [plugins/plugin_development_guide.md](./plugins/plugin_development_guide.md)
    - Connector、Parser、Evaluator、Prompt 资源和 Registry 规范。
-19. [post_mvp_roadmap.md](./post_mvp_roadmap.md)
+20. [post_mvp_roadmap.md](./post_mvp_roadmap.md)
    - MVP 后 10 周执行范围、周度交付、验收门槛、当前状态和明确排除项。
-20. [../tests/docs/testing_strategy.md](../tests/docs/testing_strategy.md)
+21. [../tests/docs/testing_strategy.md](../tests/docs/testing_strategy.md)
    - 测试分层、fixtures、AI evals、回归测试和发布测试清单。
-21. [adr/README.md](./adr/README.md)
+22. [adr/README.md](./adr/README.md)
    - 架构决策记录，解释关键技术和产品架构取舍，包括 Markdown/AST 渲染与 AI 展示提示边界。
 
 ## Source of Truth
@@ -64,6 +66,7 @@
 - 多端同步争议以 `sync_architecture.md` 为准。
 - 测试策略以 `tests/docs/testing_strategy.md` 为准。
 - 发布和运维争议以 `operational_readiness.md` 为准。
+- Windows 发布故障矩阵以 `sprint2_windows_fault_matrix.md` 为准。
 - 当前里程碑、周度范围与完成状态以 `post_mvp_roadmap.md` 为准。
 - 架构取舍的历史原因以 `adr/` 为准。
 

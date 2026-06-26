@@ -9,3 +9,4 @@ src-tauri/gen/schemas/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+sprint2-readiness*.json
