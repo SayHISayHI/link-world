@@ -109,7 +109,7 @@
 - 离线/DNS、403、超时、无正文和损坏 HTML 都得到稳定状态。（capture 网络/HTTP/parse 分类自动化已覆盖主要分支，真实离线环境仍需手动矩阵）
 - 单个失败任务不阻塞其他对象。（capture fetch job 自动化已覆盖：403 失败后后续 URL job 仍可成功解析）
 - 重启后无永久 running job。（repository 自动化已覆盖）
-- 日志不包含正文、cookie、token 或第三方原始错误 body。
+- 日志不包含正文、cookie、token 或第三方原始错误 body。（capture failure mapper 的诱饵秘密测试已覆盖 HTTP、网络、policy 和 generic fallback；失败原因在写入数据库/事件前完成稳定分类）
 
 ### Week 4：搜索质量与大库边界
 

@@ -79,7 +79,7 @@ Must cover:
 - document parser preserves headings, paragraphs, lists, blockquotes, code blocks and tables.
 - document parser removes duplicate leading titles and ignores script, style and navigation noise.
 - verification-page detection rejects real challenges without rejecting substantive articles that discuss authentication or CAPTCHA topics.
-- capture failure classification emits stable `capture.*` user-facing reasons for timeout, unreachable network, HTTP 403, verification pages, unsupported schemes, oversized responses and no-readable-text pages.
+- capture failure classification emits stable `capture.*` user-facing reasons for timeout, unreachable network, HTTP 403, verification pages, unsupported schemes, oversized responses and no-readable-text pages; adversarial raw body/cookie/token markers must not survive parse, policy or generic fallback mapping.
 - document parser rejects unsafe link and image protocols in generated Markdown.
 
 ### 4.2 Integration tests

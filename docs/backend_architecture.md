@@ -323,7 +323,7 @@ Rules:
 - 手动 URL capture 在写入前按 normalized canonical URL 做幂等检查：忽略 fragment、规范化 host/default port；命中同一用户的非 deleted 对象时返回已有 object，不创建新的 snapshot/background job。DOM 与 selection capture 不参与该合并，因为它们可能代表同一页面的不同显式内容。
 - URL fetch failure reasons must be stable and user-actionable. `capture.fetch_url` writes `failure_reason` with a `capture.*` prefix, including timeout, network unreachable, HTTP forbidden/not-found/retryable/server-error, restricted verification page, unsupported scheme, oversized page, invalid response and no-readable-text categories.
 - Restricted pages, HTTP 401/403 and verification/CAPTCHA/challenge content must suggest browser extension capture instead of repeatedly retrying unauthenticated backend fetches.
-- Network and parser error messages must not include raw response bodies, cookies, tokens or full third-party error payloads.
+- Network and parser error messages must not include raw response bodies, cookies, tokens or full third-party error payloads. Capture failures are converted to a stable `capture.*` reason before database, domain-event or frontend-event persistence; unrecognized policy and internal errors discard their original detail text.
 
 ## 10. Background Job Runner
 

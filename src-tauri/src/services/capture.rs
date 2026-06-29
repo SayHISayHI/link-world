@@ -448,9 +448,7 @@ fn capture_failure_reason(error: &AppError) -> String {
         ),
         AppError::ParseFailed(message) => capture_parse_failure_reason(message),
         AppError::PolicyDenied(message) => capture_policy_failure_reason(message),
-        other => format!(
-            "capture.failed: Capture failed before parsing could complete. Retry the capture or use the browser extension. Details: {other}"
-        ),
+        _ => "capture.failed: Capture failed before parsing could complete. Retry the capture or use the browser extension.".to_string(),
     }
 }
 
@@ -493,9 +491,7 @@ fn capture_policy_failure_reason(message: &str) -> String {
         return "capture.too_large: The fetched page is larger than the capture safety limit. Use selected text or browser extension capture for the relevant section.".to_string();
     }
 
-    format!(
-        "capture.policy_denied: Capture was blocked by a safety policy. Retry with a user-confirmed URL, selected text, or browser extension capture. Details: {message}"
-    )
+    "capture.policy_denied: Capture was blocked by a safety policy. Retry with a user-confirmed URL, selected text, or browser extension capture.".to_string()
 }
 
 fn capture_http_status_failure_reason(status_code: u16) -> String {
@@ -982,6 +978,41 @@ mod tests {
         ));
         assert!(empty.contains("capture.no_readable_text"));
         assert!(empty.contains("selected text capture"));
+    }
+
+    #[test]
+    fn capture_failure_reason_never_exposes_raw_error_details() {
+        let sensitive_markers = [
+            "raw-third-party-response-body",
+            "cookie=session-secret",
+            "token=provider-secret",
+        ];
+        let failures = [
+            capture_failure_reason(&AppError::ParseFailed(
+                "URL returned HTTP 502 raw-third-party-response-body cookie=session-secret"
+                    .to_string(),
+            )),
+            capture_failure_reason(&AppError::ParseFailed(
+                "network connection failed: token=provider-secret".to_string(),
+            )),
+            capture_failure_reason(&AppError::PolicyDenied(
+                "unexpected policy input raw-third-party-response-body cookie=session-secret"
+                    .to_string(),
+            )),
+            capture_failure_reason(&AppError::Unknown(
+                "upstream failed: token=provider-secret raw-third-party-response-body".to_string(),
+            )),
+        ];
+
+        assert!(failures[0].starts_with("capture.http_server_error:"));
+        assert!(failures[1].starts_with("capture.network_unreachable:"));
+        assert!(failures[2].starts_with("capture.policy_denied:"));
+        assert!(failures[3].starts_with("capture.failed:"));
+        for failure in failures {
+            for sensitive_marker in sensitive_markers {
+                assert!(!failure.contains(sensitive_marker));
+            }
+        }
     }
 
     #[test]

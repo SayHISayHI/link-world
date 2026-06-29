@@ -86,6 +86,8 @@ On rate limit:
 
 AI enrichment job failures persist stable `ai.*` reasons after provider adapter retry handling. The prefix is a product protocol value; user-facing components must format it into a title/action and must not expose raw provider messages. Current categories: `ai.timeout`, `ai.model_auth`, `ai.rate_limit`, `ai.model_not_found`, `ai.output_schema`, `ai.not_configured`, `ai.provider_config_invalid`, `ai.policy_denied`, `ai.provider_unavailable`, `ai.secret_storage`, `ai.input_unavailable`, `ai.local_failure`, `ai.failed`.
 
+URL capture failures follow the same boundary with stable `capture.*` reasons. Classification may retain an HTTP status code, but must discard raw response bodies, cookies, tokens and unrecognized policy/internal error details before writing `knowledge_objects`, `background_jobs`, domain events or frontend completion events.
+
 ## 7. Fallback Strategy
 
 Model provider:
