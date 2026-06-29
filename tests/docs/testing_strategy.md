@@ -323,6 +323,8 @@ Before release:
 - frontend production build passes.
 - browser extension scripts and manifest pass static validation.
 - migration tests pass.
+- Sprint 3 capture/job readiness gate passes and its JSON report is retained.
+- Sprint 3 real offline/DNS/process/concurrency matrix is recorded for the release candidate.
 - E2E smoke pass.
 - direct URL and browser extension captures pass against the same synthetic structured article.
 - Markdown safety regression checks pass.

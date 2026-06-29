@@ -46,7 +46,7 @@
 | Sprint 1C 导航与列表边界 | 已实现，待 UI 回归 | All/Inbox/Articles/GitHub/Prompts/Failed 后端过滤；30 条分页 |
 | Sprint 1D 文档契约 | 已同步 | API、架构、安全、PRD、UI、数据库与本路线图 |
 | Sprint 2 数据安全 | 执行中 | 备份/两阶段恢复/rollback、0001–0003 fixture、启动迁移保护、启动恢复界面与便携导出已实现；readiness 自动化门禁已建立；真实 Windows 安装包故障矩阵待执行 |
-| Sprint 3 采集可靠性 | 执行中 | 启动时 running job 收敛、capture 超时/HTTP/受限页/空正文分类与扩展回退提示已实现；手动 URL 去重边界已实现；AI job failureReason 分类已实现 |
+| Sprint 3 采集可靠性 | 执行中 | 启动时 running job 收敛、capture 超时/HTTP/受限页/空正文分类、任务隔离、失败原因脱敏、扩展回退提示、手动 URL 去重和 AI job failureReason 已实现；readiness 自动化已建立，真实网络/进程矩阵待执行 |
 | Sprint 4 搜索质量 | 已完成 | FTS 字段权重、secret snippet 抑制、Library filter 组合搜索、索引一致性检查、可重复大库搜索基准、搜索空态/失败态、重建进度和取消边界已实现；5k/20k benchmark 已实测通过 |
 | Sprint 5 可观测性 | 执行中 | Diagnostics 设置页、本地健康快照、DB/object store/job/model 摘要和失败 job 打开/重试入口已实现；支持包导出、结构化日志/correlation id 和 readiness 自动化待实现 |
 | Sprint 6-8 Evaluation | 未开始 | 通用框架、GitHub evaluator、Prompt evaluator |
@@ -106,7 +106,7 @@
 
 验收：
 
-- 离线/DNS、403、超时、无正文和损坏 HTML 都得到稳定状态。（capture 网络/HTTP/parse 分类自动化已覆盖主要分支，真实离线环境仍需手动矩阵）
+- 离线/DNS、403、超时、无正文和损坏 HTML 都得到稳定状态。（`npm run readiness:sprint3` 覆盖确定性分类；真实离线/DNS/外部 HTTP 仍按 `sprint3_capture_fault_matrix.md` 执行）
 - 单个失败任务不阻塞其他对象。（capture fetch job 自动化已覆盖：403 失败后后续 URL job 仍可成功解析）
 - 重启后无永久 running job。（repository 自动化已覆盖）
 - 日志不包含正文、cookie、token 或第三方原始错误 body。（capture failure mapper 的诱饵秘密测试已覆盖 HTTP、网络、policy 和 generic fallback；失败原因在写入数据库/事件前完成稳定分类）
