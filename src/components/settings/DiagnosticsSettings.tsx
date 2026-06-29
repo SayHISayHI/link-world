@@ -1,8 +1,13 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { useLocalMetricsSnapshot } from "../../hooks/commands/useLocalMetricsSnapshot";
 import { useRetryBackgroundJob } from "../../hooks/commands/useRetryBackgroundJob";
-import type { FailedJobSummary, LocalMetricsSnapshot } from "../../types/api";
+import { useSupportBundleExport } from "../../hooks/commands/useSupportBundleExport";
+import type {
+  FailedJobSummary,
+  LocalMetricsSnapshot,
+  SupportBundleSummary,
+} from "../../types/api";
 import { Button } from "../ui/button";
 
 interface DiagnosticsSettingsProps {
@@ -16,6 +21,13 @@ export function DiagnosticsSettings({ onOpenObject }: DiagnosticsSettingsProps) 
     loading: retryLoading,
     retryBackgroundJob,
   } = useRetryBackgroundJob();
+  const {
+    error: supportBundleError,
+    exporting: supportBundleExporting,
+    exportSupportBundle,
+    summary: supportBundleSummary,
+  } = useSupportBundleExport();
+  const [supportBundleConfirmed, setSupportBundleConfirmed] = useState(false);
 
   useEffect(() => {
     void loadSnapshot();
@@ -28,6 +40,17 @@ export function DiagnosticsSettings({ onOpenObject }: DiagnosticsSettingsProps) 
     }
   };
 
+  const exportBundle = async () => {
+    if (!supportBundleConfirmed) {
+      return;
+    }
+
+    const summary = await exportSupportBundle({ confirmed: true });
+    if (summary) {
+      setSupportBundleConfirmed(false);
+    }
+  };
+
   return (
     <div className="mx-auto max-w-6xl p-8">
       <div className="flex items-start justify-between gap-5">
@@ -35,7 +58,7 @@ export function DiagnosticsSettings({ onOpenObject }: DiagnosticsSettingsProps) 
           <h2 className="text-xl font-semibold">Diagnostics</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
             Local runtime health, storage status, failed job summaries, and redaction boundaries.
-            This page displays local diagnostics only; support bundle export still requires a separate confirmation flow.
+            This page displays local diagnostics only; support bundle export requires explicit confirmation below.
           </p>
         </div>
         <Button variant="secondary" onClick={() => void loadSnapshot()} disabled={loading}>
@@ -58,6 +81,13 @@ export function DiagnosticsSettings({ onOpenObject }: DiagnosticsSettingsProps) 
         </div>
       ) : null}
 
+      {supportBundleError ? (
+        <div className="mt-6 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          <p className="font-medium">{supportBundleError.title}</p>
+          <p className="mt-1">{supportBundleError.message}</p>
+        </div>
+      ) : null}
+
       {!data && loading ? <p className="mt-6 text-sm text-muted-foreground">Loading diagnostics...</p> : null}
       {data ? (
         <div className="mt-7 space-y-6">
@@ -68,7 +98,14 @@ export function DiagnosticsSettings({ onOpenObject }: DiagnosticsSettingsProps) 
             onRetryJob={(jobId) => void retryJob(jobId)}
             retryLoading={retryLoading}
           />
-          <PrivacyBoundary snapshot={data} />
+          <PrivacyBoundary
+            snapshot={data}
+            confirmed={supportBundleConfirmed}
+            exporting={supportBundleExporting}
+            summary={supportBundleSummary}
+            onConfirmedChange={setSupportBundleConfirmed}
+            onExport={() => void exportBundle()}
+          />
         </div>
       ) : null}
     </div>
@@ -184,19 +221,80 @@ function FailedJobs({
   );
 }
 
-function PrivacyBoundary({ snapshot }: { snapshot: LocalMetricsSnapshot }) {
+function PrivacyBoundary({
+  snapshot,
+  confirmed,
+  exporting,
+  summary,
+  onConfirmedChange,
+  onExport,
+}: {
+  snapshot: LocalMetricsSnapshot;
+  confirmed: boolean;
+  exporting: boolean;
+  summary?: SupportBundleSummary;
+  onConfirmedChange: (confirmed: boolean) => void;
+  onExport: () => void;
+}) {
+  const available = snapshot.privacy.supportBundleAvailable;
+
   return (
     <section className="rounded-xl border border-border bg-surface p-5">
-      <h3 className="text-sm font-semibold">Support bundle boundary</h3>
+      <h3 className="text-sm font-semibold">Support bundle</h3>
       <p className="mt-2 text-sm leading-6 text-muted-foreground">
-        Bundle export is {snapshot.privacy.supportBundleAvailable ? "available" : "not available in this milestone"}.
-        The current page is safe for local display and does not read object bodies.
+        Export a local JSON file with operational metadata only. Link World never uploads the file
+        automatically, and the export does not read object bodies.
       </p>
       <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
         {snapshot.privacy.redaction.map((item) => (
           <li key={item}>{item}</li>
         ))}
       </ul>
+
+      {available ? (
+        <fieldset className="mt-5 rounded-lg border border-border bg-background p-4">
+          <legend className="px-1 text-sm font-medium">Confirm support bundle export</legend>
+          <label className="flex items-start gap-3 text-sm leading-6">
+            <input
+              type="checkbox"
+              className="mt-1 h-4 w-4"
+              checked={confirmed}
+              onChange={(event) => onConfirmedChange(event.target.checked)}
+            />
+            <span>
+              I understand this creates a local diagnostic file containing app/runtime metadata,
+              stable failed-job codes, plugin fingerprints, and recent audit actions.
+            </span>
+          </label>
+          <Button
+            className="mt-4"
+            variant="secondary"
+            onClick={onExport}
+            disabled={!confirmed || exporting}
+          >
+            {exporting ? "Exporting..." : "Export support bundle"}
+          </Button>
+        </fieldset>
+      ) : (
+        <p className="mt-5 text-sm text-muted-foreground">
+          Support bundle export is unavailable in this build.
+        </p>
+      )}
+
+      {summary ? (
+        <div className="mt-5 rounded-lg border border-border bg-background p-4 text-sm">
+          <p className="font-medium">Support bundle exported</p>
+          <dl className="mt-3 space-y-2">
+            <Metric label="File" value={summary.filePath} mono />
+            <Metric label="Size" value={formatBytes(summary.sizeBytes)} />
+            <Metric label="SHA-256" value={summary.sha256} mono />
+          </dl>
+          <p className="mt-3 text-xs leading-5 text-muted-foreground">
+            Review the JSON before sharing it. The file remains on this device until you move or
+            delete it.
+          </p>
+        </div>
+      ) : null}
     </section>
   );
 }

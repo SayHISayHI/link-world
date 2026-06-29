@@ -408,7 +408,7 @@ export interface DiagnosticsPrivacySummary {
 
 export interface LocalMetricsSnapshot {
   appVersion: string;
-  // Local display only. Future exported support bundles must redact local absolute paths.
+  // Local display only. Exported support bundle files never contain these absolute paths.
   dataDir: string;
   databasePath: string;
   objectStorePath: string;
@@ -419,6 +419,16 @@ export interface LocalMetricsSnapshot {
   privacy: DiagnosticsPrivacySummary;
 }
 
+export interface SupportBundleSummary {
+  bundleId: string;
+  createdAt: string;
+  // Local-only response for opening the generated file; not embedded in the bundle JSON.
+  filePath: string;
+  sizeBytes: number;
+  sha256: string;
+  includedSections: string[];
+  redaction: string[];
+}
 
 export interface BackupSummary {
   backupId: string;
@@ -685,6 +695,10 @@ export interface OperationsCommands {
   // 获取本地指标快照。默认只在本机展示，不自动上传。
   // invoke('get_local_metrics_snapshot')
   get_local_metrics_snapshot: () => Promise<IpcResponse<LocalMetricsSnapshot>>;
+
+  // 显式确认后，在 app data/support-bundles 下原子生成脱敏 JSON；不接受任意路径且不自动上传。
+  // invoke('export_support_bundle', { confirmed: true })
+  export_support_bundle: (args: { confirmed: boolean }) => Promise<IpcResponse<SupportBundleSummary>>;
 }
 
 /**

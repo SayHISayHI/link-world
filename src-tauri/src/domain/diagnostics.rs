@@ -70,3 +70,14 @@ pub struct DiagnosticsPrivacySummary {
     pub support_bundle_available: bool,
     pub redaction: Vec<String>,
 }
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SupportBundleSummary {
+    pub bundle_id: String,
+    pub created_at: String,
+    pub file_path: String,
+    pub size_bytes: u64,
+    pub sha256: String,
+    pub included_sections: Vec<String>,
+    pub redaction: Vec<String>,
+}

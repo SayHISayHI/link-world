@@ -117,15 +117,15 @@ o-referrer`。
 
 ## 8. Diagnostics Policy
 
-Diagnostics package may contain:
+Diagnostics package schema v1 may contain:
 
-- app version.
-- OS version.
-- schema version.
-- feature flags.
-- plugin manifests.
-- failed job summaries with URL query/fragment and credential references redacted.
-- redacted logs.
+- app version, OS/architecture and schema version.
+- aggregate database/object-store/job/model health.
+- feature flag identifiers.
+- plugin kind/version plus hashes of plugin id and manifest; never raw manifest JSON.
+- failed job ids/types/statuses and stable `capture.*` / `ai.*` codes; never raw error messages.
+- audit action/type/object id/time without actor id, user id or metadata payload.
+- runtime log availability status. Until structured logging exists this must be `not_collected`, not fabricated entries.
 
 Diagnostics package must not contain:
 
@@ -137,6 +137,9 @@ Diagnostics package must not contain:
 - embeddings.
 - URL query or fragment values.
 - credential references such as model-provider keyring ids.
+- local absolute data/database/object-store paths inside the exported JSON.
+
+Export requires explicit user confirmation, accepts no caller-selected path, writes atomically below app data `support-bundles`, and never uploads automatically. The command response may return the local file path so the user can find the file; that path is not embedded in the exported JSON.
 
 ## 9. Deletion Policy
 

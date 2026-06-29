@@ -4,6 +4,7 @@ import type { LocalMetricsSnapshot } from "../../types/api";
 import { DiagnosticsSettings } from "./DiagnosticsSettings";
 
 const mocks = vi.hoisted(() => ({
+  exportSupportBundle: vi.fn(),
   loadSnapshot: vi.fn(),
   retryBackgroundJob: vi.fn(),
 }));
@@ -22,6 +23,15 @@ vi.mock("../../hooks/commands/useRetryBackgroundJob", () => ({
     error: undefined,
     loading: false,
     retryBackgroundJob: mocks.retryBackgroundJob,
+  }),
+}));
+
+vi.mock("../../hooks/commands/useSupportBundleExport", () => ({
+  useSupportBundleExport: () => ({
+    error: undefined,
+    exporting: false,
+    exportSupportBundle: mocks.exportSupportBundle,
+    summary: undefined,
   }),
 }));
 
@@ -66,7 +76,7 @@ const snapshot: LocalMetricsSnapshot = {
     status: "not_configured_normal_degradation",
   },
   privacy: {
-    supportBundleAvailable: false,
+    supportBundleAvailable: true,
     redaction: [
       "No source snapshots or parsed document content are included.",
       "Model credential references and API keys are not returned.",
@@ -76,6 +86,16 @@ const snapshot: LocalMetricsSnapshot = {
 
 describe("DiagnosticsSettings", () => {
   beforeEach(() => {
+    mocks.exportSupportBundle.mockReset();
+    mocks.exportSupportBundle.mockResolvedValue({
+      bundleId: "support-1",
+      createdAt: "2026-06-29T00:00:00Z",
+      filePath: "C:/Users/tester/AppData/LinkWorld/support-bundles/support-1.json",
+      sizeBytes: 1024,
+      sha256: "a".repeat(64),
+      includedSections: [],
+      redaction: [],
+    });
     mocks.loadSnapshot.mockReset();
     mocks.retryBackgroundJob.mockReset();
     mocks.retryBackgroundJob.mockResolvedValue(true);
@@ -91,6 +111,20 @@ describe("DiagnosticsSettings", () => {
     expect(screen.getByText(/https:\/\/example.com\/a\[redacted\]/)).toBeInTheDocument();
     expect(screen.queryByText(/secret=1/)).not.toBeInTheDocument();
     expect(screen.queryByText(/keyring:model-provider/)).not.toBeInTheDocument();
+  });
+
+  it("requires explicit confirmation before exporting a support bundle", () => {
+    render(<DiagnosticsSettings />);
+
+    const exportButton = screen.getByRole("button", { name: "Export support bundle" });
+    expect(exportButton).toBeDisabled();
+    expect(mocks.exportSupportBundle).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("checkbox"));
+    expect(exportButton).toBeEnabled();
+
+    fireEvent.click(exportButton);
+    expect(mocks.exportSupportBundle).toHaveBeenCalledWith({ confirmed: true });
   });
 
   it("opens object and retries capture jobs from failed job summaries", async () => {

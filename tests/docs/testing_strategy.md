@@ -120,6 +120,7 @@ Must cover:
 - search benchmark fixtures generate a deterministic corpus that covers object type filters, failed lifecycle filtering, secret snippets, parsed content and AI summary matches; CI runs the small smoke corpus, while 5k and 20k object benchmarks stay `#[ignore]` and are run manually before search/schema releases.
 - Latest manual Week 4 search benchmark acceptance on 2026-06-26: 5k max single query 82ms against the 250ms budget; 20k max single query 64ms against the 500ms budget.
 - local diagnostics snapshot redacts URL query/fragment and model credential references from failed job summaries, and does not read source snapshots, parsed documents, embeddings or API key values.
+- support bundle export rejects missing confirmation, publishes one atomic JSON file with size/SHA-256, and adversarially proves omission of object bodies, object-store content, job payload/query, raw errors, plugin manifest secrets, audit metadata, credential references and local absolute paths.
 - Sprint 2 readiness automation is available through `npm run readiness:sprint2`; it aggregates focused backup, restore, migration, portable export and startup recovery redaction gates into a JSON report, while the real Windows installer/process-kill matrix remains a release-candidate manual gate.
 - staged full-index rebuild reports persisted progress, publishes through an atomic FTS swap, preserves the existing index when cancelled before finalizing, and makes completed rebuilds non-cancellable.
 
@@ -152,7 +153,7 @@ Component tests:
 - long code blocks support copy and collapse interactions without loading a syntax-highlighting engine.
 - valid AI display hints apply only to their source parsed document; stale, invalid and low-confidence hints fall back to AST inference.
 - `StorageSettings` portable export button calls `usePortableExport`, displays exported object/secret-skip summary, and is hidden in startup recovery mode.
-- `DiagnosticsSettings` loads local metrics, renders DB/object store/job/model health, treats missing model config as normal degradation, redacts URL query and credential references, and exposes failed job open/retry actions.
+- `DiagnosticsSettings` loads local metrics, renders DB/object store/job/model health, treats missing model config as normal degradation, redacts URL query and credential references, exposes failed job open/retry actions, and cannot invoke support-bundle export before explicit checkbox confirmation.
 - `AIAnalysisPanel` shows run state, summary and trace, contains no provider credential form, and links to Settings.
 - `EvaluationPanel` shows verdict, evidence and limitations.
 - model provider settings list multiple stable ids without returning API keys, create/edit/delete configs, enforce one explicit default, allow protocol selection, clear key drafts after save and invalidate stale connection-test success after edits.

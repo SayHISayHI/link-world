@@ -35,7 +35,7 @@ impl<'a> SystemService<'a> {
     }
 }
 
-async fn build_local_metrics_snapshot(
+pub(crate) async fn build_local_metrics_snapshot(
     app_version: &str,
     data_dir: &Path,
     database: &Database,
@@ -56,12 +56,13 @@ async fn build_local_metrics_snapshot(
         jobs,
         models,
         privacy: DiagnosticsPrivacySummary {
-            support_bundle_available: false,
+            support_bundle_available: true,
             redaction: vec![
-                "No source snapshots or parsed document content are included.".to_string(),
-                "Failed job errors are sanitized before display.".to_string(),
-                "Model credential references and API keys are not returned.".to_string(),
-                "Support bundle export is intentionally gated behind a future explicit confirmation flow.".to_string(),
+                "No source snapshots, parsed documents, AI prompts, embeddings, or object bodies are included.".to_string(),
+                "Failed jobs export only stable error codes, never raw messages.".to_string(),
+                "Model configuration details, credential references, and API keys are excluded.".to_string(),
+                "Local absolute paths and URL query/fragment values are excluded from the exported file.".to_string(),
+                "Export requires explicit confirmation and writes a local JSON file without uploading it.".to_string(),
             ],
         },
     })

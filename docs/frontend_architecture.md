@@ -187,6 +187,8 @@ Hook examples:
 - `useModelProviderConfigs`
 - `useLocalMetricsSnapshot`
   - owns `get_local_metrics_snapshot` state for Diagnostics; snapshot contains aggregate health and sanitized failed job summaries only.
+- `useSupportBundleExport`
+  - owns explicit-confirmation export state and the returned local summary/path; it never reads the generated JSON into React state or uploads it.
 - `useBackups`
   - owns create/verify/prepare/restart command state and the last restore result; payload content never enters React state.
 - startup hooks are owned by `App` / recovery surfaces; `get_startup_status` gates whether the normal Library shell may mount.
@@ -448,7 +450,7 @@ Minimum frontend tests:
 - `SearchCommand` handles loading, empty, failed, keyboard navigation。
 - `ObjectList` handles search empty, search failed, rebuild progress and rebuild cancellation boundary states。
 - `SettingsPanel` masks API key。
-- `DiagnosticsSettings` renders local health, sanitized failed job summaries, normal model-configuration degradation and support-bundle redaction boundary。
+- `DiagnosticsSettings` renders local health, sanitized failed job summaries and normal model-configuration degradation；support-bundle export is disabled until the inline confirmation is checked, then shows only path/size/SHA-256 and never loads bundle content into React state。
 - `PluginPermissionPanel` displays required vs optional permissions。
 - `DeleteObjectDialog` confirms destructive action。
 

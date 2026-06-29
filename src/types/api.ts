@@ -472,6 +472,17 @@ export interface LocalMetricsSnapshot {
   models: ModelMetrics;
   privacy: DiagnosticsPrivacySummary;
 }
+
+export interface SupportBundleSummary {
+  bundleId: string;
+  createdAt: string;
+  filePath: string;
+  sizeBytes: number;
+  sha256: string;
+  includedSections: string[];
+  redaction: string[];
+}
+
 export type DeleteObjectMode = "soft_delete" | "purge" | "export_then_delete";
 
 export interface DeleteObjectResponse {

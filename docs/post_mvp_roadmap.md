@@ -48,7 +48,7 @@
 | Sprint 2 数据安全 | 执行中 | 备份/两阶段恢复/rollback、0001–0003 fixture、启动迁移保护、启动恢复界面与便携导出已实现；readiness 自动化门禁已建立；真实 Windows 安装包故障矩阵待执行 |
 | Sprint 3 采集可靠性 | 执行中 | 启动时 running job 收敛、capture 超时/HTTP/受限页/空正文分类、任务隔离、失败原因脱敏、扩展回退提示、手动 URL 去重和 AI job failureReason 已实现；readiness 自动化已建立，真实网络/进程矩阵待执行 |
 | Sprint 4 搜索质量 | 已完成 | FTS 字段权重、secret snippet 抑制、Library filter 组合搜索、索引一致性检查、可重复大库搜索基准、搜索空态/失败态、重建进度和取消边界已实现；5k/20k benchmark 已实测通过 |
-| Sprint 5 可观测性 | 执行中 | Diagnostics 设置页、本地健康快照、DB/object store/job/model 摘要和失败 job 打开/重试入口已实现；支持包导出、结构化日志/correlation id 和 readiness 自动化待实现 |
+| Sprint 5 可观测性 | 执行中 | Diagnostics 本地健康快照、失败 job 打开/重试、显式确认的脱敏 JSON 支持包、插件指纹/audit action、size/SHA-256 已实现；结构化日志/correlation id 和 readiness 自动化待实现 |
 | Sprint 6-8 Evaluation | 未开始 | 通用框架、GitHub evaluator、Prompt evaluator |
 | Sprint 9-10 Alpha 发布 | 未开始 | 安装升级、安全审计、真实用户反馈闭环 |
 
@@ -133,13 +133,13 @@
 交付：
 
 - Diagnostics 设置页：版本、数据路径、数据库健康、对象存储健康、job 失败摘要。（本地快照与 Settings UI 已实现）
-- 脱敏支持包与用户确认流程。（当前仅实现页面 redaction boundary；导出与确认流程待实现）
+- 脱敏支持包与用户确认流程。（schema v1 已实现：固定目录原子 JSON、command/UI 双重确认、稳定 failure code、插件指纹、audit action、size/SHA-256；runtime logs 明确为 `not_collected`）
 - 关键流程结构化日志和稳定 correlation id。
 - operational readiness 清单自动化。
 
 验收：
 
-- 支持包不含正文、URL query、API Key、credential reference 或 embedding。
+- 支持包不含正文、URL query、API Key、credential reference 或 embedding。（后端诱饵秘密测试已覆盖 object title/store body、job payload/error、plugin manifest、audit metadata、credential ref 和本机绝对路径）
 - 用户可从失败项进入对应对象或重试动作。（Diagnostics failed job summary 已支持打开对象；capture.fetch_url 支持 retry）
 - 无模型配置被视为正常能力降级，不是系统故障。（Diagnostics model status 使用 not_configured_normal_degradation）
 

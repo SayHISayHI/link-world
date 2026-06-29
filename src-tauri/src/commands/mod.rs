@@ -1,6 +1,7 @@
 pub mod ai;
 pub mod backup;
 pub mod capture;
+pub mod diagnostics;
 pub mod evaluation;
 pub mod library;
 pub mod operations;

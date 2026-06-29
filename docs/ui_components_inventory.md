@@ -122,7 +122,7 @@ Rules:
 | `ModelSettings` | provider list, create/edit/delete/default, protocol, base URL, model and connection test |
 | `StorageSettings` | create/list/verify local restore points, confirm restore, display restart/rollback result, trigger portable Markdown/JSON export, and communicate content boundary; `startupRecovery` mode hides create backup and export |
 | `StartupRecoveryScreen` | boot-safe recovery surface shown before normal Library mounts; displays redacted startup issue, verified backup id, restart and restricted restore actions |
-| `DiagnosticsSettings` | local diagnostics health, sanitized failed job summary, model degradation, support-bundle boundary |
+| `DiagnosticsSettings` | local diagnostics health, sanitized failed job summary, model degradation, explicit support-bundle confirmation/export and path/size/hash result |
 | `SettingsBoundary` | explicit placeholder for privacy/capture/plugins/about until implemented |
 
 Rules:
@@ -138,6 +138,7 @@ Rules:
 - Startup recovery UI must not mount Library containers, model settings, object detail commands, or event subscriptions.
 - Storage backup UI must state that restore points contain user content and never claim encryption. Restore requires a separate inline confirmation, explains safety backup and restart, disables concurrent restore preparation, and displays succeeded/rolled-back/failed status without payload details.
 - Portable export UI must explain that export is separate from restore points, defaults to non-secret objects, and excludes credential references/internal jobs/local storage paths. It must not accept arbitrary destination paths from the component.
+- Support bundle export must require a fresh inline checkbox confirmation, remain local-only, accept no destination path, and show only the returned file path, size and SHA-256. The component must not read or preview the JSON body.
 
 ## 9. Feedback Components
 

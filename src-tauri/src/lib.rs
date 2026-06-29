@@ -49,6 +49,7 @@ pub fn run() {
             commands::system::restart_app,
             commands::system::ping,
             commands::system::get_local_metrics_snapshot,
+            commands::diagnostics::export_support_bundle,
             commands::backup::create_backup,
             commands::backup::list_backups,
             commands::backup::prepare_restore,
