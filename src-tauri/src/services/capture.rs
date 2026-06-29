@@ -1595,6 +1595,120 @@ return answer;</code></pre>
             .contains("browser extension"));
     }
 
+    #[tokio::test]
+    async fn failed_fetch_job_does_not_block_later_fetch_jobs() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        let object_store = test_object_store();
+        let service = CaptureService::new(database.pool().clone(), object_store);
+        let forbidden_url = start_test_http_server(
+            "403 Forbidden",
+            r#"<!doctype html><html><body>Forbidden</body></html>"#,
+        )
+        .await;
+        let success_url = start_test_html_server(
+            r#"<!doctype html>
+            <html>
+              <head><title>Independent Success</title></head>
+              <body><main><h1>Independent Success</h1><p>The second capture continues after the first job fails.</p></main></body>
+            </html>"#,
+        )
+        .await;
+
+        let failed_response = service
+            .submit(RawCaptureItem {
+                id: None,
+                user_id: None,
+                source_type: "url".to_string(),
+                source_platform: Some("web".to_string()),
+                source_url: Some(forbidden_url.clone()),
+                canonical_url: Some(forbidden_url),
+                title: None,
+                author: None,
+                captured_at: None,
+                raw_html: None,
+                raw_text: None,
+                assets: Vec::new(),
+                metadata: json!({}),
+                privacy_level: "personal".to_string(),
+                permission_context: confirmed_permission(),
+            })
+            .await
+            .expect("failed capture should be submitted");
+        let success_response = service
+            .submit(RawCaptureItem {
+                id: None,
+                user_id: None,
+                source_type: "url".to_string(),
+                source_platform: Some("web".to_string()),
+                source_url: Some(success_url.clone()),
+                canonical_url: Some(success_url),
+                title: None,
+                author: None,
+                captured_at: None,
+                raw_html: None,
+                raw_text: None,
+                assets: Vec::new(),
+                metadata: json!({}),
+                privacy_level: "personal".to_string(),
+                permission_context: confirmed_permission(),
+            })
+            .await
+            .expect("second capture should be submitted");
+
+        let failed_job_id = failed_response
+            .job_id
+            .clone()
+            .expect("failed URL capture should create a fetch job");
+        let success_job_id = success_response
+            .job_id
+            .clone()
+            .expect("second URL capture should create a fetch job");
+
+        let failed_run = service
+            .run_fetch_job(&failed_job_id)
+            .await
+            .expect("failed job should be recorded")
+            .expect("failed job should be claimed");
+        assert_eq!(failed_run.status, "failed");
+        assert!(failed_run
+            .failure_reason
+            .as_deref()
+            .unwrap_or_default()
+            .contains("capture.http_forbidden"));
+
+        let success_run = service
+            .run_fetch_job(&success_job_id)
+            .await
+            .expect("second job should still run")
+            .expect("second job should be claimed");
+        assert_eq!(success_run.status, "succeeded");
+        assert_eq!(success_run.lifecycle_status, "parsed");
+
+        let failed_lifecycle: String =
+            sqlx::query_scalar("SELECT lifecycle_status FROM knowledge_objects WHERE id = ?1")
+                .bind(&failed_response.object_id)
+                .fetch_one(database.pool())
+                .await
+                .expect("failed object lifecycle should be readable");
+        let success_lifecycle: String =
+            sqlx::query_scalar("SELECT lifecycle_status FROM knowledge_objects WHERE id = ?1")
+                .bind(&success_response.object_id)
+                .fetch_one(database.pool())
+                .await
+                .expect("success object lifecycle should be readable");
+        let success_text: String =
+            sqlx::query_scalar("SELECT text_content FROM parsed_documents WHERE object_id = ?1")
+                .bind(&success_response.object_id)
+                .fetch_one(database.pool())
+                .await
+                .expect("success parsed document should be readable");
+
+        assert_eq!(failed_lifecycle, "failed");
+        assert_eq!(success_lifecycle, "parsed");
+        assert!(success_text.contains("continues after the first job fails"));
+    }
     fn confirmed_permission() -> PermissionContext {
         PermissionContext {
             acquisition_mode: "user_action".to_string(),

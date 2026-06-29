@@ -111,6 +111,7 @@ Must cover:
 - delete creates tombstone and purge removes derived data.
 - startup job recovery requeues interrupted `capture.fetch_url` jobs with retry budget, fails exhausted capture jobs, and fails running jobs without registered recovery runners.
 - capture fetch failures for verification pages, HTTP 403 and unsupported schemes persist actionable failure reasons and do not create parsed documents.
+- capture fetch job isolation verifies that one failed URL fetch does not block a later queued URL job from succeeding and producing a parsed document.
 - repeated manual URL capture with the same normalized canonical URL returns the existing object, sets `deduplicated=true`, and does not create another snapshot or background job.
 - FTS search uses parsed document and AI summary.
 - FTS search ranks title matches above repeated body-only matches according to documented weights, and suppresses snippets for `secret` objects.

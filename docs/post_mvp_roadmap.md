@@ -107,7 +107,7 @@
 验收：
 
 - 离线/DNS、403、超时、无正文和损坏 HTML 都得到稳定状态。（capture 网络/HTTP/parse 分类自动化已覆盖主要分支，真实离线环境仍需手动矩阵）
-- 单个失败任务不阻塞其他对象。
+- 单个失败任务不阻塞其他对象。（capture fetch job 自动化已覆盖：403 失败后后续 URL job 仍可成功解析）
 - 重启后无永久 running job。（repository 自动化已覆盖）
 - 日志不包含正文、cookie、token 或第三方原始错误 body。
 

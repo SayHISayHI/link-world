@@ -106,7 +106,7 @@ Migration tests:
 - Portable export writes non-secret Markdown/JSON artifacts and verifies that metadata excludes credential references, internal jobs and local storage URI fields。
 
 - Startup job recovery converges interrupted `running` jobs so app restart cannot leave permanent running jobs.
-- Capture fetch failure classification covers timeout, unreachable network, HTTP forbidden, restricted verification pages, unsupported schemes and no-readable-text cases without logging raw response bodies.
+- Capture fetch failure classification covers timeout, unreachable network, HTTP forbidden, restricted verification pages, unsupported schemes and no-readable-text cases without logging raw response bodies; job isolation coverage verifies one failed fetch does not block a later queued URL job.
 Test DB strategy:
 
 - Unit tests can use in-memory SQLite when possible。
