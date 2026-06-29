@@ -333,6 +333,7 @@ export interface DomainEvent<TPayload = unknown> {
   objectId?: string;
   occurredAt: string;
   causationId?: string;
+  // Required for critical lifecycle events. Capture jobs persist and reuse the submission UUID.
   correlationId?: string;
   payload: TPayload;
 }

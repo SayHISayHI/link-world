@@ -125,6 +125,7 @@ Diagnostics package schema v1 may contain:
 - plugin kind/version plus hashes of plugin id and manifest; never raw manifest JSON.
 - failed job ids/types/statuses and stable `capture.*` / `ai.*` codes; never raw error messages.
 - audit action/type/object id/time without actor id, user id or metadata payload.
+- domain event type/object id/correlation id/time without event payload.
 - runtime log availability status. Until structured logging exists this must be `not_collected`, not fabricated entries.
 
 Diagnostics package must not contain:
@@ -138,6 +139,7 @@ Diagnostics package must not contain:
 - URL query or fragment values.
 - credential references such as model-provider keyring ids.
 - local absolute data/database/object-store paths inside the exported JSON.
+- domain event payloads; capture event payloads themselves must not duplicate source/canonical URL, query/fragment or content.
 
 Export requires explicit user confirmation, accepts no caller-selected path, writes atomically below app data `support-bundles`, and never uploads automatically. The command response may return the local file path so the user can find the file; that path is not embedded in the exported JSON.
 

@@ -16,6 +16,7 @@ use uuid::Uuid;
 pub const SUPPORT_BUNDLES_DIR_NAME: &str = "support-bundles";
 const SUPPORT_BUNDLE_SCHEMA_VERSION: i64 = 1;
 const RECENT_AUDIT_EVENT_LIMIT: i64 = 50;
+const RECENT_DOMAIN_EVENT_LIMIT: i64 = 50;
 
 #[derive(Debug, Clone)]
 pub struct SupportBundleService {
@@ -41,6 +42,7 @@ struct SupportBundleDocument {
     feature_flags: Vec<String>,
     plugins: Vec<PluginDiagnosticSummary>,
     recent_audit_events: Vec<AuditEventSummary>,
+    recent_domain_events: Vec<DomainEventSummary>,
     runtime_logs: RuntimeLogSummary,
     redaction: Vec<String>,
 }
@@ -100,6 +102,15 @@ struct AuditEventSummary {
     actor_type: String,
     object_id: Option<String>,
     created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DomainEventSummary {
+    event_type: String,
+    object_id: Option<String>,
+    correlation_id: String,
+    occurred_at: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -171,6 +182,7 @@ impl SupportBundleService {
                 "model capability status without configuration details".to_string(),
                 "sanitized plugin manifest fingerprints".to_string(),
                 "recent audit events without metadata payloads".to_string(),
+                "recent domain event types and correlation ids without payloads".to_string(),
             ],
             redaction: support_bundle_redaction(),
         })
@@ -190,6 +202,7 @@ impl SupportBundleService {
         .await?;
         let plugins = plugin_summaries(&self.database).await?;
         let recent_audit_events = recent_audit_events(&self.database).await?;
+        let recent_domain_events = recent_domain_events(&self.database).await?;
 
         Ok(SupportBundleDocument {
             schema_version: SUPPORT_BUNDLE_SCHEMA_VERSION,
@@ -207,6 +220,7 @@ impl SupportBundleService {
             feature_flags: Vec::new(),
             plugins,
             recent_audit_events,
+            recent_domain_events,
             runtime_logs: RuntimeLogSummary {
                 status: "not_collected",
                 entries: Vec::new(),
@@ -294,6 +308,34 @@ async fn plugin_summaries(database: &Database) -> AppResult<Vec<PluginDiagnostic
                 enabled: row.get::<i64, _>("enabled") != 0,
                 manifest_sha256: sha256_hex(manifest_json.as_bytes()),
             }
+        })
+        .collect())
+}
+
+async fn recent_domain_events(database: &Database) -> AppResult<Vec<DomainEventSummary>> {
+    let rows = sqlx::query(
+        r#"
+        SELECT event_type, object_id, correlation_id, occurred_at
+        FROM domain_events
+        WHERE correlation_id IS NOT NULL
+        ORDER BY occurred_at DESC, id DESC
+        LIMIT ?1
+        "#,
+    )
+    .bind(RECENT_DOMAIN_EVENT_LIMIT)
+    .fetch_all(database.pool())
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| DomainEventSummary {
+            event_type: safe_label(&row.get::<String, _>("event_type")),
+            object_id: row
+                .get::<Option<String>, _>("object_id")
+                .as_deref()
+                .map(safe_identifier),
+            correlation_id: safe_identifier(&row.get::<String, _>("correlation_id")),
+            occurred_at: safe_timestamp(&row.get::<String, _>("occurred_at")),
         })
         .collect())
 }
@@ -389,7 +431,7 @@ fn support_bundle_redaction() -> Vec<String> {
         "No URL query or fragment values and no raw failed-job messages.".to_string(),
         "Plugin manifests are represented only by safe metadata and SHA-256 fingerprints."
             .to_string(),
-        "Audit metadata payloads and runtime logs are not included in schema version 1."
+        "Audit metadata, domain event payloads, and runtime logs are not included in schema version 1."
             .to_string(),
     ]
 }
@@ -500,6 +542,22 @@ mod tests {
         .expect("plugin manifest should insert");
         sqlx::query(
             r#"
+            INSERT INTO domain_events (
+                id, event_type, event_version, user_id, object_id,
+                correlation_id, payload_json, occurred_at
+            ) VALUES (
+                'event-support', 'capture.submitted', 1, 'local-user', 'obj-support',
+                'd4b258f0-17cf-4b85-81f1-892ad3f10b27',
+                '{"url":"https://example.com/?token=DOMAIN_EVENT_SECRET"}',
+                '2026-06-29T00:00:00Z'
+            )
+            "#,
+        )
+        .execute(database.pool())
+        .await
+        .expect("domain event should insert");
+        sqlx::query(
+            r#"
             INSERT INTO audit_logs (
                 id, user_id, actor_type, action, object_id, metadata_json, created_at
             ) VALUES (
@@ -546,6 +604,10 @@ mod tests {
             "capture.http_forbidden"
         );
         assert_eq!(document["runtimeLogs"]["status"], "not_collected");
+        assert_eq!(
+            document["recentDomainEvents"][0]["correlationId"],
+            "d4b258f0-17cf-4b85-81f1-892ad3f10b27"
+        );
         assert_eq!(document["plugins"].as_array().map(Vec::len), Some(1));
         assert_eq!(summary.size_bytes, serialized.len() as u64);
         assert_eq!(summary.sha256.len(), 64);
@@ -555,6 +617,7 @@ mod tests {
             "PRIVATE_OBJECT_BODY_MARKER",
             "PLUGIN_SECRET_MARKER",
             "AUDIT_SECRET_MARKER",
+            "DOMAIN_EVENT_SECRET",
             "QUERY_SECRET",
             "session-secret",
             "provider-secret",

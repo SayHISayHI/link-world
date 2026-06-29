@@ -62,6 +62,7 @@ pub struct CaptureFetchJobRecord {
     pub object_id: String,
     pub user_id: String,
     pub canonical_url: Option<String>,
+    pub correlation_id: String,
     pub attempt_count: i64,
     pub max_attempts: i64,
 }
@@ -138,6 +139,7 @@ pub struct CaptureDomainEventSubmission {
     pub event_type: String,
     pub event_version: i64,
     pub user_id: String,
+    pub correlation_id: String,
     pub payload_json: String,
     pub occurred_at: String,
 }

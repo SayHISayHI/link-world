@@ -376,6 +376,8 @@ Rules:
 - Service 在同一事务中写业务数据和事件。
 - Event dispatcher 异步处理未处理事件。
 - Event handler 必须根据 event id 幂等。
+- 同一次 capture 的 submitted/snapshot/parsed/failed 事件共享提交时生成的 UUID correlation id；该 id 写入 background job payload，重启、retry 和终态事件继续使用同一值。
+- Capture event payload 不复制 source/canonical URL；query/fragment 和正文只存在于受对应隐私策略保护的对象/快照存储。
 - UI 通知可以来自事件，但事件不是 UI 专用机制。
 
 Example:
@@ -511,7 +513,7 @@ Required fields:
 
 所有外部错误进入日志前必须经过 redaction helper。
 
-Support bundle 使用独立于本地展示快照的导出 DTO。`export_support_bundle` 必须要求 command-level explicit confirmation，只能写入 app data 下固定的 `support-bundles` 目录，先写 staging 再原子 rename，并返回文件大小和 SHA-256。schema v1 只导出运行/schema 元数据、聚合健康、stable failed-job code、模型能力状态、插件 manifest SHA-256 指纹和不含 metadata payload 的 audit actions；不得序列化本地绝对路径、raw job error、正文、URL query/fragment、credential reference 或 secret。结构化 runtime logs 尚未建立时必须显式记录为 `not_collected`，不得伪造空日志为“已采集”。
+Support bundle 使用独立于本地展示快照的导出 DTO。`export_support_bundle` 必须要求 command-level explicit confirmation，只能写入 app data 下固定的 `support-bundles` 目录，先写 staging 再原子 rename，并返回文件大小和 SHA-256。schema v1 只导出运行/schema 元数据、聚合健康、stable failed-job code、模型能力状态、插件 manifest SHA-256 指纹、不含 metadata payload 的 audit actions，以及不含 payload 的 domain event type/object/correlation/time；不得序列化本地绝对路径、raw job error、正文、URL query/fragment、credential reference 或 secret。结构化 runtime logs 尚未建立时必须显式记录为 `not_collected`，不得伪造空日志为“已采集”。
 
 ## 18. Testing Requirements
 

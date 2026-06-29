@@ -71,6 +71,7 @@ impl CaptureService {
         let object_id = Uuid::new_v4().to_string();
         let snapshot_id = Uuid::new_v4().to_string();
         let job_id = Uuid::new_v4().to_string();
+        let correlation_id = Uuid::new_v4().to_string();
         let now = item
             .captured_at
             .clone()
@@ -134,12 +135,12 @@ impl CaptureService {
                 id: job_id.clone(),
                 job_type: job_type.to_string(),
                 status: "queued".to_string(),
-                payload_json: build_job_payload(&object_id, &snapshot_id),
+                payload_json: build_job_payload(&object_id, &snapshot_id, &correlation_id),
                 max_attempts: 3,
                 created_at: now.clone(),
                 updated_at: now.clone(),
             },
-            events: build_domain_events(&item, &object_id, &snapshot_id, &now),
+            events: build_domain_events(&item, &object_id, &snapshot_id, &correlation_id, &now),
         };
 
         let response = SubmitCaptureResponse {
@@ -791,10 +792,11 @@ fn is_allowed_object_type(value: &str) -> bool {
     )
 }
 
-fn build_job_payload(object_id: &str, snapshot_id: &str) -> String {
+fn build_job_payload(object_id: &str, snapshot_id: &str, correlation_id: &str) -> String {
     json!({
         "objectId": object_id,
         "snapshotId": snapshot_id,
+        "correlationId": correlation_id,
     })
     .to_string()
 }
@@ -803,6 +805,7 @@ fn build_domain_events(
     item: &RawCaptureItem,
     object_id: &str,
     snapshot_id: &str,
+    correlation_id: &str,
     occurred_at: &str,
 ) -> Vec<CaptureDomainEventSubmission> {
     let user_id = item
@@ -816,11 +819,11 @@ fn build_domain_events(
         event_type: "capture.submitted".to_string(),
         event_version: 1,
         user_id: user_id.clone(),
+        correlation_id: correlation_id.to_string(),
         payload_json: json!({
+            "objectId": object_id,
             "sourceType": item.source_type,
             "sourcePlatform": item.source_platform,
-            "sourceUrl": item.source_url,
-            "canonicalUrl": item.canonical_url,
             "snapshotId": snapshot_id,
         })
         .to_string(),
@@ -832,6 +835,7 @@ fn build_domain_events(
         event_type: "snapshot.created".to_string(),
         event_version: 1,
         user_id: user_id.clone(),
+        correlation_id: correlation_id.to_string(),
         payload_json: json!({
             "snapshotId": snapshot_id,
         })
@@ -850,6 +854,7 @@ fn build_domain_events(
             event_type: "object.parsed".to_string(),
             event_version: 1,
             user_id,
+            correlation_id: correlation_id.to_string(),
             payload_json: json!({
                 "objectId": object_id,
                 "parserId": parser_id,
@@ -874,6 +879,7 @@ fn build_fetch_success_events(
             event_type: "snapshot.created".to_string(),
             event_version: 1,
             user_id: job.user_id.clone(),
+            correlation_id: job.correlation_id.clone(),
             payload_json: json!({
                 "snapshotId": snapshot_id,
                 "source": "capture.fetch_url",
@@ -886,6 +892,7 @@ fn build_fetch_success_events(
             event_type: "object.parsed".to_string(),
             event_version: 1,
             user_id: job.user_id.clone(),
+            correlation_id: job.correlation_id.clone(),
             payload_json: json!({
                 "objectId": job.object_id,
                 "parsedDocumentId": parsed_document_id,
@@ -907,6 +914,7 @@ fn build_fetch_failed_event(
         event_type: "object.failed".to_string(),
         event_version: 1,
         user_id: job.user_id.clone(),
+        correlation_id: job.correlation_id.clone(),
         payload_json: json!({
             "objectId": job.object_id,
             "jobId": job.id,
@@ -920,8 +928,8 @@ fn build_fetch_failed_event(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_inline_parsed_document, capture_failure_reason, parse_fetched_html_sync,
-        CaptureService, HTML_FETCH_PARSER_ID,
+        build_domain_events, build_inline_parsed_document, capture_failure_reason,
+        parse_fetched_html_sync, CaptureService, HTML_FETCH_PARSER_ID,
     };
     use crate::domain::capture::{PermissionContext, RawCaptureItem};
     use crate::errors::AppError;
@@ -1012,6 +1020,49 @@ mod tests {
             for sensitive_marker in sensitive_markers {
                 assert!(!failure.contains(sensitive_marker));
             }
+        }
+    }
+
+    #[test]
+    fn capture_domain_events_share_correlation_without_copying_source_urls() {
+        let item = RawCaptureItem {
+            id: None,
+            user_id: None,
+            source_type: "url".to_string(),
+            source_platform: Some("web".to_string()),
+            source_url: Some(
+                "https://example.com/article?token=query-secret#private-fragment".to_string(),
+            ),
+            canonical_url: Some(
+                "https://example.com/article?token=query-secret#private-fragment".to_string(),
+            ),
+            title: None,
+            author: None,
+            captured_at: None,
+            raw_html: None,
+            raw_text: None,
+            assets: Vec::new(),
+            metadata: json!({}),
+            privacy_level: "personal".to_string(),
+            permission_context: confirmed_permission(),
+        };
+        let correlation_id = "d4b258f0-17cf-4b85-81f1-892ad3f10b27";
+        let events = build_domain_events(
+            &item,
+            "object-1",
+            "snapshot-1",
+            correlation_id,
+            "2026-06-29T00:00:00Z",
+        );
+
+        assert_eq!(events.len(), 2);
+        for event in events {
+            assert_eq!(event.correlation_id, correlation_id);
+            assert!(!event.payload_json.contains("query-secret"));
+            assert!(!event.payload_json.contains("private-fragment"));
+            assert!(!event.payload_json.contains("example.com"));
+            assert!(!event.payload_json.contains("sourceUrl"));
+            assert!(!event.payload_json.contains("canonicalUrl"));
         }
     }
 
@@ -1192,6 +1243,32 @@ return answer;</code></pre>
         assert_eq!(parsed_count, 1);
         assert_eq!(event_count, 3);
         assert_eq!(job_type, "search.reindex_object");
+
+        let correlation_ids: Vec<String> = sqlx::query_scalar(
+            "SELECT correlation_id FROM domain_events WHERE object_id = ?1 ORDER BY occurred_at, id",
+        )
+        .bind(&response.object_id)
+        .fetch_all(database.pool())
+        .await
+        .expect("event correlation ids should be readable");
+        let job_payload: String =
+            sqlx::query_scalar("SELECT payload_json FROM background_jobs WHERE object_id = ?1")
+                .bind(&response.object_id)
+                .fetch_one(database.pool())
+                .await
+                .expect("job payload should be readable");
+        let job_correlation_id = serde_json::from_str::<serde_json::Value>(&job_payload)
+            .expect("job payload should be valid JSON")
+            .get("correlationId")
+            .and_then(serde_json::Value::as_str)
+            .expect("job payload should carry correlation id")
+            .to_string();
+
+        assert!(uuid::Uuid::parse_str(&job_correlation_id).is_ok());
+        assert_eq!(correlation_ids.len(), 3);
+        assert!(correlation_ids
+            .iter()
+            .all(|correlation_id| correlation_id == &job_correlation_id));
 
         let search_results = SearchRepository::new(database.pool().clone())
             .search_hybrid("useful content", Some(10), None)
@@ -1419,6 +1496,19 @@ return answer;</code></pre>
         assert_eq!(snapshot_count, 2);
         assert!(parsed_text.contains("local job runner"));
 
+        let correlation_ids: Vec<String> = sqlx::query_scalar(
+            "SELECT correlation_id FROM domain_events WHERE object_id = ?1 ORDER BY occurred_at, id",
+        )
+        .bind(&response.object_id)
+        .fetch_all(database.pool())
+        .await
+        .expect("fetch lifecycle correlation ids should be readable");
+        assert_eq!(correlation_ids.len(), 4);
+        assert!(uuid::Uuid::parse_str(&correlation_ids[0]).is_ok());
+        assert!(correlation_ids
+            .iter()
+            .all(|correlation_id| correlation_id == &correlation_ids[0]));
+
         let search_results = SearchRepository::new(database.pool().clone())
             .search_hybrid("local job runner", Some(10), None)
             .await
@@ -1496,8 +1586,16 @@ return answer;</code></pre>
                 .fetch_one(database.pool())
                 .await
                 .expect("parsed document count should be readable");
+        let distinct_correlations: i64 = sqlx::query_scalar(
+            "SELECT COUNT(DISTINCT correlation_id) FROM domain_events WHERE object_id = ?1",
+        )
+        .bind(&response.object_id)
+        .fetch_one(database.pool())
+        .await
+        .expect("failed fetch correlation count should be readable");
 
         assert_eq!(parsed_count, 0);
+        assert_eq!(distinct_correlations, 1);
     }
 
     #[tokio::test]

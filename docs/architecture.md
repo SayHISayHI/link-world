@@ -1228,6 +1228,8 @@ interface DomainEvent<TPayload> {
 事件处理要求：
 
 - Event handler 必须幂等。
+- 同一次关键操作产生的事件必须共享稳定 correlation id，并由后台 job 持久化该 id 以跨重启延续；capture 当前使用提交时生成的 UUID。
+- 事件 payload 只保存处理所需的结构化元数据，不复制完整 URL、query/fragment、正文、cookie、token 或第三方原始错误。
 - 同一事件重复投递不得产生重复 AI analysis 或重复 evaluation artifact。
 - 失败事件必须记录 `failure_reason` 和 retry policy。
 - 删除事件必须驱动索引、缓存、向量和对象存储清理。

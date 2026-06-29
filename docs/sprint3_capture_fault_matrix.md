@@ -77,7 +77,7 @@ fixture 日志只记录路径、状态码、耗时和 request id，不记录 hea
 | W3-12 | 手动 retry | 对 failed capture 执行 retry，再把 fixture 切为 `/ok` | attempt/lock/error 被重置，原对象成功 parsed；产生 retry audit |
 | W3-13 | 重复 URL 幂等 | 连续保存 host 大小写、默认端口、fragment 不同但 canonical 等价的 URL | 只保留一个有效对象/snapshot/job；UI 明确显示 already saved |
 | W3-14 | 10 个并发 capture | 混合提交 6 个 `/ok`、2 个 `/forbidden`、1 个 `/slow`、1 个 `/empty` | 每个对象独立收敛到 parsed/failed；无永久 running、死锁或全局饥饿 |
-| W3-15 | 失败证据脱敏 | fixture 返回含诱饵 body、`cookie=session-secret` 和 `token=provider-secret` 的错误；检查 Diagnostics、DB failure reason、domain event 和日志 | 证据只含稳定 code/status/action；诱饵正文、cookie、token 和完整 URL query/fragment 均不存在 |
+| W3-15 | 失败证据脱敏 | fixture 返回含诱饵 body、`cookie=session-secret` 和 `token=provider-secret` 的错误；检查 Diagnostics、DB failure reason、domain event 和日志 | 证据只含稳定 code/status/action；domain event payload 不复制 URL，capture 生命周期共享同一 correlation id；诱饵正文、cookie、token 和完整 URL query/fragment 均不存在 |
 | W3-16 | 无模型配置 | 删除默认模型配置，完成 `/ok` capture | capture 仍完成解析；AI job 可独立失败/跳过，但不得把对象从 parsed 降级 |
 
 ## 5. 证据要求

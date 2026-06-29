@@ -120,6 +120,7 @@ impl CaptureRepository {
                 jobs.object_id,
                 jobs.attempt_count,
                 jobs.max_attempts,
+                jobs.payload_json,
                 objects.user_id,
                 objects.canonical_url
             FROM background_jobs AS jobs
@@ -281,11 +282,25 @@ impl CaptureRepository {
 }
 
 fn fetch_job_from_row(row: SqliteRow) -> CaptureFetchJobRecord {
+    let object_id: String = row.get("object_id");
+    let payload_json: String = row.get("payload_json");
+    let correlation_id = serde_json::from_str::<serde_json::Value>(&payload_json)
+        .ok()
+        .and_then(|payload| {
+            payload
+                .get("correlationId")
+                .and_then(serde_json::Value::as_str)
+                .map(ToOwned::to_owned)
+        })
+        .filter(|value| uuid::Uuid::parse_str(value).is_ok())
+        .unwrap_or_else(|| format!("capture-{object_id}"));
+
     CaptureFetchJobRecord {
         id: row.get("id"),
-        object_id: row.get("object_id"),
+        object_id,
         user_id: row.get("user_id"),
         canonical_url: row.get("canonical_url"),
+        correlation_id,
         attempt_count: row.get("attempt_count"),
         max_attempts: row.get("max_attempts"),
     }
@@ -452,9 +467,10 @@ async fn insert_domain_event(
             event_version,
             user_id,
             object_id,
+            correlation_id,
             payload_json,
             occurred_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
         "#,
     )
     .bind(&event.id)
@@ -462,6 +478,7 @@ async fn insert_domain_event(
     .bind(event.event_version)
     .bind(&event.user_id)
     .bind(object_id)
+    .bind(&event.correlation_id)
     .bind(&event.payload_json)
     .bind(&event.occurred_at)
     .execute(&mut **tx)
