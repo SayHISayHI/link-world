@@ -144,6 +144,8 @@ Diagnostics package must not contain:
 
 Export requires explicit user confirmation, accepts no caller-selected path, writes atomically below app data `support-bundles`, and never uploads automatically. The command response may return the local file path so the user can find the file; that path is not embedded in the exported JSON.
 
+Automated privacy evidence is aggregated by `npm run readiness:sprint5`. Release acceptance also requires the synthetic-canary review, live rotation and support-handoff checks in `docs/sprint5_observability_readiness.md`; automation alone cannot approve an exported bundle for sharing.
+
 ## 9. Deletion Policy
 
 Deletion must enqueue purge and remove:

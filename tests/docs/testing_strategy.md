@@ -123,6 +123,7 @@ Must cover:
 - support bundle export rejects missing confirmation, publishes one atomic JSON file with size/SHA-256, exports payload-free domain correlation summaries plus up to 100 revalidated current runtime log entries, and adversarially proves omission of object bodies, object-store content, job/domain-event payload/query, raw errors, plugin manifest secrets, audit metadata, credential references and local absolute paths.
 - structured logger writes bounded JSONL, rejects messages containing URL/credential markers, and capture integration proves submitted/started/succeeded entries share the persisted UUID without source URLs.
 - Sprint 2 readiness automation is available through `npm run readiness:sprint2`; it aggregates focused backup, restore, migration, portable export and startup recovery redaction gates into a JSON report, while the real Windows installer/process-kill matrix remains a release-candidate manual gate.
+- Sprint 5 readiness automation is available through `npm run readiness:sprint5`; it aggregates local diagnostics/redaction, bounded logger/rotation, support-bundle confirmation/privacy/atomicity and capture correlation into a JSON report, while user-confirmation, installed Windows paths, live rotation, large failed-job UI and support handoff remain release-candidate matrix gates.
 - staged full-index rebuild reports persisted progress, publishes through an atomic FTS swap, preserves the existing index when cancelled before finalizing, and makes completed rebuilds non-cancellable.
 
 ### 4.3 Job idempotency tests
@@ -327,6 +328,8 @@ Before release:
 - migration tests pass.
 - Sprint 3 capture/job readiness gate passes and its JSON report is retained.
 - Sprint 3 real offline/DNS/process/concurrency matrix is recorded for the release candidate.
+- Sprint 5 observability/support readiness gate passes and its JSON report is retained.
+- Sprint 5 W5-01 through W5-14 Windows/support matrix is recorded for the release candidate.
 - E2E smoke pass.
 - direct URL and browser extension captures pass against the same synthetic structured article.
 - Markdown safety regression checks pass.

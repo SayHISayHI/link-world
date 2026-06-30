@@ -42,13 +42,15 @@
    - Sprint 2 数据安全、迁移、恢复在 Windows 安装包和真实进程故障下的发布验收矩阵。
 19. [sprint3_capture_fault_matrix.md](./sprint3_capture_fault_matrix.md)
    - Sprint 3 URL capture、后台任务、真实网络与进程中断的发布验收矩阵。
-20. [plugins/plugin_development_guide.md](./plugins/plugin_development_guide.md)
+20. [sprint5_observability_readiness.md](./sprint5_observability_readiness.md)
+   - Sprint 5 Diagnostics、结构化日志、支持包隐私和真实 Windows 支持交接验收矩阵。
+21. [plugins/plugin_development_guide.md](./plugins/plugin_development_guide.md)
    - Connector、Parser、Evaluator、Prompt 资源和 Registry 规范。
-21. [post_mvp_roadmap.md](./post_mvp_roadmap.md)
+22. [post_mvp_roadmap.md](./post_mvp_roadmap.md)
    - MVP 后 10 周执行范围、周度交付、验收门槛、当前状态和明确排除项。
-22. [../tests/docs/testing_strategy.md](../tests/docs/testing_strategy.md)
+23. [../tests/docs/testing_strategy.md](../tests/docs/testing_strategy.md)
    - 测试分层、fixtures、AI evals、回归测试和发布测试清单。
-23. [adr/README.md](./adr/README.md)
+24. [adr/README.md](./adr/README.md)
    - 架构决策记录，解释关键技术和产品架构取舍，包括 Markdown/AST 渲染与 AI 展示提示边界。
 
 ## Source of Truth
@@ -70,6 +72,7 @@
 - 发布和运维争议以 `operational_readiness.md` 为准。
 - Windows 数据安全发布故障矩阵以 `sprint2_windows_fault_matrix.md` 为准。
 - URL capture 与后台任务发布故障矩阵以 `sprint3_capture_fault_matrix.md` 为准。
+- 本地可观测性、支持包隐私与支持交接发布矩阵以 `sprint5_observability_readiness.md` 为准。
 - 当前里程碑、周度范围与完成状态以 `post_mvp_roadmap.md` 为准。
 - 架构取舍的历史原因以 `adr/` 为准。
 

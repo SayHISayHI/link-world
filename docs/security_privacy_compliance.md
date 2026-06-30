@@ -170,6 +170,6 @@ AI 数据策略：
 - 禁用插件后，该插件不能继续访问对象或 secret。
 - 删除对象后，搜索和向量检索无法命中该对象。
 - crash log 中不包含 API key、token、cookie、正文。
-- 支持包必须显式确认、固定写入本机应用目录且不自动上传；导出 JSON 不含正文、raw job/audit/plugin/domain-event payload、URL query/fragment、credential reference、embedding 或本机绝对路径；只允许 payload-free correlation summary。runtime logs 只允许导出通过 schema/redaction 复验的当前日志条目，读取失败不得回退为 raw text。
+- 支持包必须显式确认、固定写入本机应用目录且不自动上传；导出 JSON 不含正文、raw job/audit/plugin/domain-event payload、URL query/fragment、credential reference、embedding 或本机绝对路径；只允许 payload-free correlation summary。runtime logs 只允许导出通过 schema/redaction 复验的当前日志条目，读取失败不得回退为 raw text。`npm run readiness:sprint5` 提供确定性隐私门禁，发布候选仍须完成 `sprint5_observability_readiness.md` 的合成诱饵、真实轮转和支持交接矩阵。
 - 模型调用都能在 UI 中追踪到 provider、model 和时间。
 - 恶意 Markdown、危险 URL 和无效 AI display hints 的安全回归测试通过。

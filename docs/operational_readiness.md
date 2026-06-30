@@ -49,7 +49,7 @@ MVP 主支持：
 - 当前 provider、API protocol、base URL、model 与凭据是否已配置；不得显示 secret 内容。
 - 插件列表和权限状态。
 
-当前实现状态：Models 已提供正式 Settings route、多配置、默认项、连接测试和 credential 状态；Storage 已支持创建、列出、验证、两阶段恢复和自动 rollback，Sprint 2 readiness 自动化门禁已建立，真实 Windows 故障矩阵仍是发布门禁；Sprint 3 已建立 capture/job readiness 自动化和真实网络/进程故障矩阵，矩阵实测仍是完成门槛；Diagnostics 已提供本地健康快照、DB/object store/job/model 摘要、失败 job 打开对象与 capture retry、显式确认的脱敏 JSON 支持包及 size/SHA-256，并已接入 capture submit/fetch 的有界结构化日志与 correlation id，但其他关键流程日志/correlation 和完整 readiness 自动化仍未完成；Privacy、Capture、Plugins、About 仅提供明确的里程碑占位，不计为已交付。
+当前实现状态：Models 已提供正式 Settings route、多配置、默认项、连接测试和 credential 状态；Storage 已支持创建、列出、验证、两阶段恢复和自动 rollback，Sprint 2 readiness 自动化门禁已建立，真实 Windows 故障矩阵仍是发布门禁；Sprint 3 已建立 capture/job readiness 自动化和真实网络/进程故障矩阵，矩阵实测仍是完成门槛；Diagnostics 已提供本地健康快照、DB/object store/job/model 摘要、失败 job 打开对象与 capture retry、显式确认的脱敏 JSON 支持包及 size/SHA-256，并已接入 capture submit/fetch 的有界结构化日志与 correlation id；Sprint 5 readiness 自动化和 W5-01 至 W5-14 发布候选矩阵已建立，但其他关键流程日志/correlation 与真实矩阵仍未完成；Privacy、Capture、Plugins、About 仅提供明确的里程碑占位，不计为已交付。
 
 ### 3.2 Logs
 
@@ -154,6 +154,8 @@ Local Edition 必须支持：
 - Sprint 2 Windows 安装包故障矩阵：按 `docs/sprint2_windows_fault_matrix.md` 执行 W2-01 至 W2-13。
 - Sprint 3 采集可靠性自动化门禁：`npm run readiness:sprint3`，保存 JSON report。
 - Sprint 3 真实网络/进程矩阵：按 `docs/sprint3_capture_fault_matrix.md` 执行 W3-01 至 W3-16。
+- Sprint 5 本地可观测性自动化门禁：`npm run readiness:sprint5`，保存 JSON report。
+- Sprint 5 真实 Windows/支持矩阵：按 `docs/sprint5_observability_readiness.md` 执行 W5-01 至 W5-14。
 - 1000 个对象列表和搜索。
 - 250 个对象搜索基准 smoke：`cargo test repositories::search::tests::search_benchmark_fixture_supports_repeatable_corpus`。
 - 5000 个对象搜索基准：`cargo test repositories::search::tests::search_benchmark_5k_objects_reports_budget -- --ignored --nocapture`，最大单次查询预算 <= 250ms。
