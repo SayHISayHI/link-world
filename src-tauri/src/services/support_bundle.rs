@@ -380,7 +380,8 @@ fn stable_failure_code(value: Option<&str>) -> Option<String> {
     let valid_prefix = prefix.len() <= 64
         && (prefix.starts_with("capture.")
             || prefix.starts_with("ai.")
-            || prefix.starts_with("job."))
+            || prefix.starts_with("job.")
+            || prefix.starts_with("search."))
         && prefix.chars().all(|character| {
             character.is_ascii_lowercase()
                 || character.is_ascii_digit()
@@ -524,6 +525,22 @@ mod tests {
         .expect("failed job should insert");
         sqlx::query(
             r#"
+            INSERT INTO background_jobs (
+                id, job_type, status, object_id, payload_json, attempt_count,
+                max_attempts, last_error, created_at, updated_at
+            ) VALUES (
+                'job-search-support', 'search.rebuild_index', 'failed', NULL,
+                '{"stage":"failed","query":"PRIVATE_SEARCH_QUERY"}', 1, 1,
+                'search.rebuild_failed: no such table PRIVATE_SEARCH_ERROR',
+                '2026-06-29T00:01:00Z', '2026-06-29T00:01:00Z'
+            )
+            "#,
+        )
+        .execute(database.pool())
+        .await
+        .expect("failed search job should insert");
+        sqlx::query(
+            r#"
             INSERT INTO model_provider_configs (
                 id, provider, capabilities_json, secret_ref, enabled
             ) VALUES (
@@ -623,6 +640,10 @@ mod tests {
         assert_eq!(document["appVersion"], "0.1.0");
         assert_eq!(
             document["jobs"]["recentFailures"][0]["errorCode"],
+            "search.rebuild_failed"
+        );
+        assert_eq!(
+            document["jobs"]["recentFailures"][1]["errorCode"],
             "capture.http_forbidden"
         );
         assert_eq!(document["runtimeLogs"]["status"], "available");
@@ -645,6 +666,9 @@ mod tests {
             "AUDIT_SECRET_MARKER",
             "DOMAIN_EVENT_SECRET",
             "QUERY_SECRET",
+            "PRIVATE_SEARCH_QUERY",
+            "PRIVATE_SEARCH_ERROR",
+            "no such table",
             "session-secret",
             "provider-secret",
             "credential-secret",

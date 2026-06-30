@@ -309,8 +309,8 @@ export interface BackgroundJob {
   attemptCount: number;
   maxAttempts: number;
   nextRunAt?: string;
-  // For capture.fetch_url, failed jobs use stable `capture.*` prefixes such as
-  // capture.timeout, capture.http_forbidden, capture.restricted_page and capture.no_readable_text.
+  // Failed jobs expose only stable recovery prefixes: `capture.*`, `ai.*`, `search.*` or `job.*`.
+  // Raw provider/network/SQLite errors and content never cross IPC or support-bundle boundaries.
   lastError?: string;
   createdAt: string;
   updatedAt: string;
@@ -323,7 +323,9 @@ export interface DomainEvent<TPayload = unknown> {
     | 'snapshot.created'
     | 'object.parsed'
     | 'object.failed'
+    | 'analysis.requested'
     | 'analysis.created'
+    | 'analysis.failed'
     | 'evaluation.planned'
     | 'evaluation.completed'
     | 'object.deleted'
@@ -334,7 +336,7 @@ export interface DomainEvent<TPayload = unknown> {
   objectId?: string;
   occurredAt: string;
   causationId?: string;
-  // Required for critical lifecycle events. Capture jobs persist and reuse the submission UUID.
+  // Required for critical lifecycle events. Capture and AI jobs persist and reuse their submission UUID.
   correlationId?: string;
   payload: TPayload;
 }

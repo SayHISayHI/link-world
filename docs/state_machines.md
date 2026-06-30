@@ -89,7 +89,7 @@ stateDiagram-v2
 | `blocked` | needs user action | show action, e.g. configure model |
 | `cancelled` | intentionally stopped | show in diagnostics only |
 
-Search full-index rebuild is a maintenance job exception: while `cancellable=true` and before the atomic `finalizing` swap, the Library UI may show a cancel action and then a short preserved-index confirmation. After `finalizing` begins, cancellation is disabled.
+Search full-index rebuild is a maintenance job exception: while `cancellable=true` and before the atomic `finalizing` swap, the Library UI may show a cancel action and then a short preserved-index confirmation. After `finalizing` begins, cancellation is disabled. Its persisted UUID job id is also the log correlation id; failure converges to stable `search.rebuild_failed` text and must not persist or emit raw SQLite errors.
 
 ### 3.2 Retry classification
 

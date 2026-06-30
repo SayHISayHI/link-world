@@ -47,6 +47,7 @@ Link World 处理的是用户长期积累的信息资产，其中可能包含私
 | 云端代登录第三方平台 | 账号封禁和合规风险 | 默认禁止 |
 | 向量泄漏语义信息 | 内容反推风险 | 跟随 privacy/sync policy |
 | 日志记录正文或 token | 本地或云端泄漏 | structured redaction |
+| Search maintenance 记录 query/index content/raw SQLite error | 搜索内容或本机结构泄漏 | job-id correlation + stable `search.*` code |
 | Markdown 原始 HTML 或危险 URL 被执行 | 脚本执行、跟踪或数据泄漏 | skip raw HTML + protocol allowlist + sanitize |
 | AI 展示提示越权修改内容或安全策略 | 内容失真或绕过安全边界 | advisory-only schema + parsed document binding + deterministic fallback |
 

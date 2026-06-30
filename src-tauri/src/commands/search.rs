@@ -1,5 +1,6 @@
 use crate::domain::search::{
     RebuildSearchIndexResponse, ReindexObjectResponse, SearchIndexHealthResponse, SearchResult,
+    SEARCH_REBUILD_FAILURE_REASON,
 };
 use crate::errors::{map_ipc_result, IpcResponse};
 use crate::services::search::SearchService;
@@ -104,14 +105,14 @@ fn spawn_search_index_rebuild_runner(
                     let _ = app_handle.emit("library://objects-updated", ());
                 }
             }
-            Err(error) => {
+            Err(_) => {
                 let _ = app_handle.emit(
                     "search://index-rebuild-status",
                     json!({
                         "jobId": job_id,
                         "status": "failed",
                         "stage": "failed",
-                        "failureReason": error.to_string(),
+                        "failureReason": SEARCH_REBUILD_FAILURE_REASON,
                         "cancellable": false,
                     }),
                 );

@@ -8,6 +8,7 @@
 - API key、OAuth token、cookie、session 不得进入普通 SQLite 表。
 - 日志、crash report、诊断包不得包含正文、secret、token、cookie、session、embedding。
 - URL capture 的持久化失败原因和失败事件也视为诊断数据：只允许稳定 `capture.*` 分类与恢复动作，不得保留第三方响应 body、凭据或未识别异常的原始 detail。
+- Search query/rebuild/reindex 不得把 query、FTS content、AI summary 或 raw SQLite error 写入日志、failed job、support bundle 或 IPC；失败只返回对应的稳定 `search.*` 恢复文案。
 - `secret` 内容禁止发送第三方 AI。
 - `sensitive` 内容发送第三方 AI 前必须获得对象或 collection 级显式授权。
 - 插件默认无权限，必须由 manifest 声明并由用户授权。
@@ -123,7 +124,7 @@ Diagnostics package schema v1 may contain:
 - aggregate database/object-store/job/model health.
 - feature flag identifiers.
 - plugin kind/version plus hashes of plugin id and manifest; never raw manifest JSON.
-- failed job ids/types/statuses and stable `capture.*` / `ai.*` codes; never raw error messages.
+- failed job ids/types/statuses and stable `capture.*` / `ai.*` / `search.*` codes; never raw error messages.
 - audit action/type/object id/time without actor id, user id or metadata payload.
 - domain event type/object id/correlation id/time without event payload.
 - up to 100 recent entries from the current bounded structured runtime log. Every entry is revalidated on read; unavailable/corrupt logs produce `unavailable` or skipped entries, never raw fallback text.

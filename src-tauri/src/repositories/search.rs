@@ -1,5 +1,8 @@
 use crate::domain::knowledge::KnowledgeObject;
-use crate::domain::search::{RebuildSearchIndexResponse, SearchIndexHealthResponse, SearchResult};
+use crate::domain::search::{
+    RebuildSearchIndexResponse, SearchIndexHealthResponse, SearchResult,
+    SEARCH_REBUILD_FAILURE_REASON,
+};
 use crate::errors::{AppError, AppResult};
 use serde_json::{json, Value};
 use sqlx::sqlite::SqliteRow;
@@ -318,9 +321,9 @@ impl SearchRepository {
         .await?;
 
         let result = self.populate_rebuild_staging_index(job_id).await;
-        if let Err(error) = result {
+        if result.is_err() {
             let now = chrono::Utc::now().to_rfc3339();
-            let _ = self
+            let update_result = self
                 .update_rebuild_index_job(
                     job_id,
                     RebuildIndexJobUpdate {
@@ -329,13 +332,18 @@ impl SearchRepository {
                         expected_objects: started.expected_objects,
                         indexed_objects: 0,
                         cancellable: false,
-                        failure_reason: Some(&error.to_string()),
+                        failure_reason: Some(SEARCH_REBUILD_FAILURE_REASON),
                         now: &now,
                     },
                 )
                 .await;
             let _ = self.drop_rebuild_staging_index().await;
-            return Err(error);
+            if update_result.is_err() {
+                return Err(AppError::Unknown(
+                    "search rebuild failure state could not be persisted".to_string(),
+                ));
+            }
+            return self.get_rebuild_index_status(job_id).await;
         }
 
         self.get_rebuild_index_status(job_id).await

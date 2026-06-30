@@ -1,6 +1,15 @@
 use crate::domain::knowledge::KnowledgeObject;
 use serde::Serialize;
 
+pub const SEARCH_REBUILD_FAILURE_REASON: &str =
+    "search.rebuild_failed: Search index rebuild failed. Retry from Settings and inspect Diagnostics.";
+pub const SEARCH_REINDEX_FAILURE_REASON: &str =
+    "search.reindex_failed: Object reindex failed. Retry from the object or inspect Diagnostics.";
+pub const SEARCH_QUERY_FAILURE_REASON: &str =
+    "search.query_failed: Search could not be completed. Refine the query or retry.";
+pub const SEARCH_HEALTH_FAILURE_REASON: &str =
+    "search.health_failed: Search index health could not be checked. Retry or inspect Diagnostics.";
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchResult {
