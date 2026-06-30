@@ -126,7 +126,7 @@ Diagnostics package schema v1 may contain:
 - failed job ids/types/statuses and stable `capture.*` / `ai.*` codes; never raw error messages.
 - audit action/type/object id/time without actor id, user id or metadata payload.
 - domain event type/object id/correlation id/time without event payload.
-- runtime log availability status. Until structured logging exists this must be `not_collected`, not fabricated entries.
+- up to 100 recent entries from the current bounded structured runtime log. Every entry is revalidated on read; unavailable/corrupt logs produce `unavailable` or skipped entries, never raw fallback text.
 
 Diagnostics package must not contain:
 
@@ -140,6 +140,7 @@ Diagnostics package must not contain:
 - credential references such as model-provider keyring ids.
 - local absolute data/database/object-store paths inside the exported JSON.
 - domain event payloads; capture event payloads themselves must not duplicate source/canonical URL, query/fragment or content.
+- raw or unvalidated log lines, rotated log files, exception chains and arbitrary free-text error messages.
 
 Export requires explicit user confirmation, accepts no caller-selected path, writes atomically below app data `support-bundles`, and never uploads automatically. The command response may return the local file path so the user can find the file; that path is not embedded in the exported JSON.
 

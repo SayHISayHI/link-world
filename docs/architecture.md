@@ -1323,6 +1323,8 @@ Local Edition 也需要可观测性，但默认只对用户本机可见。
 - 不记录完整正文。
 - 不记录 secret / sensitive 对象内容。
 
+当前 Local Edition logger 使用 2 MiB 有界 JSONL 加一份轮转文件；entry 仅允许结构化标识符、内部 id、stable error code 和短静态消息，并在写入与支持包读取时双重校验。capture submit/fetch 已接入同一 correlation UUID；未接入的模块不得宣称已有结构化日志覆盖。
+
 ### 18.2 Metrics
 
 本地指标：

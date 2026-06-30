@@ -5,6 +5,7 @@ use crate::errors::{AppError, AppResult};
 use crate::services::system::build_local_metrics_snapshot;
 use crate::storage::database::Database;
 use crate::storage::object_store::ObjectStore;
+use crate::telemetry::{StructuredLogEntry, StructuredLogger};
 use chrono::Utc;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -117,7 +118,7 @@ struct DomainEventSummary {
 #[serde(rename_all = "camelCase")]
 struct RuntimeLogSummary {
     status: &'static str,
-    entries: Vec<String>,
+    entries: Vec<StructuredLogEntry>,
 }
 
 impl SupportBundleService {
@@ -183,6 +184,7 @@ impl SupportBundleService {
                 "sanitized plugin manifest fingerprints".to_string(),
                 "recent audit events without metadata payloads".to_string(),
                 "recent domain event types and correlation ids without payloads".to_string(),
+                "recent bounded structured runtime logs".to_string(),
             ],
             redaction: support_bundle_redaction(),
         })
@@ -203,6 +205,11 @@ impl SupportBundleService {
         let plugins = plugin_summaries(&self.database).await?;
         let recent_audit_events = recent_audit_events(&self.database).await?;
         let recent_domain_events = recent_domain_events(&self.database).await?;
+        let (runtime_log_status, runtime_log_entries) =
+            match StructuredLogger::read_recent(&self.data_dir, Some(100)).await {
+                Ok(entries) => ("available", entries),
+                Err(_) => ("unavailable", Vec::new()),
+            };
 
         Ok(SupportBundleDocument {
             schema_version: SUPPORT_BUNDLE_SCHEMA_VERSION,
@@ -222,8 +229,8 @@ impl SupportBundleService {
             recent_audit_events,
             recent_domain_events,
             runtime_logs: RuntimeLogSummary {
-                status: "not_collected",
-                entries: Vec::new(),
+                status: runtime_log_status,
+                entries: runtime_log_entries,
             },
             redaction: support_bundle_redaction(),
         })
@@ -431,7 +438,7 @@ fn support_bundle_redaction() -> Vec<String> {
         "No URL query or fragment values and no raw failed-job messages.".to_string(),
         "Plugin manifests are represented only by safe metadata and SHA-256 fingerprints."
             .to_string(),
-        "Audit metadata, domain event payloads, and runtime logs are not included in schema version 1."
+        "Audit metadata and domain event payloads are excluded; runtime logs contain only validated structured fields."
             .to_string(),
     ]
 }
@@ -448,6 +455,7 @@ mod tests {
     use crate::errors::AppError;
     use crate::storage::database::Database;
     use crate::storage::object_store::ObjectStore;
+    use crate::telemetry::{StructuredLogEvent, StructuredLogger};
     use std::fs;
     use uuid::Uuid;
 
@@ -575,6 +583,20 @@ mod tests {
             "PRIVATE_OBJECT_BODY_MARKER",
         )
         .expect("object store marker should write");
+        StructuredLogger::new(&data_dir)
+            .record(
+                StructuredLogEvent::info(
+                    "capture",
+                    "capture.fetch.failed",
+                    "Capture fetch job completed with a stable failure code.",
+                )
+                .with_correlation_id("d4b258f0-17cf-4b85-81f1-892ad3f10b27")
+                .with_object_id("obj-support")
+                .with_job_id("job-support")
+                .with_error_code("capture.http_forbidden"),
+            )
+            .await
+            .expect("structured log should write");
 
         let service =
             SupportBundleService::new(database.clone(), object_store.clone(), &data_dir, "0.1.0");
@@ -603,7 +625,11 @@ mod tests {
             document["jobs"]["recentFailures"][0]["errorCode"],
             "capture.http_forbidden"
         );
-        assert_eq!(document["runtimeLogs"]["status"], "not_collected");
+        assert_eq!(document["runtimeLogs"]["status"], "available");
+        assert_eq!(
+            document["runtimeLogs"]["entries"][0]["correlationId"],
+            "d4b258f0-17cf-4b85-81f1-892ad3f10b27"
+        );
         assert_eq!(
             document["recentDomainEvents"][0]["correlationId"],
             "d4b258f0-17cf-4b85-81f1-892ad3f10b27"

@@ -513,7 +513,9 @@ Required fields:
 
 所有外部错误进入日志前必须经过 redaction helper。
 
-Support bundle 使用独立于本地展示快照的导出 DTO。`export_support_bundle` 必须要求 command-level explicit confirmation，只能写入 app data 下固定的 `support-bundles` 目录，先写 staging 再原子 rename，并返回文件大小和 SHA-256。schema v1 只导出运行/schema 元数据、聚合健康、stable failed-job code、模型能力状态、插件 manifest SHA-256 指纹、不含 metadata payload 的 audit actions，以及不含 payload 的 domain event type/object/correlation/time；不得序列化本地绝对路径、raw job error、正文、URL query/fragment、credential reference 或 secret。结构化 runtime logs 尚未建立时必须显式记录为 `not_collected`，不得伪造空日志为“已采集”。
+当前结构化 logger 写入 app data `logs/link-world.jsonl`，单文件上限 2 MiB、保留一份轮转文件、单条上限 4 KiB，并通过 AppState 共享写锁。entry 只接受受限的 level/module/event、内部 id、stable error code 和不含 URL/secret marker 的短消息；不接受 raw error/body。capture submit/fetch started/succeeded/failed 已接入并共享 domain-event correlation UUID；其他关键流程仍待接入。日志失败为 best-effort，不得反向破坏已提交的业务事务。
+
+Support bundle 使用独立于本地展示快照的导出 DTO。`export_support_bundle` 必须要求 command-level explicit confirmation，只能写入 app data 下固定的 `support-bundles` 目录，先写 staging 再原子 rename，并返回文件大小和 SHA-256。schema v1 只导出运行/schema 元数据、聚合健康、stable failed-job code、模型能力状态、插件 manifest SHA-256 指纹、不含 metadata payload 的 audit actions，以及不含 payload 的 domain event type/object/correlation/time；不得序列化本地绝对路径、raw job error、正文、URL query/fragment、credential reference 或 secret。runtime log reader 只接受通过同一 schema/redaction validator 的最近 100 条当前日志；读取失败时标记为 `unavailable`，不得把原始文件或解析错误打包。
 
 ## 18. Testing Requirements
 
@@ -523,7 +525,8 @@ Backend minimum test matrix:
 - Error mapping: every `AppError` maps to `IpcErrorCode`。
 - Migration: empty DB；production migrator 生成的 0001/0002/0003 file fixtures；1000-object invariants；unknown future version fail-closed；existing-schema restore point；guard interruption convergence。
 - Portable export: non-secret object markdown/metadata export, secret skip count, and storage URI / credential-reference omission.
-- Support bundle: explicit confirmation, atomic local publication, valid schema/hash, and adversarial omission of object bodies, job payloads, audit metadata, plugin manifest secrets, URL query values, credential references and local absolute paths.
+- Support bundle: explicit confirmation, atomic local publication, valid schema/hash, bounded validated runtime logs, and adversarial omission of object bodies, job/domain-event payloads, audit metadata, plugin manifest secrets, URL query values, credential references and local absolute paths.
+- Structured logging: JSONL round-trip, redaction rejection, size bounds and capture submit/start/success/failure correlation continuity.
 - Capture transaction: object + event + job。
 - Startup recovery: redacted startup status, backup id extraction, restricted backup/restore command availability。
 - Parse pipeline: snapshot + parsed_documents + event。

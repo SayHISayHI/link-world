@@ -6,6 +6,7 @@ use crate::services::migration::MigrationService;
 use crate::services::restore::begin_pending_restore;
 use crate::storage::database::Database;
 use crate::storage::object_store::ObjectStore;
+use crate::telemetry::StructuredLogger;
 use std::collections::HashMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -23,6 +24,7 @@ pub struct AppState {
     backend_version: String,
     database: Option<Database>,
     object_store: Option<ObjectStore>,
+    structured_logger: Option<StructuredLogger>,
     secrets: SecretStore,
     model_registry: ModelProviderRegistry,
 }
@@ -313,6 +315,7 @@ impl AppState {
             backend_version: env!("CARGO_PKG_VERSION").to_string(),
             database: None,
             object_store: None,
+            structured_logger: None,
             secrets: SecretStore::default(),
             model_registry: ModelProviderRegistry::new()?,
         })
@@ -357,6 +360,7 @@ impl AppState {
             backend_version: env!("CARGO_PKG_VERSION").to_string(),
             database: Some(database),
             object_store: Some(object_store),
+            structured_logger: Some(StructuredLogger::new(&data_dir)),
             secrets,
             model_registry,
         })
@@ -403,6 +407,10 @@ impl AppState {
         self.object_store
             .as_ref()
             .ok_or_else(|| AppError::Filesystem("object store is not initialized".to_string()))
+    }
+
+    pub fn structured_logger(&self) -> Option<&StructuredLogger> {
+        self.structured_logger.as_ref()
     }
 
     pub fn secrets(&self) -> &SecretStore {

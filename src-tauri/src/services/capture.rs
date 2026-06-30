@@ -11,6 +11,7 @@ use crate::services::ai::{spawn_ai_enrichment_runner, AIEnrichmentService};
 use crate::services::document_parser::{parse_html_document, DocumentHints, ParsedWebDocument};
 use crate::state::AppState;
 use crate::storage::object_store::{sha256_hex, ObjectStore};
+use crate::telemetry::{StructuredLogEvent, StructuredLogger};
 use chrono::Utc;
 use reqwest::Url;
 use serde_json::json;
@@ -33,6 +34,7 @@ pub struct CaptureService {
     pool: SqlitePool,
     object_store: ObjectStore,
     http_client: reqwest::Client,
+    structured_logger: Option<StructuredLogger>,
 }
 
 impl CaptureService {
@@ -41,6 +43,7 @@ impl CaptureService {
             pool: state.database()?.pool().clone(),
             object_store: state.object_store()?.clone(),
             http_client: build_http_client()?,
+            structured_logger: state.structured_logger().cloned(),
         })
     }
 
@@ -49,7 +52,14 @@ impl CaptureService {
             pool,
             object_store,
             http_client: build_http_client().expect("test HTTP client should build"),
+            structured_logger: None,
         }
+    }
+
+    #[cfg(test)]
+    fn with_structured_logger(mut self, structured_logger: StructuredLogger) -> Self {
+        self.structured_logger = Some(structured_logger);
+        self
     }
 
     pub async fn submit(&self, item: RawCaptureItem) -> AppResult<SubmitCaptureResponse> {
@@ -158,6 +168,18 @@ impl CaptureService {
         CaptureRepository::insert_submission(&mut tx, &submission).await?;
         tx.commit().await?;
 
+        let mut log_event = StructuredLogEvent::info(
+            "capture",
+            "capture.submitted",
+            "Capture was accepted and durable background work was scheduled.",
+        )
+        .with_correlation_id(correlation_id)
+        .with_object_id(response.object_id.clone());
+        if let Some(job_id) = response.job_id.clone() {
+            log_event = log_event.with_job_id(job_id);
+        }
+        self.record_log(log_event).await;
+
         Ok(response)
     }
 
@@ -196,15 +218,78 @@ impl CaptureService {
             return Ok(None);
         };
 
-        let outcome = self.fetch_and_parse_job(&job).await;
+        let correlation_id = job.correlation_id.clone();
+        let object_id = job.object_id.clone();
+        let claimed_job_id = job.id.clone();
+        self.record_log(
+            StructuredLogEvent::info(
+                "capture",
+                "capture.fetch.started",
+                "Capture fetch job started.",
+            )
+            .with_correlation_id(correlation_id.clone())
+            .with_object_id(object_id.clone())
+            .with_job_id(claimed_job_id.clone()),
+        )
+        .await;
 
-        match outcome {
+        let outcome = self.fetch_and_parse_job(&job).await;
+        let result = match outcome {
             Ok(parsed) => self.complete_fetch_job(job, parsed).await.map(Some),
             Err(error) => self
                 .fail_fetch_job(job, capture_failure_reason(&error))
                 .await
                 .map(Some),
-        }
+        };
+
+        let log_event = match &result {
+            Ok(Some(run)) if run.status == "succeeded" => StructuredLogEvent::info(
+                "capture",
+                "capture.fetch.succeeded",
+                "Capture fetch job completed successfully.",
+            )
+            .with_correlation_id(correlation_id)
+            .with_object_id(object_id)
+            .with_job_id(claimed_job_id),
+            Ok(Some(run)) => {
+                let mut event = StructuredLogEvent::error(
+                    "capture",
+                    "capture.fetch.failed",
+                    "Capture fetch job completed with a stable failure code.",
+                )
+                .with_correlation_id(correlation_id)
+                .with_object_id(object_id)
+                .with_job_id(claimed_job_id);
+                if let Some(error_code) = run
+                    .failure_reason
+                    .as_deref()
+                    .and_then(|reason| reason.split_once(':').map(|(code, _)| code))
+                {
+                    event = event.with_error_code(error_code.to_string());
+                }
+                event
+            }
+            Ok(None) => StructuredLogEvent::info(
+                "capture",
+                "capture.fetch.skipped",
+                "Capture fetch job was not available to run.",
+            )
+            .with_correlation_id(correlation_id)
+            .with_object_id(object_id)
+            .with_job_id(claimed_job_id),
+            Err(_) => StructuredLogEvent::error(
+                "capture",
+                "capture.fetch.runner_error",
+                "Capture fetch runner failed before a durable terminal state was recorded.",
+            )
+            .with_correlation_id(correlation_id)
+            .with_object_id(object_id)
+            .with_job_id(claimed_job_id)
+            .with_error_code("capture.runner_error"),
+        };
+        self.record_log(log_event).await;
+
+        result
     }
 
     async fn fetch_and_parse_job(
@@ -328,6 +413,12 @@ impl CaptureService {
             parsed_document_id: Some(parsed_document_id),
             failure_reason: None,
         })
+    }
+
+    async fn record_log(&self, event: StructuredLogEvent) {
+        if let Some(logger) = &self.structured_logger {
+            let _ = logger.record(event).await;
+        }
     }
 
     async fn fail_fetch_job(
@@ -936,6 +1027,7 @@ mod tests {
     use crate::repositories::search::SearchRepository;
     use crate::storage::database::Database;
     use crate::storage::object_store::ObjectStore;
+    use crate::telemetry::StructuredLogger;
     use serde_json::json;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
@@ -1402,7 +1494,10 @@ return answer;</code></pre>
             .await
             .expect("database should initialize");
         let object_store = test_object_store();
-        let service = CaptureService::new(database.pool().clone(), object_store);
+        let telemetry_dir =
+            std::env::temp_dir().join(format!("link-world-capture-log-{}", uuid::Uuid::new_v4()));
+        let service = CaptureService::new(database.pool().clone(), object_store)
+            .with_structured_logger(StructuredLogger::new(&telemetry_dir));
         let url = start_test_html_server(
             r#"<!doctype html>
             <html lang="en">
@@ -1508,6 +1603,29 @@ return answer;</code></pre>
         assert!(correlation_ids
             .iter()
             .all(|correlation_id| correlation_id == &correlation_ids[0]));
+
+        let log_entries = StructuredLogger::read_recent(&telemetry_dir, Some(10))
+            .await
+            .expect("capture structured logs should be readable");
+        assert_eq!(
+            log_entries
+                .iter()
+                .map(|entry| entry.event.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "capture.submitted",
+                "capture.fetch.started",
+                "capture.fetch.succeeded",
+            ]
+        );
+        assert!(log_entries
+            .iter()
+            .all(|entry| { entry.correlation_id.as_deref() == Some(correlation_ids[0].as_str()) }));
+        let serialized_logs =
+            serde_json::to_string(&log_entries).expect("structured logs should serialize");
+        assert!(!serialized_logs.contains("http://"));
+        assert!(!serialized_logs.contains("https://"));
+        let _ = std::fs::remove_dir_all(&telemetry_dir);
 
         let search_results = SearchRepository::new(database.pool().clone())
             .search_hybrid("local job runner", Some(10), None)
