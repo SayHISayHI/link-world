@@ -202,10 +202,10 @@ apply 流程：
 
 1. 检查正式 migration 版本、成功标记和 checksum。
 2. fresh DB 直接迁移；已有用户 schema 且存在 pending migration 时，先创建并完整验证普通 restore point。
-3. 写入 `migration/guard.prepared.json`，随后原子 rename 为 `guard.running.json`，再执行 migration 与数据库完整性校验。
+3. 生成 correlation UUID 并写入 `migration/guard.prepared.json`，随后原子 rename 为 `guard.running.json`，再执行 migration 与数据库完整性校验；成功后同一 UUID 写入 `last-result.json`。
 4. 成功后清除 guard、写入脱敏 `last-result.json`，并保留 restore point。
 
-`guard.running.json` 与 pending migration 同时存在时，启动会阻止自动重试并返回 verified backup ID；migration 已提交但 guard 尚未清理时，下次启动会验证完整性并完成清理。该协议不会自动替换 live storage，也不复用两阶段 Restore 的 candidate/rollback 目录。控制文件上限同样为 64 KiB，且不包含正文、凭据或绝对路径。
+`guard.running.json` 与 pending migration 同时存在时，启动会阻止自动重试并返回 verified backup ID；migration 已提交但 guard 尚未清理时，下次启动会验证完整性并完成清理。guard/result 中的 UUID 关联 `migration.started/prepared/running/succeeded/failed`；legacy guard 使用原 UUID backup id，损坏 guard 或 plan 读取失败只写稳定 `migration.*` code。结构化日志不复制新 guard 的 backup ID、控制文件内容、绝对路径或 raw database error；legacy guard 的 UUID backup id 只允许作为 `correlationId` 复用。该协议不会自动替换 live storage，也不复用两阶段 Restore 的 candidate/rollback 目录。控制文件上限同样为 64 KiB，且不包含正文、凭据或绝对路径。
 
 
 ### 7.6 启动恢复界面

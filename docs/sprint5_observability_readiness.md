@@ -9,7 +9,7 @@ Sprint 5 的核心承诺是：用户能够在本机判断应用、数据和后�
 
 本矩阵分成两层：
 
-- 自动化门禁：运行 `npm run readiness:sprint5`，覆盖 Diagnostics 健康聚合与脱敏、有界日志校验和轮转、支持包确认/隐私/原子发布，以及 capture 生命周期 correlation 一致性。
+- 自动化门禁：运行 `npm run readiness:sprint5`，覆盖 Diagnostics 健康聚合与脱敏、有界日志校验和轮转、支持包确认/隐私/原子发布，以及 capture、AI、search 和 startup migration 的 correlation/失败脱敏边界。
 - 真实发布候选矩阵：在 Windows 安装包上执行用户确认、目录权限、非 ASCII 用户目录、运行态轮转、100 个失败任务、支持包人工复核和支持交接。
 
 自动化只证明确定性代码边界。它不能证明已安装应用的交互可理解、Windows 文件系统行为、真实运行时性能，或人工接收方能用有限证据完成问题定位。
@@ -30,6 +30,7 @@ npm run readiness:sprint5
 - 支持包 command-level 确认、固定目录、原子发布、size/SHA-256 和诱饵秘密隐私测试。
 - capture submit/fetch 以及 AI enrichment 成功/失败生命周期的 job payload、domain event、IPC result 与日志 correlation 一致性和 payload 脱敏测试。
 - search rebuild 使用持久化 job UUID、reindex 使用生成的 operation/job UUID 作为 correlation；覆盖完成/取消/失败日志、重复取消幂等、原子 swap 故障清理，以及 query/rebuild/reindex 在 job/log/support-bundle/IPC 边界的稳定 `search.*` 失败证据。
+- startup migration 使用写入 guard/last-result 的 UUID 跨启动关联 started/prepared/running/succeeded/failed；覆盖成功迁移、running guard 阻断、损坏 guard fail-closed，以及备份 ID、绝对路径和损坏控制文件内容不进入日志。
 - Rust clippy warnings gate。
 
 默认报告写入系统临时目录，包含命令、退出码、耗时和最多 80 行日志尾部。发布候选分支必须把报告保存为 CI artifact 或发布验收记录。
@@ -68,7 +69,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/sprint5-readiness.ps1 -Ski
 | W5-05 | 固定目录与原子发布 | 导出期间观察 `support-bundles`，并模拟目标目录权限失败 | 成功时不暴露半成品；失败时无伪成功文件；输出始终位于 app data 固定子目录 |
 | W5-06 | hash 与大小 | 对成功支持包独立计算 SHA-256 和字节数 | 与命令返回值完全一致；JSON `schemaVersion=1` 且能被独立解析 |
 | W5-07 | 支持包隐私复核 | 对支持包搜索第 3 节全部诱饵，并检查各 section | 不含正文、title 诱饵、完整 URL/query/fragment、credential reference、API key/token/cookie/session、embedding、raw job/event payload、raw error、本机绝对路径 |
-| W5-08 | capture、AI 与 search correlation | 各完成一次成功/失败 capture、成功/失败 AI enrichment、成功/取消/失败 search rebuild 和对象 reindex，比较 job、domain event、IPC result、结构化日志和支持包摘要 | 每次流程共享一个稳定 UUID；search 使用 job UUID；不同操作不错误复用；AI event payload 只含 analysis id 或稳定 `ai.*` code；search 不含 query/index content/raw SQLite error；支持包只含允许字段 |
+| W5-08 | capture、AI、search 与 migration correlation | 各完成一次成功/失败 capture、成功/失败 AI enrichment、成功/取消/失败 search rebuild、对象 reindex、成功 startup migration 和 running guard 阻断，比较 job、domain event、IPC result、migration guard/last-result、结构化日志和支持包摘要 | 每次流程共享一个稳定 UUID；search 使用 job UUID；migration 跨 guard/result/重启复用 UUID；不同操作不错误复用；AI event payload 只含 analysis id 或稳定 `ai.*` code；search/migration 不含 query、索引内容、绝对路径或 raw error；新 migration backup ID 不进入日志，legacy backup UUID 只允许作为 correlation；支持包只含允许字段 |
 | W5-09 | 运行态日志轮转 | 连续生成足够多的合成 capture 事件跨过 2 MiB 边界 | 当前文件不超过边界，仅保留一份 `.1`；每行是独立合法 JSON；应用持续可用 |
 | W5-10 | 轮转时进程终止 | 在高频写日志和临近轮转时强制结束进程，随后重启并导出支持包 | 业务数据可启动；logger 不阻塞启动；损坏/不合规行被跳过且原始内容不进入支持包 |
 | W5-11 | 非 ASCII 用户目录 | 在中文或 emoji Windows 用户目录执行 W5-01、W5-04、W5-09 | 日志和支持包写入成功；UI 文本不乱码；导出内容不泄漏绝对 profile 路径 |
@@ -96,7 +97,7 @@ Sprint 5 从“执行中”切换到“完成”必须同时满足：
 - 前端依赖完整环境中的 Diagnostics、失败任务操作和支持包确认组件测试通过。
 - W5-01 至 W5-08、W5-11 至 W5-14 在 Windows 11 主目标上通过。
 - W5-09 和 W5-10 各至少执行三轮，不能用单元测试轮转代替真实运行态证据。
-- 路线图中列出的关键流程均已接入受限结构化日志和稳定 correlation id；当前 capture、AI enrichment 与 search maintenance 满足，restore、migration 等启动期流程仍待接入，因此该项仍未完成。
+- 路线图中列出的关键流程均已接入受限结构化日志和稳定 correlation id；当前 capture、AI enrichment、search maintenance 与 startup migration 满足，restore 等启动期流程仍待接入，因此该项仍未完成。
 - `/docs/post_mvp_roadmap.md`、`/docs/operational_readiness.md` 和本矩阵记录验收日期、报告位置及剩余风险。
 
 只通过单元测试、只成功导出一个文件、只确认诱饵字符串未出现，或只观察 UI 健康标签，都不足以单独证明 Sprint 5 完成。

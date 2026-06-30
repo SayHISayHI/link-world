@@ -3,6 +3,7 @@ use crate::errors::{AppError, AppResult};
 use crate::services::backup::BackupService;
 use crate::storage::database::{Database, MigrationPlan};
 use crate::storage::object_store::ObjectStore;
+use crate::telemetry::{StructuredLogEvent, StructuredLogger};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
@@ -36,6 +37,8 @@ impl GuardPhase {
 #[serde(rename_all = "camelCase")]
 struct MigrationGuard {
     schema_version: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    correlation_id: Option<String>,
     backup_id: String,
     from_version: Option<i64>,
     target_version: i64,
@@ -47,6 +50,8 @@ struct MigrationGuard {
 #[serde(rename_all = "camelCase")]
 struct MigrationResult {
     schema_version: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    correlation_id: Option<String>,
     backup_id: String,
     from_version: Option<i64>,
     target_version: i64,
@@ -64,75 +69,233 @@ impl MigrationService {
         data_dir: &Path,
         app_version: &str,
     ) -> AppResult<()> {
-        let plan = database.migration_plan().await?;
+        Self::migrate_internal(database, object_store, data_dir, app_version, None).await
+    }
+
+    pub async fn migrate_with_logger(
+        database: &Database,
+        object_store: &ObjectStore,
+        data_dir: &Path,
+        app_version: &str,
+        structured_logger: &StructuredLogger,
+    ) -> AppResult<()> {
+        Self::migrate_internal(
+            database,
+            object_store,
+            data_dir,
+            app_version,
+            Some(structured_logger),
+        )
+        .await
+    }
+
+    async fn migrate_internal(
+        database: &Database,
+        object_store: &ObjectStore,
+        data_dir: &Path,
+        app_version: &str,
+        structured_logger: Option<&StructuredLogger>,
+    ) -> AppResult<()> {
         let migration_root = data_dir.join(MIGRATION_DIR_NAME);
-        let pending_guard = read_guard(&migration_root)?;
-
-        if !plan.requires_migration() {
-            if let Some((_phase, guard)) = pending_guard {
-                validate_guard(&guard)?;
-                database.validate_integrity().await.map_err(|error| {
-                    AppError::DbMigration(format!(
-                        "migration completed but integrity validation failed; verified restore point {} is available; {error}",
-                        guard.backup_id
-                    ))
-                })?;
-                complete_guard(&migration_root, guard);
+        let generated_correlation_id = Uuid::new_v4().to_string();
+        let pending_guard = match read_guard(&migration_root) {
+            Ok(guard) => guard,
+            Err(error) => {
+                record_migration_log(
+                    structured_logger,
+                    StructuredLogEvent::info(
+                        "migration",
+                        "migration.started",
+                        "Database migration started.",
+                    )
+                    .with_correlation_id(&generated_correlation_id),
+                )
+                .await;
+                record_migration_log(
+                    structured_logger,
+                    StructuredLogEvent::error(
+                        "migration",
+                        "migration.failed",
+                        "Database migration failed.",
+                    )
+                    .with_correlation_id(&generated_correlation_id)
+                    .with_error_code("migration.guard_invalid"),
+                )
+                .await;
+                return Err(error);
             }
-            return Ok(());
-        }
-
-        if !plan.requires_backup() {
-            database.run_migrations().await?;
-            database.validate_integrity().await?;
-            return Ok(());
-        }
-
-        let backup_service = BackupService::new(
-            database.pool().clone(),
-            object_store.root().to_path_buf(),
-            data_dir.join("backups"),
-            app_version.to_string(),
-        );
-
-        let (phase, guard) = match pending_guard {
-            Some((GuardPhase::Running, guard)) => {
-                validate_guard(&guard)?;
-                return Err(AppError::DbMigration(format!(
-                    "a previous migration attempt did not complete; automatic retry is blocked; verified restore point {} is available",
-                    guard.backup_id
-                )));
-            }
-            Some((GuardPhase::Prepared, guard)) => {
-                validate_guard_for_plan(&guard, &plan)?;
-                verify_guard_backup(&backup_service, &guard).await?;
-                (GuardPhase::Prepared, guard)
-            }
-            None => {
-                let guard =
-                    prepare_guard(&backup_service, &migration_root, &plan, app_version).await?;
-                (GuardPhase::Prepared, guard)
+        };
+        let correlation_id = pending_guard
+            .as_ref()
+            .map(|(_, guard)| guard_correlation_id(guard, &generated_correlation_id))
+            .unwrap_or(generated_correlation_id);
+        let plan = match database.migration_plan().await {
+            Ok(plan) => plan,
+            Err(error) => {
+                record_migration_log(
+                    structured_logger,
+                    StructuredLogEvent::info(
+                        "migration",
+                        "migration.started",
+                        "Database migration started.",
+                    )
+                    .with_correlation_id(&correlation_id),
+                )
+                .await;
+                record_migration_log(
+                    structured_logger,
+                    StructuredLogEvent::error(
+                        "migration",
+                        "migration.failed",
+                        "Database migration failed.",
+                    )
+                    .with_correlation_id(&correlation_id)
+                    .with_error_code("migration.plan_failed"),
+                )
+                .await;
+                return Err(error);
             }
         };
 
-        transition_guard(&migration_root, phase, GuardPhase::Running)?;
+        if !plan.requires_migration() && pending_guard.is_none() {
+            return Ok(());
+        }
+        record_migration_log(
+            structured_logger,
+            StructuredLogEvent::info(
+                "migration",
+                "migration.started",
+                "Database migration started.",
+            )
+            .with_correlation_id(&correlation_id),
+        )
+        .await;
 
-        let migration_result: AppResult<()> = async {
-            database.run_migrations().await?;
-            database.validate_integrity().await?;
+        let result: AppResult<()> = async {
+            if !plan.requires_migration() {
+                if let Some((_phase, guard)) = pending_guard {
+                    validate_guard(&guard)?;
+                    database.validate_integrity().await.map_err(|error| {
+                        AppError::DbMigration(format!(
+                            "migration completed but integrity validation failed; verified restore point {} is available; {error}",
+                            guard.backup_id
+                        ))
+                    })?;
+                    complete_guard(&migration_root, guard);
+                }
+                return Ok(());
+            }
+
+            if !plan.requires_backup() {
+                database.run_migrations().await?;
+                database.validate_integrity().await?;
+                return Ok(());
+            }
+
+            let backup_service = BackupService::new(
+                database.pool().clone(),
+                object_store.root().to_path_buf(),
+                data_dir.join("backups"),
+                app_version.to_string(),
+            );
+
+            let (phase, guard) = match pending_guard {
+                Some((GuardPhase::Running, guard)) => {
+                    validate_guard(&guard)?;
+                    return Err(AppError::DbMigration(format!(
+                        "a previous migration attempt did not complete; automatic retry is blocked; verified restore point {} is available",
+                        guard.backup_id
+                    )));
+                }
+                Some((GuardPhase::Prepared, guard)) => {
+                    validate_guard_for_plan(&guard, &plan)?;
+                    verify_guard_backup(&backup_service, &guard).await?;
+                    (GuardPhase::Prepared, guard)
+                }
+                None => {
+                    let guard = prepare_guard(
+                        &backup_service,
+                        &migration_root,
+                        &plan,
+                        app_version,
+                        &correlation_id,
+                    )
+                    .await?;
+                    (GuardPhase::Prepared, guard)
+                }
+            };
+
+            record_migration_log(
+                structured_logger,
+                StructuredLogEvent::info(
+                    "migration",
+                    "migration.prepared",
+                    "Database migration restore point is prepared.",
+                )
+                .with_correlation_id(&correlation_id),
+            )
+            .await;
+
+            transition_guard(&migration_root, phase, GuardPhase::Running)?;
+            record_migration_log(
+                structured_logger,
+                StructuredLogEvent::info(
+                    "migration",
+                    "migration.running",
+                    "Database migration is running.",
+                )
+                .with_correlation_id(&correlation_id),
+            )
+            .await;
+
+            let migration_result: AppResult<()> = async {
+                database.run_migrations().await?;
+                database.validate_integrity().await?;
+                Ok(())
+            }
+            .await;
+
+            if let Err(error) = migration_result {
+                return Err(AppError::DbMigration(format!(
+                    "migration failed; automatic retry is blocked; verified restore point {} is available; {error}",
+                    guard.backup_id
+                )));
+            }
+
+            complete_guard(&migration_root, guard);
             Ok(())
         }
         .await;
 
-        if let Err(error) = migration_result {
-            return Err(AppError::DbMigration(format!(
-                "migration failed; automatic retry is blocked; verified restore point {} is available; {error}",
-                guard.backup_id
-            )));
+        match &result {
+            Ok(()) => {
+                record_migration_log(
+                    structured_logger,
+                    StructuredLogEvent::info(
+                        "migration",
+                        "migration.succeeded",
+                        "Database migration succeeded.",
+                    )
+                    .with_correlation_id(&correlation_id),
+                )
+                .await;
+            }
+            Err(error) => {
+                record_migration_log(
+                    structured_logger,
+                    StructuredLogEvent::error(
+                        "migration",
+                        "migration.failed",
+                        "Database migration failed.",
+                    )
+                    .with_correlation_id(&correlation_id)
+                    .with_error_code(migration_error_code(error)),
+                )
+                .await;
+            }
         }
 
-        complete_guard(&migration_root, guard);
-        Ok(())
+        result
     }
 
     pub fn recovery_info(data_dir: &Path) -> AppResult<Option<StartupMigrationRecovery>> {
@@ -156,11 +319,44 @@ impl MigrationService {
     }
 }
 
+async fn record_migration_log(
+    structured_logger: Option<&StructuredLogger>,
+    event: StructuredLogEvent,
+) {
+    if let Some(logger) = structured_logger {
+        let _ = logger.record(event).await;
+    }
+}
+
+fn migration_error_code(error: &AppError) -> &'static str {
+    match error {
+        AppError::DbMigration(message) if message.contains("automatic retry is blocked") => {
+            "migration.retry_blocked"
+        }
+        _ => "migration.failed",
+    }
+}
+
+fn guard_correlation_id(guard: &MigrationGuard, fallback: &str) -> String {
+    guard
+        .correlation_id
+        .as_deref()
+        .filter(|correlation_id| Uuid::parse_str(correlation_id).is_ok())
+        .or_else(|| {
+            Uuid::parse_str(&guard.backup_id)
+                .ok()
+                .map(|_| guard.backup_id.as_str())
+        })
+        .unwrap_or(fallback)
+        .to_string()
+}
+
 async fn prepare_guard(
     backup_service: &BackupService,
     migration_root: &Path,
     plan: &MigrationPlan,
     app_version: &str,
+    correlation_id: &str,
 ) -> AppResult<MigrationGuard> {
     fs::create_dir_all(migration_root)?;
     let summary = backup_service.create_backup().await?;
@@ -177,6 +373,7 @@ async fn prepare_guard(
     })?;
     let guard = MigrationGuard {
         schema_version: CONTROL_SCHEMA_VERSION,
+        correlation_id: Some(correlation_id.to_string()),
         backup_id: summary.backup_id,
         from_version: plan.current_version(),
         target_version,
@@ -232,6 +429,15 @@ fn validate_guard(guard: &MigrationGuard) -> AppResult<()> {
             "migration guard contains an invalid backup identifier".to_string(),
         ));
     }
+    if guard
+        .correlation_id
+        .as_deref()
+        .is_some_and(|correlation_id| Uuid::parse_str(correlation_id).is_err())
+    {
+        return Err(AppError::DbMigration(
+            "migration guard contains an invalid correlation identifier".to_string(),
+        ));
+    }
     if guard.target_version <= 0 {
         return Err(AppError::DbMigration(
             "migration guard contains an invalid target version".to_string(),
@@ -274,6 +480,7 @@ fn complete_guard(migration_root: &Path, guard: MigrationGuard) {
         migration_root,
         MigrationResult {
             schema_version: CONTROL_SCHEMA_VERSION,
+            correlation_id: guard.correlation_id,
             backup_id: guard.backup_id,
             from_version: guard.from_version,
             target_version: guard.target_version,
@@ -325,12 +532,13 @@ fn remove_file_if_exists(path: &Path) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        prepare_guard, read_guard, transition_guard, GuardPhase, MigrationService,
-        RUNNING_MARKER_NAME,
+        prepare_guard, read_bounded_json, read_guard, transition_guard, GuardPhase,
+        MigrationResult, MigrationService, PREPARED_MARKER_NAME, RUNNING_MARKER_NAME,
     };
     use crate::services::backup::BackupService;
     use crate::storage::database::{Database, DATABASE_FILE_NAME};
     use crate::storage::object_store::ObjectStore;
+    use crate::telemetry::StructuredLogger;
     use sqlx::migrate::Migrator;
     use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
     use std::borrow::Cow;
@@ -403,11 +611,13 @@ mod tests {
     #[tokio::test]
     async fn existing_database_creates_verified_restore_point_before_migration() {
         let (data_dir, database, object_store) = v1_fixture().await;
-        MigrationService::migrate_with_protection(
+        let structured_logger = StructuredLogger::new(&data_dir);
+        MigrationService::migrate_with_logger(
             &database,
             &object_store,
             &data_dir,
             "0.1.0-test",
+            &structured_logger,
         )
         .await
         .expect("protected migration should succeed");
@@ -454,10 +664,41 @@ mod tests {
             .join("migration")
             .join(RUNNING_MARKER_NAME)
             .exists());
-        assert!(data_dir
-            .join("migration")
-            .join("last-result.json")
-            .is_file());
+        let result_path = data_dir.join("migration").join("last-result.json");
+        assert!(result_path.is_file());
+        let migration_result: MigrationResult =
+            read_bounded_json(&result_path).expect("migration result should read");
+        let entries = StructuredLogger::read_recent(&data_dir, None)
+            .await
+            .expect("migration logs should read");
+        assert_eq!(
+            entries
+                .iter()
+                .map(|entry| entry.event.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "migration.started",
+                "migration.prepared",
+                "migration.running",
+                "migration.succeeded",
+            ]
+        );
+        let correlation_id = entries[0]
+            .correlation_id
+            .as_deref()
+            .expect("migration correlation should exist");
+        Uuid::parse_str(correlation_id).expect("migration correlation should be a UUID");
+        assert!(entries.iter().all(|entry| {
+            entry.correlation_id.as_deref() == Some(correlation_id) && entry.error_code.is_none()
+        }));
+        assert_eq!(
+            migration_result.correlation_id.as_deref(),
+            Some(correlation_id)
+        );
+        let raw_log =
+            fs::read_to_string(structured_logger.path()).expect("migration log should be readable");
+        assert!(!raw_log.contains(&backups[0].backup_id));
+        assert!(!raw_log.contains(data_dir.to_string_lossy().as_ref()));
         database.pool().close().await;
         let _ = fs::remove_dir_all(data_dir);
     }
@@ -504,17 +745,26 @@ mod tests {
             .await
             .expect("v1 plan should inspect");
         let migration_root = data_dir.join("migration");
-        let _guard = prepare_guard(&service, &migration_root, &plan, "0.1.0-test")
-            .await
-            .expect("guard should prepare");
+        let correlation_id = Uuid::new_v4().to_string();
+        let guard = prepare_guard(
+            &service,
+            &migration_root,
+            &plan,
+            "0.1.0-test",
+            &correlation_id,
+        )
+        .await
+        .expect("guard should prepare");
         transition_guard(&migration_root, GuardPhase::Prepared, GuardPhase::Running)
             .expect("guard should enter running phase");
 
-        let error = MigrationService::migrate_with_protection(
+        let structured_logger = StructuredLogger::new(&data_dir);
+        let error = MigrationService::migrate_with_logger(
             &database,
             &object_store,
             &data_dir,
             "0.1.0-test",
+            &structured_logger,
         )
         .await
         .expect_err("running guard with pending migrations must block retry");
@@ -531,10 +781,81 @@ mod tests {
         .expect("v1 schema should query");
         assert_eq!(display_hints_columns, 0);
 
+        let entries = StructuredLogger::read_recent(&data_dir, None)
+            .await
+            .expect("migration failure logs should read");
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].event, "migration.started");
+        assert_eq!(entries[1].event, "migration.failed");
+        assert_eq!(
+            entries[1].error_code.as_deref(),
+            Some("migration.retry_blocked")
+        );
+        assert!(entries
+            .iter()
+            .all(|entry| entry.correlation_id.as_deref() == Some(correlation_id.as_str())));
+        let raw_log = fs::read_to_string(structured_logger.path())
+            .expect("migration failure log should be readable");
+        assert!(!raw_log.contains(&guard.backup_id));
+        assert!(!raw_log.contains(data_dir.to_string_lossy().as_ref()));
+
         database.pool().close().await;
         let _ = fs::remove_dir_all(data_dir);
     }
 
+    #[tokio::test]
+    async fn malformed_guard_emits_only_stable_failure_evidence() {
+        let data_dir =
+            std::env::temp_dir().join(format!("link-world-guard-invalid-test-{}", Uuid::new_v4()));
+        let object_store =
+            ObjectStore::initialize(data_dir.clone()).expect("object store should initialize");
+        let database = Database::connect_without_migrations(data_dir.clone())
+            .await
+            .expect("fresh database should connect");
+        let migration_root = data_dir.join("migration");
+        fs::create_dir_all(&migration_root).expect("migration directory should create");
+        let canary = "migration-guard-secret-canary";
+        fs::write(
+            migration_root.join(PREPARED_MARKER_NAME),
+            format!("{{not-json-{canary}"),
+        )
+        .expect("malformed guard should write");
+        let structured_logger = StructuredLogger::new(&data_dir);
+
+        MigrationService::migrate_with_logger(
+            &database,
+            &object_store,
+            &data_dir,
+            "0.1.0-test",
+            &structured_logger,
+        )
+        .await
+        .expect_err("malformed guard must fail closed");
+
+        let entries = StructuredLogger::read_recent(&data_dir, None)
+            .await
+            .expect("migration failure logs should read");
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].event, "migration.started");
+        assert_eq!(entries[1].event, "migration.failed");
+        assert_eq!(
+            entries[1].error_code.as_deref(),
+            Some("migration.guard_invalid")
+        );
+        let correlation_id = entries[0]
+            .correlation_id
+            .as_deref()
+            .expect("migration correlation should exist");
+        Uuid::parse_str(correlation_id).expect("migration correlation should be a UUID");
+        assert_eq!(entries[1].correlation_id.as_deref(), Some(correlation_id));
+        let raw_log = fs::read_to_string(structured_logger.path())
+            .expect("migration failure log should be readable");
+        assert!(!raw_log.contains(canary));
+        assert!(!raw_log.contains(data_dir.to_string_lossy().as_ref()));
+
+        database.pool().close().await;
+        let _ = fs::remove_dir_all(data_dir);
+    }
     #[tokio::test]
     async fn completed_migration_with_running_guard_finishes_on_next_startup() {
         let (data_dir, database, object_store) = v1_fixture().await;
@@ -544,9 +865,15 @@ mod tests {
             .await
             .expect("v1 plan should inspect");
         let migration_root = data_dir.join("migration");
-        let guard = prepare_guard(&service, &migration_root, &plan, "0.1.0-test")
-            .await
-            .expect("guard should prepare");
+        let guard = prepare_guard(
+            &service,
+            &migration_root,
+            &plan,
+            "0.1.0-test",
+            &Uuid::new_v4().to_string(),
+        )
+        .await
+        .expect("guard should prepare");
         transition_guard(&migration_root, GuardPhase::Prepared, GuardPhase::Running)
             .expect("guard should enter running phase");
         database

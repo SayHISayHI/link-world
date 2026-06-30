@@ -333,9 +333,12 @@ impl AppState {
     }
 
     pub async fn initialize_from_data_dir(data_dir: PathBuf) -> AppResult<Self> {
+        let structured_logger = StructuredLogger::new(&data_dir);
         let restore_transaction = begin_pending_restore(&data_dir).await?;
         let validate_restored_data = restore_transaction.is_some();
-        let storage = Self::initialize_storage(data_dir.clone(), validate_restored_data).await;
+        let storage =
+            Self::initialize_storage(data_dir.clone(), validate_restored_data, &structured_logger)
+                .await;
 
         let (database, object_store) = match (storage, restore_transaction) {
             (Ok(storage), Some(transaction)) => {
@@ -345,7 +348,7 @@ impl AppState {
             (Err(error), Some(transaction)) => {
                 let reason = error.to_string();
                 transaction.rollback(&reason)?;
-                Self::initialize_storage(data_dir.clone(), false).await?
+                Self::initialize_storage(data_dir.clone(), false, &structured_logger).await?
             }
             (Ok(storage), None) => storage,
             (Err(error), None) => return Err(error),
@@ -360,7 +363,7 @@ impl AppState {
             backend_version: env!("CARGO_PKG_VERSION").to_string(),
             database: Some(database),
             object_store: Some(object_store),
-            structured_logger: Some(StructuredLogger::new(&data_dir)),
+            structured_logger: Some(structured_logger),
             secrets,
             model_registry,
         })
@@ -369,14 +372,16 @@ impl AppState {
     async fn initialize_storage(
         data_dir: std::path::PathBuf,
         validate_integrity: bool,
+        structured_logger: &StructuredLogger,
     ) -> AppResult<(Database, ObjectStore)> {
         let object_store = ObjectStore::initialize(data_dir.clone())?;
         let database = Database::connect_without_migrations(data_dir.clone()).await?;
-        if let Err(error) = MigrationService::migrate_with_protection(
+        if let Err(error) = MigrationService::migrate_with_logger(
             &database,
             &object_store,
             &data_dir,
             env!("CARGO_PKG_VERSION"),
+            structured_logger,
         )
         .await
         {
