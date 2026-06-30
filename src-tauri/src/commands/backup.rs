@@ -5,6 +5,7 @@ use crate::services::restore::{has_pending_restore_in_dir, read_last_status, Res
 use crate::state::{AppState, StartupState};
 use crate::storage::database::Database;
 use crate::storage::object_store::ObjectStore;
+use crate::telemetry::StructuredLogger;
 use tauri::Manager;
 
 #[tauri::command]
@@ -136,5 +137,6 @@ async fn restore_service(
         startup.backend_version().to_string(),
     );
 
-    Ok(RestoreService::new(backup_service, data_dir))
+    let structured_logger = StructuredLogger::new(&data_dir);
+    Ok(RestoreService::new(backup_service, data_dir).with_structured_logger(structured_logger))
 }

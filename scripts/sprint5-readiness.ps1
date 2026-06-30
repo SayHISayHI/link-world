@@ -127,6 +127,11 @@ $steps = @(
     Name = 'startup migration correlation and redacted failure evidence'
     WorkingDirectory = $repo
     Command = @('cargo', 'test', '--manifest-path', $cargoManifest, 'services::migration::tests')
+  },
+  @{
+    Name = 'restore restart correlation rollback and redaction'
+    WorkingDirectory = $repo
+    Command = @('cargo', 'test', '--manifest-path', $cargoManifest, 'services::restore::tests')
   }
 )
 
@@ -182,9 +187,9 @@ $report = [pscustomobject]@{
   status = if ($failed.Count -eq 0) { 'passed' } else { 'failed' }
   results = $results
   limitations = @(
-    'This automation covers deterministic local diagnostics, redaction, bounded log validation and rotation, support bundle privacy, capture/AI/search correlation boundaries and startup migration correlation/failure redaction.',
+    'This automation covers deterministic local diagnostics, redaction, bounded log validation and rotation, support bundle privacy, capture/AI/search correlation boundaries, plus startup migration and restore restart/rollback correlation/failure redaction.',
     'It does not prove user-confirmation usability, installed Windows paths, live log rotation under process interruption, large failed-job UI performance, or manual inspection of a release-candidate support bundle.',
-    'Structured log coverage currently includes capture submit/fetch, AI enrichment, search rebuild/reindex and startup migration; restore and other startup-critical workflows remain open Week 5 work.'
+    'Structured log coverage includes the planned capture submit/fetch, AI enrichment, search rebuild/reindex, startup migration and restore lifecycles; backup catalog reads, diagnostics reads and portable export are not modeled as correlated lifecycle workflows.'
   )
 }
 

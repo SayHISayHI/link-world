@@ -77,12 +77,14 @@ export interface BackupVerification {
   issues: string[];
 }
 export interface RestorePreparation {
+  correlationId: string;
   backupId: string;
   safetyBackupId: string;
   restartRequired: boolean;
 }
 
 export interface RestoreStatus {
+  correlationId?: string;
   backupId: string;
   safetyBackupId: string;
   status: "succeeded" | "rolled_back" | "failed" | string;

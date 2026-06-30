@@ -7,6 +7,7 @@ use crate::services::backup::{
 };
 use crate::state::AppState;
 use crate::storage::database::{Database, DATABASE_FILE_NAME};
+use crate::telemetry::{StructuredLogEvent, StructuredLogger};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -79,6 +80,7 @@ impl Drop for PrepareLock {
 pub struct RestoreService {
     backup_service: BackupService,
     data_dir: PathBuf,
+    structured_logger: Option<StructuredLogger>,
 }
 
 impl RestoreService {
@@ -92,17 +94,77 @@ impl RestoreService {
                 AppError::Filesystem("database has no parent data directory".to_string())
             })?
             .to_path_buf();
-        Ok(Self::new(backup_service, data_dir))
+        let service = Self::new(backup_service, data_dir);
+        Ok(match state.structured_logger() {
+            Some(structured_logger) => service.with_structured_logger(structured_logger.clone()),
+            None => service,
+        })
     }
 
     pub fn new(backup_service: BackupService, data_dir: PathBuf) -> Self {
         Self {
             backup_service,
             data_dir,
+            structured_logger: None,
         }
     }
 
+    pub fn with_structured_logger(mut self, structured_logger: StructuredLogger) -> Self {
+        self.structured_logger = Some(structured_logger);
+        self
+    }
+
     pub async fn prepare_restore(&self, backup_id: &str) -> AppResult<RestorePreparation> {
+        let correlation_id = Uuid::new_v4().to_string();
+        record_restore_log(
+            self.structured_logger.as_ref(),
+            StructuredLogEvent::info(
+                "restore",
+                "restore.prepare_started",
+                "Restore preparation started.",
+            )
+            .with_correlation_id(&correlation_id),
+        )
+        .await;
+
+        let result = self
+            .prepare_restore_internal(backup_id, &correlation_id)
+            .await;
+        match &result {
+            Ok(_) => {
+                record_restore_log(
+                    self.structured_logger.as_ref(),
+                    StructuredLogEvent::info(
+                        "restore",
+                        "restore.prepared",
+                        "Restore candidate is prepared.",
+                    )
+                    .with_correlation_id(&correlation_id),
+                )
+                .await;
+            }
+            Err(error) => {
+                record_restore_log(
+                    self.structured_logger.as_ref(),
+                    StructuredLogEvent::error(
+                        "restore",
+                        "restore.prepare_failed",
+                        "Restore preparation failed.",
+                    )
+                    .with_correlation_id(&correlation_id)
+                    .with_error_code(restore_prepare_error_code(error)),
+                )
+                .await;
+            }
+        }
+        result
+    }
+
+    async fn prepare_restore_internal(
+        &self,
+        backup_id: &str,
+        correlation_id: &str,
+    ) -> AppResult<RestorePreparation> {
         let backup_id = normalize_backup_id(backup_id)?;
         let restore_root = self.data_dir.join(RESTORE_DIR_NAME);
         let _lock = acquire_prepare_lock(&restore_root)?;
@@ -122,7 +184,7 @@ impl RestoreService {
         }
 
         let safety_backup = self.backup_service.create_backup().await?;
-        let transaction_id = Uuid::new_v4().to_string();
+        let transaction_id = correlation_id.to_string();
         let candidate_dir = restore_root.join(candidate_dir_name(&transaction_id));
         let source_dir = self.backup_service.backup_root().join(&backup_id);
         let manifest = validate_manifest_identity(read_checked_manifest(&source_dir)?, &backup_id)?;
@@ -156,7 +218,7 @@ impl RestoreService {
 
             let marker = RestoreMarker {
                 schema_version: RESTORE_CONTROL_SCHEMA_VERSION,
-                transaction_id,
+                transaction_id: transaction_id.clone(),
                 backup_id: backup_id.clone(),
                 safety_backup_id: safety_backup.backup_id.clone(),
                 candidate_manifest_sha256,
@@ -165,6 +227,7 @@ impl RestoreService {
             write_new_json(&restore_root.join(PHASE_PREPARED), &marker)?;
 
             Ok(RestorePreparation {
+                correlation_id: transaction_id,
                 backup_id,
                 safety_backup_id: safety_backup.backup_id,
                 restart_required: true,
@@ -188,10 +251,41 @@ impl RestoreService {
     }
 }
 
+async fn record_restore_log(
+    structured_logger: Option<&StructuredLogger>,
+    event: StructuredLogEvent,
+) {
+    if let Some(logger) = structured_logger {
+        let _ = logger.record(event).await;
+    }
+}
+
+fn restore_prepare_error_code(error: &AppError) -> &'static str {
+    match error {
+        AppError::RestoreInvalid(message)
+            if message.contains("already pending") || message.contains("already running") =>
+        {
+            "restore.already_pending"
+        }
+        AppError::BackupInvalid(_) => "restore.backup_invalid",
+        AppError::RestoreInvalid(_) => "restore.prepare_invalid",
+        _ => "restore.prepare_failed",
+    }
+}
+
+fn restore_correlation_id(transaction_id: &str, fallback: &str) -> String {
+    Uuid::parse_str(transaction_id)
+        .ok()
+        .map(|_| transaction_id)
+        .unwrap_or(fallback)
+        .to_string()
+}
+
 #[derive(Debug)]
 pub struct RestoreTransaction {
     data_dir: PathBuf,
     marker: RestoreMarker,
+    structured_logger: Option<StructuredLogger>,
 }
 
 impl RestoreTransaction {
@@ -199,7 +293,34 @@ impl RestoreTransaction {
         &self.marker.backup_id
     }
 
-    pub fn complete(self) -> AppResult<()> {
+    pub fn correlation_id(&self) -> &str {
+        &self.marker.transaction_id
+    }
+
+    pub async fn complete(self) -> AppResult<()> {
+        let correlation_id = self.marker.transaction_id.clone();
+        let structured_logger = self.structured_logger.clone();
+        let result = self.complete_internal();
+        let event = match &result {
+            Ok(()) => StructuredLogEvent::info(
+                "restore",
+                "restore.succeeded",
+                "Restore completed successfully.",
+            )
+            .with_correlation_id(&correlation_id),
+            Err(_) => StructuredLogEvent::error(
+                "restore",
+                "restore.recovery_failed",
+                "Restore recovery failed.",
+            )
+            .with_correlation_id(&correlation_id)
+            .with_error_code("restore.cleanup_failed"),
+        };
+        record_restore_log(structured_logger.as_ref(), event).await;
+        result
+    }
+
+    fn complete_internal(self) -> AppResult<()> {
         let restore_root = self.data_dir.join(RESTORE_DIR_NAME);
         let rollback_dir = restore_root.join(rollback_dir_name(&self.marker.transaction_id));
         let candidate_dir = restore_root.join(candidate_dir_name(&self.marker.transaction_id));
@@ -211,6 +332,7 @@ impl RestoreTransaction {
         let _ = write_last_status(
             &self.data_dir,
             RestoreStatus {
+                correlation_id: Some(self.marker.transaction_id),
                 backup_id: self.marker.backup_id,
                 safety_backup_id: self.marker.safety_backup_id,
                 status: "succeeded".to_string(),
@@ -221,7 +343,31 @@ impl RestoreTransaction {
         Ok(())
     }
 
-    pub fn rollback(self, reason: &str) -> AppResult<()> {
+    pub async fn rollback(self, reason: &str) -> AppResult<()> {
+        let correlation_id = self.marker.transaction_id.clone();
+        let structured_logger = self.structured_logger.clone();
+        let result = self.rollback_internal(reason);
+        let event = match &result {
+            Ok(()) => StructuredLogEvent::error(
+                "restore",
+                "restore.rolled_back",
+                "Restore was rolled back.",
+            )
+            .with_correlation_id(&correlation_id)
+            .with_error_code("restore.validation_failed"),
+            Err(_) => StructuredLogEvent::error(
+                "restore",
+                "restore.recovery_failed",
+                "Restore recovery failed.",
+            )
+            .with_correlation_id(&correlation_id)
+            .with_error_code("restore.rollback_failed"),
+        };
+        record_restore_log(structured_logger.as_ref(), event).await;
+        result
+    }
+
+    fn rollback_internal(self, reason: &str) -> AppResult<()> {
         rollback_transaction(
             &self.data_dir,
             &self.marker,
@@ -230,6 +376,7 @@ impl RestoreTransaction {
         let _ = write_last_status(
             &self.data_dir,
             RestoreStatus {
+                correlation_id: Some(self.marker.transaction_id),
                 backup_id: self.marker.backup_id,
                 safety_backup_id: self.marker.safety_backup_id,
                 status: "rolled_back".to_string(),
@@ -242,19 +389,97 @@ impl RestoreTransaction {
 }
 
 pub async fn begin_pending_restore(data_dir: &Path) -> AppResult<Option<RestoreTransaction>> {
+    begin_pending_restore_internal(data_dir, None).await
+}
+
+pub async fn begin_pending_restore_with_logger(
+    data_dir: &Path,
+    structured_logger: &StructuredLogger,
+) -> AppResult<Option<RestoreTransaction>> {
+    begin_pending_restore_internal(data_dir, Some(structured_logger)).await
+}
+
+async fn begin_pending_restore_internal(
+    data_dir: &Path,
+    structured_logger: Option<&StructuredLogger>,
+) -> AppResult<Option<RestoreTransaction>> {
     let restore_root = data_dir.join(RESTORE_DIR_NAME);
     remove_file_if_exists(&restore_root.join(PREPARE_LOCK_NAME))?;
-    let Some((phase, marker)) = find_pending_marker(&restore_root)? else {
-        return Ok(None);
+    let generated_correlation_id = Uuid::new_v4().to_string();
+    let (phase, marker) = match find_pending_marker(&restore_root) {
+        Ok(Some(pending)) => pending,
+        Ok(None) => return Ok(None),
+        Err(error) => {
+            record_restore_log(
+                structured_logger,
+                StructuredLogEvent::info(
+                    "restore",
+                    "restore.recovery_started",
+                    "Restore recovery started.",
+                )
+                .with_correlation_id(&generated_correlation_id),
+            )
+            .await;
+            record_restore_log(
+                structured_logger,
+                StructuredLogEvent::error(
+                    "restore",
+                    "restore.recovery_failed",
+                    "Restore recovery failed.",
+                )
+                .with_correlation_id(&generated_correlation_id)
+                .with_error_code("restore.marker_invalid"),
+            )
+            .await;
+            return Err(error);
+        }
     };
-    validate_marker(&marker)?;
+    let correlation_id = restore_correlation_id(&marker.transaction_id, &generated_correlation_id);
+    record_restore_log(
+        structured_logger,
+        StructuredLogEvent::info(
+            "restore",
+            "restore.recovery_started",
+            "Restore recovery started.",
+        )
+        .with_correlation_id(&correlation_id),
+    )
+    .await;
+    if let Err(error) = validate_marker(&marker) {
+        record_restore_log(
+            structured_logger,
+            StructuredLogEvent::error(
+                "restore",
+                "restore.recovery_failed",
+                "Restore recovery failed.",
+            )
+            .with_correlation_id(&correlation_id)
+            .with_error_code("restore.marker_invalid"),
+        )
+        .await;
+        return Err(error);
+    }
 
     match phase {
         RestorePhase::MovingLive | RestorePhase::LiveMoved => {
-            rollback_transaction(data_dir, &marker, phase)?;
+            if let Err(error) = rollback_transaction(data_dir, &marker, phase) {
+                record_restore_log(
+                    structured_logger,
+                    StructuredLogEvent::error(
+                        "restore",
+                        "restore.recovery_failed",
+                        "Restore recovery failed.",
+                    )
+                    .with_correlation_id(&correlation_id)
+                    .with_error_code("restore.rollback_failed"),
+                )
+                .await;
+                return Err(error);
+            }
             let _ = write_last_status(
                 data_dir,
                 RestoreStatus {
+                    correlation_id: Some(correlation_id.clone()),
                     backup_id: marker.backup_id,
                     safety_backup_id: marker.safety_backup_id,
                     status: "rolled_back".to_string(),
@@ -264,13 +489,53 @@ pub async fn begin_pending_restore(data_dir: &Path) -> AppResult<Option<RestoreT
                     ),
                 },
             );
+            record_restore_log(
+                structured_logger,
+                StructuredLogEvent::error(
+                    "restore",
+                    "restore.rolled_back",
+                    "Restore was rolled back.",
+                )
+                .with_correlation_id(&correlation_id)
+                .with_error_code("restore.interrupted"),
+            )
+            .await;
             Ok(None)
         }
-        RestorePhase::CandidateInstalled => Ok(Some(RestoreTransaction {
-            data_dir: data_dir.to_path_buf(),
-            marker,
-        })),
-        RestorePhase::Prepared => apply_prepared_restore(data_dir, marker).await,
+        RestorePhase::CandidateInstalled => {
+            record_restore_log(
+                structured_logger,
+                StructuredLogEvent::info(
+                    "restore",
+                    "restore.candidate_installed",
+                    "Restore candidate is installed for validation.",
+                )
+                .with_correlation_id(&correlation_id),
+            )
+            .await;
+            Ok(Some(RestoreTransaction {
+                data_dir: data_dir.to_path_buf(),
+                marker,
+                structured_logger: structured_logger.cloned(),
+            }))
+        }
+        RestorePhase::Prepared => {
+            let result = apply_prepared_restore(data_dir, marker, structured_logger).await;
+            if result.is_err() {
+                record_restore_log(
+                    structured_logger,
+                    StructuredLogEvent::error(
+                        "restore",
+                        "restore.recovery_failed",
+                        "Restore recovery failed.",
+                    )
+                    .with_correlation_id(&correlation_id)
+                    .with_error_code("restore.recovery_failed"),
+                )
+                .await;
+            }
+            result
+        }
     }
 }
 
@@ -289,6 +554,7 @@ pub fn has_pending_restore_in_dir(data_dir: &Path) -> AppResult<bool> {
 async fn apply_prepared_restore(
     data_dir: &Path,
     marker: RestoreMarker,
+    structured_logger: Option<&StructuredLogger>,
 ) -> AppResult<Option<RestoreTransaction>> {
     let restore_root = data_dir.join(RESTORE_DIR_NAME);
     let candidate_dir = restore_root.join(candidate_dir_name(&marker.transaction_id));
@@ -299,6 +565,13 @@ async fn apply_prepared_restore(
             &marker,
             "prepared candidate manifest no longer matches the pending restore",
         )?;
+        record_restore_log(
+            structured_logger,
+            StructuredLogEvent::error("restore", "restore.failed", "Restore failed safely.")
+                .with_correlation_id(&marker.transaction_id)
+                .with_error_code("restore.candidate_invalid"),
+        )
+        .await;
         return Ok(None);
     }
 
@@ -313,6 +586,13 @@ async fn apply_prepared_restore(
                 verification.issues.join("; ")
             ),
         )?;
+        record_restore_log(
+            structured_logger,
+            StructuredLogEvent::error("restore", "restore.failed", "Restore failed safely.")
+                .with_correlation_id(&marker.transaction_id)
+                .with_error_code("restore.candidate_invalid"),
+        )
+        .await;
         return Ok(None);
     }
 
@@ -349,6 +629,7 @@ async fn apply_prepared_restore(
         let _ = write_last_status(
             data_dir,
             RestoreStatus {
+                correlation_id: Some(marker.transaction_id.clone()),
                 backup_id: marker.backup_id,
                 safety_backup_id: marker.safety_backup_id,
                 status: "rolled_back".to_string(),
@@ -359,12 +640,30 @@ async fn apply_prepared_restore(
                 )),
             },
         );
+        record_restore_log(
+            structured_logger,
+            StructuredLogEvent::error("restore", "restore.rolled_back", "Restore was rolled back.")
+                .with_correlation_id(&marker.transaction_id)
+                .with_error_code("restore.switch_failed"),
+        )
+        .await;
         return Ok(None);
     }
 
+    record_restore_log(
+        structured_logger,
+        StructuredLogEvent::info(
+            "restore",
+            "restore.candidate_installed",
+            "Restore candidate is installed for validation.",
+        )
+        .with_correlation_id(&marker.transaction_id),
+    )
+    .await;
     Ok(Some(RestoreTransaction {
         data_dir: data_dir.to_path_buf(),
         marker,
+        structured_logger: structured_logger.cloned(),
     }))
 }
 
@@ -521,6 +820,7 @@ fn abandon_prepared_restore(
     let _ = write_last_status(
         data_dir,
         RestoreStatus {
+            correlation_id: Some(marker.transaction_id.clone()),
             backup_id: marker.backup_id.clone(),
             safety_backup_id: marker.safety_backup_id.clone(),
             status: "failed".to_string(),
@@ -624,7 +924,9 @@ fn validate_marker(marker: &RestoreMarker) -> AppResult<()> {
             marker.schema_version
         )));
     }
-    normalize_backup_id(&marker.transaction_id)?;
+    Uuid::parse_str(&marker.transaction_id).map_err(|_| {
+        AppError::RestoreInvalid("restore marker contains an invalid transaction id".to_string())
+    })?;
     normalize_backup_id(&marker.backup_id)?;
     normalize_backup_id(&marker.safety_backup_id)?;
     if marker.candidate_manifest_sha256.len() != 64
@@ -810,15 +1112,17 @@ fn digest_to_hex(bytes: impl AsRef<[u8]>) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        begin_pending_restore, candidate_dir_name, copy_manifest_entry, find_pending_marker,
-        move_live_to_rollback, move_required, restore_rollback_file, rollback_dir_name,
-        sanitize_status_message, transition_phase, RestorePhase, RestoreService,
+        begin_pending_restore, begin_pending_restore_with_logger, candidate_dir_name,
+        copy_manifest_entry, find_pending_marker, move_live_to_rollback, move_required,
+        restore_rollback_file, rollback_dir_name, sanitize_status_message, transition_phase,
+        RestorePhase, RestoreService, PHASE_PREPARED,
     };
     use crate::domain::backup::BackupFileEntry;
     use crate::errors::AppError;
     use crate::services::backup::BackupService;
     use crate::storage::database::Database;
     use crate::storage::object_store::ObjectStore;
+    use crate::telemetry::StructuredLogger;
     use std::fs;
     use std::path::{Path, PathBuf};
     use uuid::Uuid;
@@ -890,6 +1194,48 @@ mod tests {
         let _ = fs::remove_dir_all(data_dir);
     }
 
+    #[tokio::test]
+    async fn malformed_restore_marker_emits_only_stable_failure_evidence() {
+        let data_dir = std::env::temp_dir().join(format!(
+            "link-world-restore-invalid-test-{}",
+            Uuid::new_v4()
+        ));
+        let restore_root = data_dir.join("restore");
+        fs::create_dir_all(&restore_root).expect("restore directory should create");
+        let canary = "restore-marker-secret-canary";
+        fs::write(
+            restore_root.join(PHASE_PREPARED),
+            format!("{{not-json-{canary}"),
+        )
+        .expect("malformed marker should write");
+        let structured_logger = StructuredLogger::new(&data_dir);
+
+        begin_pending_restore_with_logger(&data_dir, &structured_logger)
+            .await
+            .expect_err("malformed marker must fail closed");
+
+        let entries = StructuredLogger::read_recent(&data_dir, None)
+            .await
+            .expect("restore failure logs should read");
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].event, "restore.recovery_started");
+        assert_eq!(entries[1].event, "restore.recovery_failed");
+        assert_eq!(
+            entries[1].error_code.as_deref(),
+            Some("restore.marker_invalid")
+        );
+        let correlation_id = entries[0]
+            .correlation_id
+            .as_deref()
+            .expect("restore correlation should exist");
+        Uuid::parse_str(correlation_id).expect("restore correlation should be a UUID");
+        assert_eq!(entries[1].correlation_id.as_deref(), Some(correlation_id));
+        let raw_log = fs::read_to_string(structured_logger.path())
+            .expect("restore failure log should be readable");
+        assert!(!raw_log.contains(canary));
+        assert!(!raw_log.contains(data_dir.to_string_lossy().as_ref()));
+        let _ = fs::remove_dir_all(data_dir);
+    }
     async fn fixture() -> (PathBuf, Database, ObjectStore, BackupService) {
         let data_dir =
             std::env::temp_dir().join(format!("link-world-restore-test-{}", Uuid::new_v4()));
@@ -1005,7 +1351,7 @@ mod tests {
 
     #[tokio::test]
     async fn moving_live_interruption_restores_only_payloads_already_moved() {
-        let (data_dir, database, restore_service, _target_id, safety_id) =
+        let (data_dir, database, restore_service, target_id, safety_id) =
             prepared_restore_fixture().await;
         database.pool().close().await;
 
@@ -1028,16 +1374,41 @@ mod tests {
         )
         .expect("database should move before simulated interruption");
 
-        assert!(begin_pending_restore(&data_dir)
-            .await
-            .expect("moving-live recovery should succeed")
-            .is_none());
+        let structured_logger = StructuredLogger::new(&data_dir);
+        assert!(
+            begin_pending_restore_with_logger(&data_dir, &structured_logger)
+                .await
+                .expect("moving-live recovery should succeed")
+                .is_none()
+        );
         assert_live_state(&data_dir, "current").await;
         let status = restore_service
             .get_last_status()
             .expect("restore status should read")
             .expect("restore status should exist");
         assert_eq!(status.status, "rolled_back");
+        assert_eq!(
+            status.correlation_id.as_deref(),
+            Some(marker.transaction_id.as_str())
+        );
+        let entries = StructuredLogger::read_recent(&data_dir, None)
+            .await
+            .expect("restore rollback logs should read");
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].event, "restore.recovery_started");
+        assert_eq!(entries[1].event, "restore.rolled_back");
+        assert_eq!(
+            entries[1].error_code.as_deref(),
+            Some("restore.interrupted")
+        );
+        assert!(entries.iter().all(|entry| {
+            entry.correlation_id.as_deref() == Some(marker.transaction_id.as_str())
+        }));
+        let raw_log = fs::read_to_string(structured_logger.path())
+            .expect("restore rollback log should be readable");
+        assert!(!raw_log.contains(&target_id));
+        assert!(!raw_log.contains(&safety_id));
+        assert!(!raw_log.contains(data_dir.to_string_lossy().as_ref()));
         assert!(data_dir.join("backups").join(safety_id).is_dir());
         let _ = fs::remove_dir_all(data_dir);
     }
@@ -1108,6 +1479,7 @@ mod tests {
         assert_live_state(&data_dir, "target").await;
         resumed_transaction
             .complete()
+            .await
             .expect("resumed restore should complete");
 
         let status = restore_service
@@ -1120,7 +1492,7 @@ mod tests {
 
     #[tokio::test]
     async fn prepared_candidate_tampering_fails_without_touching_live_data() {
-        let (data_dir, database, restore_service, _target_id, _safety_id) =
+        let (data_dir, database, restore_service, target_id, safety_id) =
             prepared_restore_fixture().await;
         database.pool().close().await;
 
@@ -1138,16 +1510,42 @@ mod tests {
         )
         .expect("candidate should be tampered");
 
-        assert!(begin_pending_restore(&data_dir)
-            .await
-            .expect("invalid prepared candidate should be abandoned")
-            .is_none());
+        let structured_logger = StructuredLogger::new(&data_dir);
+        assert!(
+            begin_pending_restore_with_logger(&data_dir, &structured_logger)
+                .await
+                .expect("invalid prepared candidate should be abandoned")
+                .is_none()
+        );
         assert_live_state(&data_dir, "current").await;
         let status = restore_service
             .get_last_status()
             .expect("restore status should read")
             .expect("restore status should exist");
         assert_eq!(status.status, "failed");
+        assert_eq!(
+            status.correlation_id.as_deref(),
+            Some(marker.transaction_id.as_str())
+        );
+        let entries = StructuredLogger::read_recent(&data_dir, None)
+            .await
+            .expect("restore failure logs should read");
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].event, "restore.recovery_started");
+        assert_eq!(entries[1].event, "restore.failed");
+        assert_eq!(
+            entries[1].error_code.as_deref(),
+            Some("restore.candidate_invalid")
+        );
+        assert!(entries.iter().all(|entry| {
+            entry.correlation_id.as_deref() == Some(marker.transaction_id.as_str())
+        }));
+        let raw_log = fs::read_to_string(structured_logger.path())
+            .expect("restore failure log should be readable");
+        assert!(!raw_log.contains("tampered"));
+        assert!(!raw_log.contains(&target_id));
+        assert!(!raw_log.contains(&safety_id));
+        assert!(!raw_log.contains(data_dir.to_string_lossy().as_ref()));
         let _ = fs::remove_dir_all(data_dir);
     }
 
@@ -1217,7 +1615,9 @@ mod tests {
         )
         .expect("object should mutate");
 
-        let restore_service = RestoreService::new(backup_service, data_dir.clone());
+        let structured_logger = StructuredLogger::new(&data_dir);
+        let restore_service = RestoreService::new(backup_service, data_dir.clone())
+            .with_structured_logger(structured_logger.clone());
         let preparation = restore_service
             .prepare_restore(&target.backup_id)
             .await
@@ -1226,7 +1626,7 @@ mod tests {
         assert_ne!(preparation.backup_id, preparation.safety_backup_id);
 
         database.pool().close().await;
-        let transaction = begin_pending_restore(&data_dir)
+        let transaction = begin_pending_restore_with_logger(&data_dir, &structured_logger)
             .await
             .expect("pending restore should start")
             .expect("restore transaction should exist");
@@ -1254,7 +1654,43 @@ mod tests {
             b"target"
         );
 
-        transaction.complete().expect("restore should complete");
+        transaction
+            .complete()
+            .await
+            .expect("restore should complete");
+        let status = restore_service
+            .get_last_status()
+            .expect("restore status should read")
+            .expect("restore status should exist");
+        assert_eq!(
+            status.correlation_id.as_deref(),
+            Some(preparation.correlation_id.as_str())
+        );
+        let entries = StructuredLogger::read_recent(&data_dir, None)
+            .await
+            .expect("restore logs should read");
+        assert_eq!(
+            entries
+                .iter()
+                .map(|entry| entry.event.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "restore.prepare_started",
+                "restore.prepared",
+                "restore.recovery_started",
+                "restore.candidate_installed",
+                "restore.succeeded",
+            ]
+        );
+        assert!(entries.iter().all(|entry| {
+            entry.correlation_id.as_deref() == Some(preparation.correlation_id.as_str())
+                && entry.error_code.is_none()
+        }));
+        let raw_log =
+            fs::read_to_string(structured_logger.path()).expect("restore log should be readable");
+        assert!(!raw_log.contains(&preparation.backup_id));
+        assert!(!raw_log.contains(&preparation.safety_backup_id));
+        assert!(!raw_log.contains(data_dir.to_string_lossy().as_ref()));
         restored_database.pool().close().await;
         let _ = fs::remove_dir_all(data_dir);
     }
@@ -1296,6 +1732,7 @@ mod tests {
 
         transaction
             .rollback("test injected database failure")
+            .await
             .expect("restore should roll back");
         let current_database = Database::initialize(data_dir.clone())
             .await

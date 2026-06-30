@@ -126,15 +126,15 @@ verify_backup 进行：
 
 用户在 Storage 设置页二次确认后，prepare_restore 顺序执行：
 
-1. 重新验证目标 restore point 的 manifest、payload hash 和 SQLite quick_check。
+1. 生成 transaction/correlation UUID，并重新验证目标 restore point 的 manifest、payload hash 和 SQLite quick_check。
 2. 为当前在线数据创建一个独立 safety restore point。
 3. 把目标数据库和对象文件复制到 restore/candidate-<transaction-id>。
 4. 在候选数据库副本上运行当前全部 migration。
 5. 执行 PRAGMA quick_check、foreign_key_check 和 WAL checkpoint。
 6. 按迁移后的数据库重新生成候选 manifest 与 SHA-256 sidecar。
 7. 再次完整验证候选目录。
-8. 使用 create_new 写入 pending.prepared.json。
-9. 返回 RestorePreparation；前端随后调用专用重启命令。
+8. 使用 create_new 把同一 UUID 写入 pending.prepared.json。
+9. 返回包含 correlationId 的 RestorePreparation；前端随后调用专用重启命令。
 
 任一步失败时不写 pending marker，不触碰在线数据；已经创建的 safety restore point 保留，失败候选目录被清理。
 
@@ -175,7 +175,7 @@ apply 流程：
 - 自动回滚成功后应用继续使用旧数据启动；若 rollback payload 本身缺失，启动失败而不是在不一致数据上继续运行。
 - safety restore point 不随事务清理，可用于人工恢复和问题调查。
 
-恢复结果只包含 backupId、safetyBackupId、状态、完成时间和脱敏错误摘要，不返回正文、文件清单或本机绝对路径。
+恢复结果只包含可选 correlationId、backupId、safetyBackupId、状态、完成时间和脱敏错误摘要，不返回正文、文件清单或本机绝对路径；新结果始终写入 marker 的 transaction UUID，旧 last-result 缺少该字段时仍可读取。
 
 ### 7.4 控制目录
 
@@ -194,7 +194,9 @@ apply 流程：
         objects/
       last-result.json
 
-控制文件上限为 64 KiB。backupId、safetyBackupId 和 transactionId 均按后端生成的受限标识符校验；所有 candidate/rollback 路径由后端在 app data 目录内派生。
+控制文件上限为 64 KiB。backupId、safetyBackupId 按受限标识符校验，transactionId 必须是 UUID；所有 candidate/rollback 路径由后端在 app data 目录内派生。
+
+同一 transaction UUID 关联 `restore.prepare_started/prepared/recovery_started/candidate_installed/succeeded/failed/rolled_back/recovery_failed`，并跨 prepare result、pending marker、last-result 和进程重启延续。日志只写静态消息和稳定 `restore.*` code；target/safety backup ID、候选内容、marker 原文、绝对路径和 raw error 不进入日志。logger 为 best-effort，不得改变 restore 文件事务的成功、失败或回滚结果。
 
 ### 7.5 启动迁移保护
 
@@ -245,9 +247,9 @@ Recovery UI 的后端命令边界：
 - create_backup：创建 restore point，返回 BackupSummary；startup recovery 模式禁用。
 - list_backups：按创建时间倒序返回 summary；损坏 manifest 以 status=invalid 暴露；startup recovery 模式可用。
 - verify_backup：执行完整 hash 与 SQLite 校验，返回 BackupVerification；startup recovery 模式可用。
-- prepare_restore：重新验证、创建 safety backup、迁移并验证候选，返回 RestorePreparation；startup recovery 模式可用但要求 live DB 可临时连接。
+- prepare_restore：重新验证、创建 safety backup、迁移并验证候选，返回含 correlationId 的 RestorePreparation；startup recovery 模式可用但要求 live DB 可临时连接。
 - restart_to_apply_restore：仅在 pending restore 存在时安排应用重启；startup recovery 模式可用。
-- get_restore_status：返回最近一次 succeeded、rolled_back 或 failed 结果；没有结果时返回 null；startup recovery 模式可用。
+- get_restore_status：返回最近一次 succeeded、rolled_back 或 failed 结果及可选 correlationId；没有结果时返回 null；startup recovery 模式可用。
 
 - export_library：导出全库非 secret 对象到 Markdown/JSON 目录，返回 PortableExportSummary；不接受路径参数，startup recovery 模式禁用。
 
@@ -272,6 +274,7 @@ Recovery UI 的后端命令边界：
 - prepare 阶段创建 safety backup、迁移候选并生成 pending marker。
 - prepared 候选被篡改时不触碰在线数据。
 - prepared、moving-live、live-moved、candidate-installed 四个阶段的确定性中断与下次启动收敛。
+- restore prepare→重启→candidate→success 全链路 correlation、moving-live 中断回滚、candidate 篡改和损坏 marker 的稳定 `restore.*` 日志及敏感信息排除。
 - 候选数据库损坏后的 rollback，并验证旧数据库重新可读。
 - live-moved 中部分候选已安装时删除候选并恢复旧数据库/objects。
 - moving-live 中尚未移动的 SQLite sidecar 不被删除。

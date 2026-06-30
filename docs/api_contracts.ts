@@ -451,12 +451,14 @@ export interface BackupVerification {
 }
 
 export interface RestorePreparation {
+  correlationId: string;
   backupId: string;
   safetyBackupId: string;
   restartRequired: boolean;
 }
 
 export interface RestoreStatus {
+  correlationId?: string;
   backupId: string;
   safetyBackupId: string;
   status: 'succeeded' | 'rolled_back' | 'failed';
@@ -659,10 +661,10 @@ export interface BackupCommands {
     backupId: string;
   }) => Promise<IpcResponse<BackupVerification>>;
 
-  // 重新校验目标、创建 safety backup，并迁移和验证私有候选目录。startup recovery 模式会临时连接 live DB 但不运行普通 migration。
+  // 重新校验目标、创建 safety backup，并迁移和验证私有候选目录；返回 transaction correlationId。startup recovery 模式会临时连接 live DB 但不运行普通 migration。
   prepare_restore: (args: { backupId: string }) => Promise<IpcResponse<RestorePreparation>>;
 
-  // 返回最近一次恢复结果；不返回正文、文件清单或绝对路径；startup recovery 模式可用。
+  // 返回最近一次恢复结果及可选 correlationId（旧结果可缺省）；不返回正文、文件清单或绝对路径；startup recovery 模式可用。
   get_restore_status: () => Promise<IpcResponse<RestoreStatus | null>>;
 
   // 仅在 pending restore 已存在时安排应用重启；文件替换发生在下次数据库初始化前；startup recovery 模式可用。

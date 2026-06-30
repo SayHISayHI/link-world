@@ -3,7 +3,7 @@ use crate::errors::{AppError, AppResult};
 use crate::repositories::jobs::JobsRepository;
 use crate::runtime::models::ModelProviderRegistry;
 use crate::services::migration::MigrationService;
-use crate::services::restore::begin_pending_restore;
+use crate::services::restore::begin_pending_restore_with_logger;
 use crate::storage::database::Database;
 use crate::storage::object_store::ObjectStore;
 use crate::telemetry::StructuredLogger;
@@ -334,7 +334,8 @@ impl AppState {
 
     pub async fn initialize_from_data_dir(data_dir: PathBuf) -> AppResult<Self> {
         let structured_logger = StructuredLogger::new(&data_dir);
-        let restore_transaction = begin_pending_restore(&data_dir).await?;
+        let restore_transaction =
+            begin_pending_restore_with_logger(&data_dir, &structured_logger).await?;
         let validate_restored_data = restore_transaction.is_some();
         let storage =
             Self::initialize_storage(data_dir.clone(), validate_restored_data, &structured_logger)
@@ -342,12 +343,12 @@ impl AppState {
 
         let (database, object_store) = match (storage, restore_transaction) {
             (Ok(storage), Some(transaction)) => {
-                transaction.complete()?;
+                transaction.complete().await?;
                 storage
             }
             (Err(error), Some(transaction)) => {
                 let reason = error.to_string();
-                transaction.rollback(&reason)?;
+                transaction.rollback(&reason).await?;
                 Self::initialize_storage(data_dir.clone(), false, &structured_logger).await?
             }
             (Ok(storage), None) => storage,

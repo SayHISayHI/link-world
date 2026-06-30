@@ -60,6 +60,7 @@ pub struct BackupVerification {
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct RestorePreparation {
+    pub correlation_id: String,
     pub backup_id: String,
     pub safety_backup_id: String,
     pub restart_required: bool,
@@ -68,6 +69,8 @@ pub struct RestorePreparation {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct RestoreStatus {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub correlation_id: Option<String>,
     pub backup_id: String,
     pub safety_backup_id: String,
     pub status: String,
