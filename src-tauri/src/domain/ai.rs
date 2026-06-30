@@ -104,6 +104,7 @@ pub struct ModelProviderTestResult {
 #[serde(rename_all = "camelCase")]
 pub struct AIEnrichmentRunResult {
     pub job_id: String,
+    pub correlation_id: String,
     pub analysis_id: Option<String>,
     pub status: String,
     pub failure_reason: Option<String>,

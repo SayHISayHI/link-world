@@ -10,6 +10,7 @@ use crate::runtime::models::{
 };
 use crate::state::{AppState, SecretStore};
 use crate::storage::object_store::sha256_hex;
+use crate::telemetry::{StructuredLogEvent, StructuredLogger};
 use chrono::Utc;
 use reqwest::Url;
 use serde_json::{json, Value};
@@ -26,6 +27,7 @@ pub struct AIEnrichmentService {
     repository: AIRepository,
     model_registry: ModelProviderRegistry,
     secrets: SecretStore,
+    structured_logger: Option<StructuredLogger>,
 }
 
 impl AIEnrichmentService {
@@ -34,6 +36,7 @@ impl AIEnrichmentService {
             repository: AIRepository::new(pool),
             model_registry: ModelProviderRegistry::new()?,
             secrets,
+            structured_logger: None,
         })
     }
 
@@ -42,7 +45,20 @@ impl AIEnrichmentService {
             repository: AIRepository::new(state.database()?.pool().clone()),
             model_registry: state.model_registry().clone(),
             secrets: state.secrets().clone(),
+            structured_logger: state.structured_logger().cloned(),
         })
+    }
+
+    #[cfg(test)]
+    fn with_structured_logger(mut self, structured_logger: StructuredLogger) -> Self {
+        self.structured_logger = Some(structured_logger);
+        self
+    }
+
+    #[cfg(test)]
+    fn with_model_registry(mut self, model_registry: ModelProviderRegistry) -> Self {
+        self.model_registry = model_registry;
+        self
     }
 
     pub async fn update_model_provider_config(
@@ -238,24 +254,115 @@ impl AIEnrichmentService {
         &self,
         object_id: &str,
     ) -> AppResult<AIEnrichmentRunResult> {
-        let job_id = self.repository.create_enrichment_job(object_id).await?;
-        let result = self.run_enrichment_job(&job_id, object_id).await;
+        let correlation_id = Uuid::new_v4().to_string();
+        let job_id = match self
+            .repository
+            .create_enrichment_job(object_id, &correlation_id)
+            .await
+        {
+            Ok(job_id) => job_id,
+            Err(error) => {
+                self.record_log(
+                    StructuredLogEvent::error(
+                        "ai",
+                        "ai.enrichment.submit_failed",
+                        "AI enrichment submission failed.",
+                    )
+                    .with_correlation_id(&correlation_id)
+                    .with_object_id(object_id)
+                    .with_error_code("ai.local_failure"),
+                )
+                .await;
+                return Err(error);
+            }
+        };
+
+        self.record_log(
+            StructuredLogEvent::info("ai", "ai.enrichment.submitted", "AI enrichment submitted.")
+                .with_correlation_id(&correlation_id)
+                .with_object_id(object_id)
+                .with_job_id(&job_id),
+        )
+        .await;
+        self.record_log(
+            StructuredLogEvent::info("ai", "ai.enrichment.started", "AI enrichment started.")
+                .with_correlation_id(&correlation_id)
+                .with_object_id(object_id)
+                .with_job_id(&job_id),
+        )
+        .await;
+
+        let result = self
+            .run_enrichment_job(&job_id, object_id, &correlation_id)
+            .await;
 
         match result {
-            Ok(analysis_id) => Ok(AIEnrichmentRunResult {
-                job_id,
-                analysis_id: Some(analysis_id),
-                status: "succeeded".to_string(),
-                failure_reason: None,
-            }),
-            Err(error) => {
-                let failure_reason = ai_failure_reason(&error);
-                self.repository
-                    .fail_enrichment_job(&job_id, &failure_reason)
-                    .await?;
+            Ok(analysis_id) => {
+                self.record_log(
+                    StructuredLogEvent::info(
+                        "ai",
+                        "ai.enrichment.succeeded",
+                        "AI enrichment succeeded.",
+                    )
+                    .with_correlation_id(&correlation_id)
+                    .with_object_id(object_id)
+                    .with_job_id(&job_id),
+                )
+                .await;
 
                 Ok(AIEnrichmentRunResult {
                     job_id,
+                    correlation_id,
+                    analysis_id: Some(analysis_id),
+                    status: "succeeded".to_string(),
+                    failure_reason: None,
+                })
+            }
+            Err(error) => {
+                let failure_reason = ai_failure_reason(&error);
+                let error_code = ai_failure_code(&failure_reason);
+                if let Err(persistence_error) = self
+                    .repository
+                    .fail_enrichment_job(
+                        &job_id,
+                        object_id,
+                        &correlation_id,
+                        &failure_reason,
+                        &error_code,
+                    )
+                    .await
+                {
+                    self.record_log(
+                        StructuredLogEvent::error(
+                            "ai",
+                            "ai.enrichment.persist_failed",
+                            "AI enrichment failure persistence failed.",
+                        )
+                        .with_correlation_id(&correlation_id)
+                        .with_object_id(object_id)
+                        .with_job_id(&job_id)
+                        .with_error_code("ai.local_failure"),
+                    )
+                    .await;
+                    return Err(persistence_error);
+                }
+
+                self.record_log(
+                    StructuredLogEvent::error(
+                        "ai",
+                        "ai.enrichment.failed",
+                        "AI enrichment failed.",
+                    )
+                    .with_correlation_id(&correlation_id)
+                    .with_object_id(object_id)
+                    .with_job_id(&job_id)
+                    .with_error_code(&error_code),
+                )
+                .await;
+
+                Ok(AIEnrichmentRunResult {
+                    job_id,
+                    correlation_id,
                     analysis_id: None,
                     status: "failed".to_string(),
                     failure_reason: Some(failure_reason),
@@ -264,7 +371,18 @@ impl AIEnrichmentService {
         }
     }
 
-    async fn run_enrichment_job(&self, job_id: &str, object_id: &str) -> AppResult<String> {
+    async fn record_log(&self, event: StructuredLogEvent) {
+        if let Some(logger) = &self.structured_logger {
+            let _ = logger.record(event).await;
+        }
+    }
+
+    async fn run_enrichment_job(
+        &self,
+        job_id: &str,
+        object_id: &str,
+        correlation_id: &str,
+    ) -> AppResult<String> {
         let config = self
             .repository
             .get_enabled_chat_config()
@@ -329,7 +447,7 @@ impl AIEnrichmentService {
         };
 
         self.repository
-            .complete_enrichment_job(job_id, &analysis, &trace)
+            .complete_enrichment_job(job_id, correlation_id, &analysis, &trace)
             .await?;
 
         Ok(analysis_id)
@@ -455,6 +573,7 @@ pub fn spawn_ai_enrichment_runner(
         let payload = match result {
             Ok(Some(run)) => json!({
                 "jobId": run.job_id,
+                "correlationId": run.correlation_id,
                 "objectId": object_id,
                 "status": run.status,
                 "analysisId": run.analysis_id,
@@ -626,6 +745,25 @@ fn is_local_base_url(base_url: &str) -> bool {
         .ok()
         .and_then(|url| url.host_str().map(ToOwned::to_owned))
         .is_some_and(|host| matches!(host.as_str(), "localhost" | "127.0.0.1" | "::1"))
+}
+
+fn ai_failure_code(failure_reason: &str) -> String {
+    let code = failure_reason
+        .split_once(':')
+        .map(|(code, _)| code)
+        .unwrap_or("ai.failed");
+    if code.starts_with("ai.")
+        && code.len() <= 64
+        && code.chars().all(|character| {
+            character.is_ascii_lowercase()
+                || character.is_ascii_digit()
+                || matches!(character, '.' | '_')
+        })
+    {
+        code.to_string()
+    } else {
+        "ai.failed".to_string()
+    }
 }
 
 fn ai_failure_reason(error: &AppError) -> String {
@@ -810,13 +948,49 @@ fn truncate_chars(text: &str, max_chars: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        ai_failure_reason, build_general_enrichment_prompt, normalize_display_hints,
-        parse_analysis_output, validate_model_provider_config, AIEnrichmentService,
+        ai_failure_code, ai_failure_reason, build_general_enrichment_prompt,
+        normalize_display_hints, parse_analysis_output, validate_model_provider_config,
+        AIEnrichmentService,
     };
     use crate::domain::ai::{AIEnrichmentInput, ModelApiFamily, ModelProviderConfig};
-    use crate::errors::AppError;
+    use crate::errors::{AppError, AppResult};
+    use crate::runtime::models::{
+        ModelProviderRegistry, TextGenerationProvider, TextGenerationRequest,
+        TextGenerationResponse,
+    };
     use crate::state::SecretStore;
     use crate::storage::database::Database;
+    use crate::telemetry::StructuredLogger;
+    use std::future::Future;
+    use std::pin::Pin;
+    use std::sync::Arc;
+    use uuid::Uuid;
+
+    struct SuccessfulTextGenerationProvider;
+
+    impl TextGenerationProvider for SuccessfulTextGenerationProvider {
+        fn implementation_id(&self) -> &'static str {
+            "test-success"
+        }
+
+        fn supports(&self, _api_family: ModelApiFamily) -> bool {
+            true
+        }
+
+        fn generate(
+            &self,
+            _request: TextGenerationRequest,
+        ) -> Pin<Box<dyn Future<Output = AppResult<TextGenerationResponse>> + Send + '_>> {
+            Box::pin(async {
+                Ok(TextGenerationResponse {
+                    content: r#"{"summary":"Synthetic AI summary.","category":"engineering","tags":["rust"],"keyPoints":[],"claims":[],"actionItems":[],"risks":[]}"#.to_string(),
+                    prompt_tokens: Some(10),
+                    completion_tokens: Some(5),
+                    latency_ms: 12,
+                })
+            })
+        }
+    }
 
     #[test]
     fn parses_json_object_from_model_output() {
@@ -901,6 +1075,8 @@ mod tests {
         let auth = ai_failure_reason(&AppError::ModelAuth);
         assert!(auth.starts_with("ai.model_auth:"));
         assert!(auth.contains("Settings"));
+        assert_eq!(ai_failure_code(&auth), "ai.model_auth");
+        assert_eq!(ai_failure_code("raw provider body"), "ai.failed");
 
         let timeout = ai_failure_reason(&AppError::NetworkTimeout);
         assert!(timeout.starts_with("ai.timeout:"));
@@ -934,6 +1110,140 @@ mod tests {
         ));
         assert!(privacy.starts_with("ai.policy_denied:"));
         assert!(privacy.contains("local model"));
+    }
+
+    #[tokio::test]
+    async fn successful_enrichment_persists_and_logs_one_correlation_without_content() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        sqlx::query(
+            r#"
+            INSERT INTO knowledge_objects (
+                id, user_id, object_type, title, privacy_level, lifecycle_status,
+                captured_at, updated_at
+            ) VALUES (
+                'obj-ai-success', 'local', 'article', 'AI success fixture', 'personal', 'parsed',
+                '2026-06-30T00:00:00Z', '2026-06-30T00:00:00Z'
+            )
+            "#,
+        )
+        .execute(database.pool())
+        .await
+        .expect("fixture object should insert");
+        sqlx::query(
+            r#"
+            INSERT INTO parsed_documents (
+                id, object_id, title, text_content, word_count, content_hash,
+                parser_id, parser_version, created_at
+            ) VALUES (
+                'parsed-ai-success', 'obj-ai-success', 'AI success fixture',
+                'Synthetic private body that must never enter operational evidence.',
+                9, 'hash-ai-success', 'test.parser', '0.1.0', '2026-06-30T00:00:00Z'
+            )
+            "#,
+        )
+        .execute(database.pool())
+        .await
+        .expect("parsed document should insert");
+
+        let telemetry_dir =
+            std::env::temp_dir().join(format!("link-world-ai-telemetry-{}", Uuid::new_v4()));
+        let service = AIEnrichmentService::new(database.pool().clone(), SecretStore::default())
+            .expect("AI service should initialize")
+            .with_model_registry(ModelProviderRegistry::from_text_generation_provider(
+                Arc::new(SuccessfulTextGenerationProvider),
+            ))
+            .with_structured_logger(StructuredLogger::new(&telemetry_dir));
+        service
+            .save_model_provider_config(ModelProviderConfig {
+                id: Some("local-test-provider".to_string()),
+                provider: "local-test".to_string(),
+                api_family: ModelApiFamily::OpenAiChatCompletions,
+                chat_base_url: Some("http://127.0.0.1:1/v1".to_string()),
+                embeddings_base_url: None,
+                api_key: None,
+                default_chat_model: Some("test-model".to_string()),
+                default_embedding_model: None,
+                capabilities: vec!["chat".to_string()],
+                enabled: true,
+            })
+            .await
+            .expect("local test provider should save");
+
+        let run = service
+            .run_enrichment_for_object("obj-ai-success")
+            .await
+            .expect("enrichment should succeed");
+
+        assert_eq!(run.status, "succeeded");
+        assert!(run.analysis_id.is_some());
+        assert!(Uuid::parse_str(&run.correlation_id).is_ok());
+
+        let job_payload: String =
+            sqlx::query_scalar("SELECT payload_json FROM background_jobs WHERE id = ?1")
+                .bind(&run.job_id)
+                .fetch_one(database.pool())
+                .await
+                .expect("AI job payload should be readable");
+        let job_payload: serde_json::Value =
+            serde_json::from_str(&job_payload).expect("AI job payload should be JSON");
+        assert_eq!(
+            job_payload["correlationId"].as_str(),
+            Some(run.correlation_id.as_str())
+        );
+
+        let events = sqlx::query_as::<_, (String, String, String)>(
+            r#"
+            SELECT event_type, correlation_id, payload_json
+            FROM domain_events
+            WHERE causation_id = ?1
+            ORDER BY occurred_at, event_type
+            "#,
+        )
+        .bind(&run.job_id)
+        .fetch_all(database.pool())
+        .await
+        .expect("AI events should be readable");
+        assert_eq!(events.len(), 2);
+        assert_eq!(
+            events
+                .iter()
+                .map(|(event_type, _, _)| event_type.as_str())
+                .collect::<std::collections::BTreeSet<_>>(),
+            std::collections::BTreeSet::from(["analysis.created", "analysis.requested"])
+        );
+        assert!(events
+            .iter()
+            .all(|(_, correlation_id, _)| correlation_id == &run.correlation_id));
+        assert!(events.iter().all(|(_, _, payload)| {
+            !payload.contains("Synthetic private body")
+                && !payload.contains("test-model")
+                && !payload.contains("local-test")
+        }));
+
+        let logs = StructuredLogger::read_recent(&telemetry_dir, Some(20))
+            .await
+            .expect("AI logs should be readable");
+        assert_eq!(
+            logs.iter()
+                .map(|entry| entry.event.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "ai.enrichment.submitted",
+                "ai.enrichment.started",
+                "ai.enrichment.succeeded",
+            ]
+        );
+        assert!(logs.iter().all(|entry| {
+            entry.correlation_id.as_deref() == Some(run.correlation_id.as_str())
+                && entry.object_id.as_deref() == Some("obj-ai-success")
+                && entry.job_id.as_deref() == Some(run.job_id.as_str())
+                && !entry.message.contains("Synthetic private body")
+                && !entry.message.contains("test-model")
+        }));
+
+        let _ = std::fs::remove_dir_all(telemetry_dir);
     }
 
     #[tokio::test]
@@ -991,8 +1301,11 @@ mod tests {
         .execute(database.pool())
         .await
         .expect("fixture object should insert");
+        let telemetry_dir =
+            std::env::temp_dir().join(format!("link-world-ai-failure-{}", Uuid::new_v4()));
         let service = AIEnrichmentService::new(database.pool().clone(), SecretStore::default())
-            .expect("AI service should initialize");
+            .expect("AI service should initialize")
+            .with_structured_logger(StructuredLogger::new(&telemetry_dir));
 
         let run = service
             .run_enrichment_for_object("obj-ai-failure")
@@ -1015,5 +1328,78 @@ mod tests {
 
         assert!(last_error.starts_with("ai.not_configured:"));
         assert!(!last_error.contains("no enabled chat model provider configured"));
+        assert!(Uuid::parse_str(&run.correlation_id).is_ok());
+
+        let job_payload: String =
+            sqlx::query_scalar("SELECT payload_json FROM background_jobs WHERE id = ?1")
+                .bind(&run.job_id)
+                .fetch_one(database.pool())
+                .await
+                .expect("failed AI job payload should be readable");
+        let job_payload: serde_json::Value =
+            serde_json::from_str(&job_payload).expect("failed AI job payload should be JSON");
+        assert_eq!(
+            job_payload["correlationId"].as_str(),
+            Some(run.correlation_id.as_str())
+        );
+
+        let events = sqlx::query_as::<_, (String, String, String)>(
+            r#"
+            SELECT event_type, correlation_id, payload_json
+            FROM domain_events
+            WHERE causation_id = ?1
+            ORDER BY occurred_at, event_type
+            "#,
+        )
+        .bind(&run.job_id)
+        .fetch_all(database.pool())
+        .await
+        .expect("failed AI events should be readable");
+        assert_eq!(events.len(), 2);
+        assert_eq!(
+            events
+                .iter()
+                .map(|(event_type, _, _)| event_type.as_str())
+                .collect::<std::collections::BTreeSet<_>>(),
+            std::collections::BTreeSet::from(["analysis.failed", "analysis.requested"])
+        );
+        assert!(events
+            .iter()
+            .all(|(_, correlation_id, _)| correlation_id == &run.correlation_id));
+        let failed_payload = events
+            .iter()
+            .find(|(event_type, _, _)| event_type == "analysis.failed")
+            .map(|(_, _, payload)| payload)
+            .expect("failed event should exist");
+        assert_eq!(failed_payload, r#"{"errorCode":"ai.not_configured"}"#);
+        assert!(!failed_payload.contains("no enabled chat model provider configured"));
+
+        let logs = StructuredLogger::read_recent(&telemetry_dir, Some(20))
+            .await
+            .expect("failed AI logs should be readable");
+        assert_eq!(
+            logs.iter()
+                .map(|entry| entry.event.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "ai.enrichment.submitted",
+                "ai.enrichment.started",
+                "ai.enrichment.failed",
+            ]
+        );
+        assert!(logs.iter().all(|entry| {
+            entry.correlation_id.as_deref() == Some(run.correlation_id.as_str())
+                && entry.object_id.as_deref() == Some("obj-ai-failure")
+                && entry.job_id.as_deref() == Some(run.job_id.as_str())
+                && !entry
+                    .message
+                    .contains("no enabled chat model provider configured")
+        }));
+        assert_eq!(
+            logs.last().and_then(|entry| entry.error_code.as_deref()),
+            Some("ai.not_configured")
+        );
+
+        let _ = std::fs::remove_dir_all(telemetry_dir);
     }
 }

@@ -139,7 +139,7 @@ Diagnostics package must not contain:
 - URL query or fragment values.
 - credential references such as model-provider keyring ids.
 - local absolute data/database/object-store paths inside the exported JSON.
-- domain event payloads; capture event payloads themselves must not duplicate source/canonical URL, query/fragment or content.
+- domain event payloads; capture event payloads themselves must not duplicate source/canonical URL, query/fragment or content, and AI enrichment events may contain only an internal analysis id or stable `ai.*` code.
 - raw or unvalidated log lines, rotated log files, exception chains and arbitrary free-text error messages.
 
 Export requires explicit user confirmation, accepts no caller-selected path, writes atomically below app data `support-bundles`, and never uploads automatically. The command response may return the local file path so the user can find the file; that path is not embedded in the exported JSON.

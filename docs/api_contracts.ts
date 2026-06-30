@@ -280,6 +280,7 @@ export interface ModelProviderTestResult {
 
 export interface AIEnrichmentRunResult {
   jobId: string;
+  correlationId: string;
   analysisId?: string;
   status: 'succeeded' | 'failed' | string;
   // Failed AI jobs use stable `ai.*` prefixes such as ai.timeout, ai.model_auth,
@@ -666,8 +667,6 @@ export interface BackupCommands {
   restart_to_apply_restore: () => Promise<IpcResponse<boolean>>;
 }
 /**
-
-/**
  * 模块：Portable Export
  */
 export interface PortableExportCommands {
@@ -678,6 +677,7 @@ export interface PortableExportCommands {
   export_library: () => Promise<IpcResponse<PortableExportSummary>>;
 }
 
+/**
  * 模块：Jobs / Events / Diagnostics
  */
 export interface OperationsCommands {

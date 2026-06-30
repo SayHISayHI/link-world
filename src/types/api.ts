@@ -310,6 +310,7 @@ export interface ModelProviderTestResult {
 
 export interface AIEnrichmentRunResult {
   jobId: string;
+  correlationId: string;
   analysisId?: string;
   status: "succeeded" | "failed" | string;
   failureReason?: string;

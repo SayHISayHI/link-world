@@ -26,6 +26,13 @@ impl ModelProviderRegistry {
             .any(|provider| provider.supports(api_family))
     }
 
+    #[cfg(test)]
+    pub(crate) fn from_text_generation_provider(provider: Arc<dyn TextGenerationProvider>) -> Self {
+        Self {
+            text_generation: Arc::new(vec![provider]),
+        }
+    }
+
     pub async fn generate(
         &self,
         request: TextGenerationRequest,

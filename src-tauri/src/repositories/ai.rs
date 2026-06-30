@@ -297,9 +297,15 @@ impl AIRepository {
             .ok_or(AppError::ObjectNotFound)
     }
 
-    pub async fn create_enrichment_job(&self, object_id: &str) -> AppResult<String> {
+    pub async fn create_enrichment_job(
+        &self,
+        object_id: &str,
+        correlation_id: &str,
+    ) -> AppResult<String> {
+        validate_ai_correlation_id(correlation_id)?;
         let now = Utc::now().to_rfc3339();
         let job_id = Uuid::new_v4().to_string();
+        let mut tx = self.pool.begin().await?;
 
         sqlx::query(
             r#"
@@ -319,10 +325,28 @@ impl AIRepository {
         .bind(&job_id)
         .bind(AI_ENRICHMENT_JOB_TYPE)
         .bind(object_id)
-        .bind(json!({ "objectId": object_id }).to_string())
-        .bind(now)
-        .execute(&self.pool)
+        .bind(
+            json!({
+                "objectId": object_id,
+                "correlationId": correlation_id,
+            })
+            .to_string(),
+        )
+        .bind(&now)
+        .execute(&mut *tx)
         .await?;
+
+        insert_ai_domain_event(
+            &mut tx,
+            "analysis.requested",
+            object_id,
+            &job_id,
+            correlation_id,
+            "{}",
+            &now,
+        )
+        .await?;
+        tx.commit().await?;
 
         Ok(job_id)
     }
@@ -330,11 +354,13 @@ impl AIRepository {
     pub async fn complete_enrichment_job(
         &self,
         job_id: &str,
+        correlation_id: &str,
         analysis: &AIAnalysisSubmission,
         trace: &AITraceSubmission,
     ) -> AppResult<()> {
         let now = Utc::now().to_rfc3339();
         let mut tx = self.pool.begin().await?;
+        ensure_ai_job_identity(&mut tx, job_id, &analysis.object_id, correlation_id).await?;
 
         sqlx::query(
             r#"
@@ -451,13 +477,34 @@ impl AIRepository {
 
         SearchRepository::reindex_object(&mut tx, &analysis.object_id).await?;
 
+        insert_ai_domain_event(
+            &mut tx,
+            "analysis.created",
+            &analysis.object_id,
+            job_id,
+            correlation_id,
+            &json!({ "analysisId": analysis.id }).to_string(),
+            &now,
+        )
+        .await?;
+
         tx.commit().await?;
         Ok(())
     }
 
-    pub async fn fail_enrichment_job(&self, job_id: &str, failure_reason: &str) -> AppResult<()> {
+    pub async fn fail_enrichment_job(
+        &self,
+        job_id: &str,
+        object_id: &str,
+        correlation_id: &str,
+        failure_reason: &str,
+        error_code: &str,
+    ) -> AppResult<()> {
         let now = Utc::now().to_rfc3339();
         let failure_reason = truncate_failure_reason(failure_reason);
+        let error_code = safe_ai_failure_code(error_code);
+        let mut tx = self.pool.begin().await?;
+        ensure_ai_job_identity(&mut tx, job_id, object_id, correlation_id).await?;
 
         sqlx::query(
             r#"
@@ -472,11 +519,112 @@ impl AIRepository {
         )
         .bind(job_id)
         .bind(failure_reason)
-        .bind(now)
-        .execute(&self.pool)
+        .bind(&now)
+        .execute(&mut *tx)
         .await?;
 
+        insert_ai_domain_event(
+            &mut tx,
+            "analysis.failed",
+            object_id,
+            job_id,
+            correlation_id,
+            &json!({ "errorCode": error_code }).to_string(),
+            &now,
+        )
+        .await?;
+        tx.commit().await?;
+
         Ok(())
+    }
+}
+
+fn validate_ai_correlation_id(correlation_id: &str) -> AppResult<()> {
+    Uuid::parse_str(correlation_id)
+        .map(|_| ())
+        .map_err(|_| AppError::PolicyDenied("invalid AI enrichment correlation id".to_string()))
+}
+
+async fn ensure_ai_job_identity(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    job_id: &str,
+    object_id: &str,
+    correlation_id: &str,
+) -> AppResult<()> {
+    validate_ai_correlation_id(correlation_id)?;
+    let row: Option<(String, Option<String>)> =
+        sqlx::query_as("SELECT payload_json, object_id FROM background_jobs WHERE id = ?1")
+            .bind(job_id)
+            .fetch_optional(&mut **tx)
+            .await?;
+    let Some((payload_json, stored_object_id)) = row else {
+        return Err(AppError::PolicyDenied(
+            "AI enrichment job identity mismatch".to_string(),
+        ));
+    };
+    let payload = serde_json::from_str::<serde_json::Value>(&payload_json).ok();
+    let stored_correlation = payload
+        .as_ref()
+        .and_then(|payload| payload.get("correlationId"))
+        .and_then(serde_json::Value::as_str);
+    let payload_object_id = payload
+        .as_ref()
+        .and_then(|payload| payload.get("objectId"))
+        .and_then(serde_json::Value::as_str);
+
+    if stored_correlation != Some(correlation_id)
+        || stored_object_id.as_deref() != Some(object_id)
+        || payload_object_id != Some(object_id)
+    {
+        return Err(AppError::PolicyDenied(
+            "AI enrichment job identity mismatch".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
+async fn insert_ai_domain_event(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    event_type: &str,
+    object_id: &str,
+    causation_id: &str,
+    correlation_id: &str,
+    payload_json: &str,
+    occurred_at: &str,
+) -> AppResult<()> {
+    sqlx::query(
+        r#"
+        INSERT INTO domain_events (
+            id, event_type, event_version, user_id, object_id,
+            causation_id, correlation_id, payload_json, occurred_at
+        ) VALUES (?1, ?2, 1, 'local', ?3, ?4, ?5, ?6, ?7)
+        "#,
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind(event_type)
+    .bind(object_id)
+    .bind(causation_id)
+    .bind(correlation_id)
+    .bind(payload_json)
+    .bind(occurred_at)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+fn safe_ai_failure_code(value: &str) -> &str {
+    if value.starts_with("ai.")
+        && value.len() <= 64
+        && value.chars().all(|character| {
+            character.is_ascii_lowercase()
+                || character.is_ascii_digit()
+                || matches!(character, '.' | '_')
+        })
+    {
+        value
+    } else {
+        "ai.failed"
     }
 }
 
@@ -532,6 +680,7 @@ mod tests {
     use crate::domain::ai::{
         AIAnalysisSubmission, AITraceSubmission, ModelApiFamily, ModelProviderConfig,
     };
+    use crate::errors::AppError;
     use crate::repositories::search::SearchRepository;
     use crate::storage::database::Database;
 
@@ -680,7 +829,7 @@ mod tests {
         .expect("parsed document should insert");
 
         let job_id = repository
-            .create_enrichment_job("obj-ai-search")
+            .create_enrichment_job("obj-ai-search", "d4b258f0-17cf-4b85-81f1-892ad3f10b27")
             .await
             .expect("job should create");
         let analysis = AIAnalysisSubmission {
@@ -723,8 +872,31 @@ mod tests {
             created_at: "2026-06-17T00:00:01Z".to_string(),
         };
 
+        let mismatch_error = repository
+            .complete_enrichment_job(
+                &job_id,
+                "35e7715e-7627-461d-8777-f005d633912d",
+                &analysis,
+                &trace,
+            )
+            .await
+            .expect_err("mismatched correlation must fail before writes");
+        assert!(matches!(mismatch_error, AppError::PolicyDenied(_)));
+        let partial_analysis_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM ai_analysis WHERE id = ?1")
+                .bind(&analysis.id)
+                .fetch_one(database.pool())
+                .await
+                .expect("partial analysis count should be readable");
+        assert_eq!(partial_analysis_count, 0);
+
         repository
-            .complete_enrichment_job(&job_id, &analysis, &trace)
+            .complete_enrichment_job(
+                &job_id,
+                "d4b258f0-17cf-4b85-81f1-892ad3f10b27",
+                &analysis,
+                &trace,
+            )
             .await
             .expect("job should complete");
 

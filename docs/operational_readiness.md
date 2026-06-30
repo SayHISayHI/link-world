@@ -49,7 +49,7 @@ MVP 主支持：
 - 当前 provider、API protocol、base URL、model 与凭据是否已配置；不得显示 secret 内容。
 - 插件列表和权限状态。
 
-当前实现状态：Models 已提供正式 Settings route、多配置、默认项、连接测试和 credential 状态；Storage 已支持创建、列出、验证、两阶段恢复和自动 rollback，Sprint 2 readiness 自动化门禁已建立，真实 Windows 故障矩阵仍是发布门禁；Sprint 3 已建立 capture/job readiness 自动化和真实网络/进程故障矩阵，矩阵实测仍是完成门槛；Diagnostics 已提供本地健康快照、DB/object store/job/model 摘要、失败 job 打开对象与 capture retry、显式确认的脱敏 JSON 支持包及 size/SHA-256，并已接入 capture submit/fetch 的有界结构化日志与 correlation id；Sprint 5 readiness 自动化和 W5-01 至 W5-14 发布候选矩阵已建立，但其他关键流程日志/correlation 与真实矩阵仍未完成；Privacy、Capture、Plugins、About 仅提供明确的里程碑占位，不计为已交付。
+当前实现状态：Models 已提供正式 Settings route、多配置、默认项、连接测试和 credential 状态；Storage 已支持创建、列出、验证、两阶段恢复和自动 rollback，Sprint 2 readiness 自动化门禁已建立，真实 Windows 故障矩阵仍是发布门禁；Sprint 3 已建立 capture/job readiness 自动化和真实网络/进程故障矩阵，矩阵实测仍是完成门槛；Diagnostics 已提供本地健康快照、DB/object store/job/model 摘要、失败 job 打开对象与 capture retry、显式确认的脱敏 JSON 支持包及 size/SHA-256，并已接入 capture submit/fetch 与 AI enrichment 的有界结构化日志和持久化 correlation id；Sprint 5 readiness 自动化和 W5-01 至 W5-14 发布候选矩阵已建立，但其他关键流程日志/correlation 与真实矩阵仍未完成；Privacy、Capture、Plugins、About 仅提供明确的里程碑占位，不计为已交付。
 
 ### 3.2 Logs
 
@@ -64,7 +64,7 @@ MVP 主支持：
 - error_code
 - message
 
-当前实现边界：capture submit/fetch 已写入 `logs/link-world.jsonl`，单文件 2 MiB、保留一份轮转；写入与支持包读取均复验字段和敏感 marker。AI、restore、migration、search maintenance 等关键流程尚未全部接入，因此 Week 5 日志验收仍未完成。
+当前实现边界：capture submit/fetch 与 AI enrichment submitted/started/succeeded/failed 已写入 `logs/link-world.jsonl`，单文件 2 MiB、保留一份轮转；写入与支持包读取均复验字段和敏感 marker。AI job payload、`analysis.requested/created/failed` domain event、IPC result 和日志共享同一 UUID，event payload 只含 analysis id 或稳定 `ai.*` code。restore、migration、search maintenance 等关键流程尚未接入，因此 Week 5 日志验收仍未完成。
 
 日志不得包含：
 

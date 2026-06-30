@@ -118,6 +118,8 @@ Rules:
 - `ai_analysis` rows are append-only by default.
 - Every successful analysis must have an `ai_traces` row.
 - Failed AI attempts should create job error state, not partial `ai_analysis`.
+- AI enrichment submission generates one UUID persisted in the job payload; `analysis.requested` and exactly one of `analysis.created` / `analysis.failed`, the IPC result and structured logs reuse it.
+- AI event payloads may contain only an internal analysis id or stable `ai.*` error code; they must not copy prompts, model output, provider configuration, URL or raw errors.
 - If model output schema validation fails, do not store it as successful analysis.
 
 ## 5. Evaluation Lifecycle

@@ -109,6 +109,11 @@ $steps = @(
     Command = @('cargo', 'test', '--manifest-path', $cargoManifest, 'services::support_bundle::tests')
   },
   @{
+    Name = 'AI enrichment correlation and event redaction'
+    WorkingDirectory = $repo
+    Command = @('cargo', 'test', '--manifest-path', $cargoManifest, 'services::ai::tests')
+  },
+  @{
     Name = 'capture lifecycle correlation and sanitized failure evidence'
     WorkingDirectory = $repo
     Command = @('cargo', 'test', '--manifest-path', $cargoManifest, 'services::capture::tests')
@@ -167,9 +172,9 @@ $report = [pscustomobject]@{
   status = if ($failed.Count -eq 0) { 'passed' } else { 'failed' }
   results = $results
   limitations = @(
-    'This automation covers deterministic local diagnostics, redaction, bounded log validation and rotation, support bundle privacy and capture correlation behavior.',
+    'This automation covers deterministic local diagnostics, redaction, bounded log validation and rotation, support bundle privacy, capture correlation and AI enrichment correlation/event boundaries.',
     'It does not prove user-confirmation usability, installed Windows paths, live log rotation under process interruption, large failed-job UI performance, or manual inspection of a release-candidate support bundle.',
-    'Structured log coverage is currently limited to capture submit and fetch; uninstrumented critical workflows remain open Week 5 work.'
+    'Structured log coverage currently includes capture submit/fetch and AI enrichment; restore, migration, search maintenance and other uninstrumented critical workflows remain open Week 5 work.'
   )
 }
 

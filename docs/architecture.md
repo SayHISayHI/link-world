@@ -1201,8 +1201,10 @@ flowchart LR
 | `capture.submitted` | Capture | Parser scheduler, audit |
 | `snapshot.created` | Capture | Parser scheduler |
 | `object.parsed` | Parser | AI enrichment, FTS indexing, UI |
-| `object.failed` | Capture / Parser / AI / Evaluation | UI, retry scheduler, audit |
+| `object.failed` | Capture / Parser | UI, retry scheduler, audit |
+| `analysis.requested` | AI | Model router, UI |
 | `analysis.created` | AI | Search indexing, Review scheduler, UI |
+| `analysis.failed` | AI | UI, retry scheduler, audit |
 | `evaluation.planned` | Evaluation | Worker |
 | `evaluation.completed` | Evaluation | Library, Review scheduler, UI |
 | `object.deleted` | Library | Index cleanup, object store cleanup, sync |
@@ -1228,10 +1230,10 @@ interface DomainEvent<TPayload> {
 事件处理要求：
 
 - Event handler 必须幂等。
-- 同一次关键操作产生的事件必须共享稳定 correlation id，并由后台 job 持久化该 id 以跨重启延续；capture 当前使用提交时生成的 UUID。
+- 同一次关键操作产生的事件必须共享稳定 correlation id，并由后台 job 持久化该 id 以跨重启延续；capture 与 AI enrichment 当前都在提交时生成 UUID，并由 job payload、domain events、IPC result 和结构化日志复用。
 - 事件 payload 只保存处理所需的结构化元数据，不复制完整 URL、query/fragment、正文、cookie、token 或第三方原始错误。
 - 同一事件重复投递不得产生重复 AI analysis 或重复 evaluation artifact。
-- 失败事件必须记录 `failure_reason` 和 retry policy。
+- 失败状态必须持久化稳定 `failure_reason` 和 retry policy；事件 payload 只保留消费方所需的稳定 error code，不复制用户内容或原始错误。
 - 删除事件必须驱动索引、缓存、向量和对象存储清理。
 
 ## 16. Job and Retry Architecture
@@ -1323,7 +1325,7 @@ Local Edition 也需要可观测性，但默认只对用户本机可见。
 - 不记录完整正文。
 - 不记录 secret / sensitive 对象内容。
 
-当前 Local Edition logger 使用 2 MiB 有界 JSONL 加一份轮转文件；entry 仅允许结构化标识符、内部 id、stable error code 和短静态消息，并在写入与支持包读取时双重校验。capture submit/fetch 已接入同一 correlation UUID；未接入的模块不得宣称已有结构化日志覆盖。
+当前 Local Edition logger 使用 2 MiB 有界 JSONL 加一份轮转文件；entry 仅允许结构化标识符、内部 id、stable error code 和短静态消息，并在写入与支持包读取时双重校验。capture submit/fetch 与 AI enrichment submitted/started/succeeded/failed 已接入各自持久化的 correlation UUID；未接入的模块不得宣称已有结构化日志覆盖。
 
 ### 18.2 Metrics
 
