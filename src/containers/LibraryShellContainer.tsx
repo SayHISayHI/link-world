@@ -14,6 +14,7 @@ import { useRecentObjects } from "../hooks/commands/useRecentObjects";
 import { useRebuildSearchIndex } from "../hooks/commands/useRebuildSearchIndex";
 import { useReindexObject } from "../hooks/commands/useReindexObject";
 import { useRetryBackgroundJob } from "../hooks/commands/useRetryBackgroundJob";
+import { useRetryEvaluation } from "../hooks/commands/useRetryEvaluation";
 import { useSearchHybrid } from "../hooks/commands/useSearchHybrid";
 import { useSubmitCapture } from "../hooks/commands/useSubmitCapture";
 import { useTriggerAIEnrichment } from "../hooks/commands/useTriggerAIEnrichment";
@@ -143,7 +144,14 @@ export function LibraryShellContainer() {
     error: triggerEvaluationError,
     loading: triggerEvaluationLoading,
     triggerEvaluation,
+    resetTriggerEvaluation,
   } = useTriggerEvaluation();
+  const {
+    error: retryEvaluationError,
+    loading: retryEvaluationLoading,
+    retryEvaluation,
+    resetRetryEvaluation,
+  } = useRetryEvaluation();
   const selectedSearchResult = searchResults.find((result) => result.object.id === selectedObjectId);
   const selectedObject = objects.find((object) => object.id === selectedObjectId) ?? selectedSearchResult?.object;
   const retryableCaptureJob = findRetryableCaptureJob(objectJobs, selectedObject?.id);
@@ -557,10 +565,18 @@ export function LibraryShellContainer() {
       return;
     }
 
-    const run = await triggerEvaluation({
-      objectId: selectedObjectId,
-      evaluatorType: inferEvaluatorType(selectedObject),
-    });
+    const latestEvaluation = selectedDetail?.evaluations[0];
+    let run;
+    if (latestEvaluation?.status === "failed") {
+      resetTriggerEvaluation();
+      run = await retryEvaluation({ runId: latestEvaluation.id });
+    } else {
+      resetRetryEvaluation();
+      run = await triggerEvaluation({
+        objectId: selectedObjectId,
+        evaluatorType: inferEvaluatorType(selectedObject),
+      });
+    }
     if (!run) {
       return;
     }
@@ -576,6 +592,10 @@ export function LibraryShellContainer() {
     loadObjectJobs,
     refreshRecentObjects,
     refreshSearchResults,
+    resetRetryEvaluation,
+    resetTriggerEvaluation,
+    retryEvaluation,
+    selectedDetail,
     selectedObject,
     selectedObjectId,
     triggerEvaluation,
@@ -665,8 +685,8 @@ export function LibraryShellContainer() {
             searchIndexLoading={reindexObjectLoading}
             searchIndexError={reindexObjectError}
             searchIndexMessage={reindexStatusMessage(reindexObjectResult, selectedObjectId)}
-            evaluationLoading={triggerEvaluationLoading}
-            evaluationError={triggerEvaluationError}
+            evaluationLoading={triggerEvaluationLoading || retryEvaluationLoading}
+            evaluationError={triggerEvaluationError ?? retryEvaluationError}
             onPing={() => {
               void ping();
             }}

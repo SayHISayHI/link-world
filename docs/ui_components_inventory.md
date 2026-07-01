@@ -63,7 +63,7 @@ Document rendering rules:
 | `QualityScoreBadge` | 0-10 score | score + confidence |
 | `RiskList` | risk display | risk type/severity/detail |
 | `ActionItemsList` | next actions | action title/tools |
-| `EvaluationPanel` | verdict, dimensions, evidence | `EvaluationRun` |
+| `EvaluationPanel` | run/retry action, verdict, dimensions, evidence and collapsed trace/lineage | `EvaluationRun` |
 | `EvaluationVerdictBadge` | verdict display | verdict |
 | `DimensionRadar` | optional dimension visualization | dimensions |
 | `EvidenceList` | evaluator evidence | evidence items |
@@ -74,6 +74,8 @@ Rules:
 - AI panel must label model inference separately from original facts.
 - AI failure panels must format persisted `ai.*` failure reasons through the shared formatter so stable diagnostic codes do not become primary user-facing text.
 - Evaluation panel must show limitations when present.
+- A failed latest run exposes Retry; retry creates a new lineage child and must not replace or relabel the failed parent.
+- Trace details show only execution kind, status, timing, correlation and fingerprints; content, URL and raw error are forbidden.
 - Scores must not rely only on color.
 - Trace details can be collapsed but must be accessible.
 

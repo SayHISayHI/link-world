@@ -16,6 +16,7 @@ pub struct TriggerEvaluationResponse {
     pub job_id: String,
     pub request_id: String,
     pub correlation_id: String,
+    pub retry_of_run_id: Option<String>,
     pub status: String,
     pub reused: bool,
 }
@@ -108,6 +109,7 @@ pub struct EvaluationRunReservation {
     pub correlation_id: String,
     pub job_id: String,
     pub object_id: String,
+    pub retry_of_run_id: Option<String>,
     pub requested_evaluator_type: String,
     pub evaluator_type: String,
     pub evaluator_version: String,
@@ -130,11 +132,20 @@ pub struct EvaluationOperation {
     pub correlation_id: String,
     pub job_id: String,
     pub object_id: String,
+    pub retry_of_run_id: Option<String>,
     pub requested_evaluator_type: String,
     pub evaluator_type: String,
     pub evaluator_version: String,
     pub status: String,
 }
+#[derive(Debug, Clone)]
+pub struct EvaluationRetryCandidate {
+    pub run_id: String,
+    pub object_id: String,
+    pub requested_evaluator_type: String,
+    pub status: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct EvaluationFailureSubmission {
     pub user_id: String,

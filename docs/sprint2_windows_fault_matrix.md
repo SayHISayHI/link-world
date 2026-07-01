@@ -23,7 +23,7 @@ npm run readiness:sprint2
 脚本会顺序执行：
 
 - Rust 格式检查。
-- 0001/0002/0003 historical migration fixture → current 0005 与 startup guard 测试。
+- 0001/0002/0003 historical migration fixture → current 0006 与 startup guard 测试。
 - 普通启动 migration restore point 和 fail-closed guard 测试。
 - backup manifest、hash、staging cleanup 测试。
 - 两阶段 restore 的 prepared、moving-live、live-moved、candidate-installed 和 rollback 矩阵。

@@ -182,6 +182,8 @@ Hook examples:
 - `useObjectDetail`
 - `useSearchHybrid`
 - `useTriggerEvaluation`
+- `useRetryEvaluation`
+  - generates a new UUID per user retry, calls `retry_evaluation`, and never resets the failed parent run locally.
 - `useObjectJobs`
 - `useModelProviderConfig`
 - `useModelProviderConfigs`

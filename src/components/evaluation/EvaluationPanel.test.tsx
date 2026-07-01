@@ -7,6 +7,7 @@ const evaluation: EvaluationRun = {
   id: "run-1",
   requestId: "request-1",
   correlationId: "correlation-1",
+  retryOfRunId: "parent-run-1234567890",
   objectId: "object-1",
   evaluatorType: "prompt_evaluator",
   evaluatorVersion: "0.1.0",
@@ -41,15 +42,20 @@ const evaluation: EvaluationRun = {
 
 describe("EvaluationPanel", () => {
   it("labels inference and exposes privacy-bounded execution trace details", () => {
+    const onRunEvaluation = vi.fn();
     const { getByText, queryByText } = render(
       <EvaluationPanel
         latestEvaluation={evaluation}
         loading={false}
-        onRunEvaluation={vi.fn()}
+        onRunEvaluation={onRunEvaluation}
       />,
     );
 
     expect(getByText("Evaluator inference")).toBeInTheDocument();
+    expect(getByText("Retry")).toBeInTheDocument();
+    expect(getByText(/Retry of/)).toBeInTheDocument();
+    getByText("Retry").click();
+    expect(onRunEvaluation).toHaveBeenCalledTimes(1);
     expect(getByText(/evaluation\.timeout/)).toBeInTheDocument();
 
     getByText("Execution trace").click();

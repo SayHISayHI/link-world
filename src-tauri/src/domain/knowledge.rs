@@ -169,6 +169,7 @@ pub struct EvaluationRun {
     pub id: String,
     pub request_id: Option<String>,
     pub correlation_id: Option<String>,
+    pub retry_of_run_id: Option<String>,
     pub object_id: String,
     pub evaluator_type: String,
     pub evaluator_version: String,

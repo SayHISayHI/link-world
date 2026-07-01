@@ -25,14 +25,20 @@ export function EvaluationPanel({
 }: EvaluationPanelProps) {
   const dimensions = toDimensionEntries(latestEvaluation?.dimensions);
   const trace = latestEvaluation?.trace;
+  const canRetry = latestEvaluation?.status === "failed";
 
   return (
     <section>
       <div className="mt-4 flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold">Evaluation</h3>
-        <Button onClick={onRunEvaluation} disabled={loading} className="h-8 text-xs" title="Run evaluation">
+        <Button
+          onClick={onRunEvaluation}
+          disabled={loading}
+          className="h-8 text-xs"
+          title={canRetry ? "Retry failed evaluation" : "Run evaluation"}
+        >
           <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-          Evaluate
+          {canRetry ? "Retry" : "Evaluate"}
         </Button>
       </div>
       <div className="mt-3 space-y-3 rounded-md border border-border bg-surface p-3 text-xs leading-5">
@@ -56,6 +62,11 @@ export function EvaluationPanel({
                   {latestEvaluation.evaluatorType} / {latestEvaluation.status} / contract v
                   {latestEvaluation.outputSchemaVersion}
                 </p>
+                {latestEvaluation.retryOfRunId ? (
+                  <p className="mt-1 text-muted-foreground">
+                    Retry of <span className="font-mono">{shortHash(latestEvaluation.retryOfRunId)}</span>
+                  </p>
+                ) : null}
               </div>
               {latestEvaluation.score !== undefined ? (
                 <div className="flex items-center gap-1 rounded-sm bg-muted px-2 py-1 text-[11px] text-muted-foreground">

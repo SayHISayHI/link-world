@@ -144,7 +144,7 @@ Rules:
 - `unsafe` verdict does not mean job failed; it means evaluator succeeded and found risk.
 - 新运行以 UUID `requestId` 唯一占位；同一 object + requested evaluator + requestId 返回原 run/job，跨 identity 复用必须拒绝。
 - `requestId == background_jobs.id == correlationId`；evaluation run id 独立生成，planned/completed/failed event 使用 job id 作为 causation。
-- 当前正式实现覆盖 `planned -> running -> passed|failed`；2 秒执行上限触发 `evaluation.timeout`，启动时残留 running run/job/trace 原子收敛为 `evaluation.interrupted`，并清理孤立 artifact。`failed -> planned` retry 尚未实现，不得由 UI 假定。
+- 当前正式实现覆盖 `planned -> running -> passed|failed`；2 秒执行上限触发 `evaluation.timeout`，启动时残留 running run/job/trace 原子收敛为 `evaluation.interrupted`，并清理孤立 artifact。retry 不修改 failed 历史行，而是以新 UUID 创建 `planned` 子 run，并用 `retry_of_run_id` 指向父 run；相同 retry request 幂等，跨父 run 复用 fail closed。
 - artifact I/O 不在 DB transaction 内；发布失败时清理本次 run 的 artifact 目录，并把已占位 run/job/trace 收敛为稳定失败码。trace 仅保存 identity、fingerprint、timeout/latency 和稳定错误码。
 
 ## 6. Deletion Lifecycle

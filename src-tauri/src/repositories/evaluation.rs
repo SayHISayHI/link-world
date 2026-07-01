@@ -1,7 +1,7 @@
 use crate::domain::evaluation::{
     EvaluationArtifactSubmission, EvaluationFailureSubmission, EvaluationInput,
-    EvaluationOperation, EvaluationRunReservation, EvaluationRunSubmission,
-    EvaluationTraceCompletion, EVALUATION_TRACE_SCHEMA_VERSION,
+    EvaluationOperation, EvaluationRetryCandidate, EvaluationRunReservation,
+    EvaluationRunSubmission, EvaluationTraceCompletion, EVALUATION_TRACE_SCHEMA_VERSION,
 };
 use crate::domain::knowledge::{EvaluationArtifact, EvaluationRun, EvaluationTrace};
 use crate::errors::{AppError, AppResult};
@@ -26,6 +26,7 @@ impl EvaluationRepository {
                 runs.id AS run_id,
                 runs.request_id,
                 runs.correlation_id,
+                runs.retry_of_run_id,
                 runs.object_id,
                 runs.evaluator_type,
                 runs.evaluator_version,
@@ -68,11 +69,55 @@ impl EvaluationRepository {
             correlation_id: row.get("correlation_id"),
             job_id: row.get("job_id"),
             object_id: row.get("object_id"),
+            retry_of_run_id: row.get("retry_of_run_id"),
             requested_evaluator_type: requested_evaluator_type.to_string(),
             evaluator_type: row.get("evaluator_type"),
             evaluator_version: row.get("evaluator_version"),
             status: row.get("status"),
         }))
+    }
+
+    pub async fn get_retry_candidate(&self, run_id: &str) -> AppResult<EvaluationRetryCandidate> {
+        let row = sqlx::query(
+            r#"
+            SELECT
+                runs.id AS run_id,
+                runs.object_id,
+                runs.status,
+                jobs.payload_json
+            FROM evaluation_runs AS runs
+            INNER JOIN background_jobs AS jobs
+                ON jobs.id = runs.request_id
+               AND jobs.job_type = 'evaluation.run'
+            WHERE runs.id = ?1
+            "#,
+        )
+        .bind(run_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        let Some(row) = row else {
+            return Err(AppError::ObjectNotFound);
+        };
+        let payload = row
+            .try_get::<Option<String>, _>("payload_json")?
+            .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+            .ok_or_else(|| AppError::Database("evaluation retry payload is invalid".to_string()))?;
+        let requested_evaluator_type = payload
+            .get("requestedEvaluatorType")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                AppError::Database(
+                    "evaluation retry is missing requested evaluator identity".to_string(),
+                )
+            })?;
+
+        Ok(EvaluationRetryCandidate {
+            run_id: row.get("run_id"),
+            object_id: row.get("object_id"),
+            requested_evaluator_type: requested_evaluator_type.to_string(),
+            status: row.get("status"),
+        })
     }
 
     pub async fn reserve_evaluation(
@@ -101,10 +146,11 @@ impl EvaluationRepository {
                 limitations_json,
                 next_actions_json,
                 verdict,
+                retry_of_run_id,
                 created_at
             ) VALUES (
                 ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
-                'planned', ?10, ?11, '{}', '[]', '[]', '[]', 'unknown', ?12
+                'planned', ?10, ?11, '{}', '[]', '[]', '[]', 'unknown', ?12, ?13
             )
             "#,
         )
@@ -119,6 +165,7 @@ impl EvaluationRepository {
         .bind(reservation.output_schema_version)
         .bind(&reservation.plan_json)
         .bind(&reservation.input_json)
+        .bind(&reservation.retry_of_run_id)
         .bind(&reservation.created_at)
         .execute(&mut *tx)
         .await?;
@@ -159,6 +206,7 @@ impl EvaluationRepository {
             "planSchemaVersion": reservation.plan_schema_version,
             "inputSchemaVersion": reservation.input_schema_version,
             "outputSchemaVersion": reservation.output_schema_version,
+            "retryOfRunId": reservation.retry_of_run_id,
         })
         .to_string();
         sqlx::query(
@@ -195,6 +243,7 @@ impl EvaluationRepository {
                 "evaluatorType": reservation.evaluator_type,
                 "evaluatorVersion": reservation.evaluator_version,
                 "status": "planned",
+                "retryOfRunId": reservation.retry_of_run_id,
             })
             .to_string(),
         )
@@ -619,6 +668,7 @@ impl EvaluationRepository {
                 runs.id,
                 runs.request_id,
                 runs.correlation_id,
+                runs.retry_of_run_id,
                 runs.object_id,
                 runs.evaluator_type,
                 runs.evaluator_version,
@@ -716,6 +766,7 @@ fn evaluation_run_from_row(row: SqliteRow, artifacts: Vec<EvaluationArtifact>) -
         id: row.get("id"),
         request_id: row.get("request_id"),
         correlation_id: row.get("correlation_id"),
+        retry_of_run_id: row.get("retry_of_run_id"),
         object_id: row.get("object_id"),
         evaluator_type: row.get("evaluator_type"),
         evaluator_version: row.get("evaluator_version"),

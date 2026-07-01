@@ -81,10 +81,59 @@ impl EvaluationService {
         evaluator_type: &str,
         request_id: Option<&str>,
     ) -> AppResult<TriggerEvaluationResponse> {
+        self.trigger_evaluation_with_retry(object_id, evaluator_type, request_id, None)
+            .await
+    }
+
+    pub async fn retry_evaluation(
+        &self,
+        run_id: &str,
+        request_id: Option<&str>,
+    ) -> AppResult<TriggerEvaluationResponse> {
+        let candidate = self.repository.get_retry_candidate(run_id).await?;
+        if candidate.status != "failed" {
+            return Err(AppError::PolicyDenied(
+                "evaluation.retry_requires_failed_run".to_string(),
+            ));
+        }
+
+        let retry_request_id = normalize_request_id(request_id)?;
+        self.record_log(
+            StructuredLogEvent::info(
+                "evaluation",
+                "evaluation.retry_requested",
+                "Evaluation retry requested.",
+            )
+            .with_correlation_id(&retry_request_id)
+            .with_object_id(&candidate.object_id)
+            .with_job_id(&retry_request_id),
+        )
+        .await;
+        self.trigger_evaluation_with_retry(
+            &candidate.object_id,
+            &candidate.requested_evaluator_type,
+            Some(&retry_request_id),
+            Some(&candidate.run_id),
+        )
+        .await
+    }
+
+    async fn trigger_evaluation_with_retry(
+        &self,
+        object_id: &str,
+        evaluator_type: &str,
+        request_id: Option<&str>,
+        retry_of_run_id: Option<&str>,
+    ) -> AppResult<TriggerEvaluationResponse> {
         let requested_type = normalize_evaluator_type(evaluator_type)?;
         let request_id = normalize_request_id(request_id)?;
         if let Some(operation) = self.repository.find_operation(&request_id).await? {
-            let response = response_from_existing_operation(operation, object_id, &requested_type)?;
+            let response = response_from_existing_operation(
+                operation,
+                object_id,
+                &requested_type,
+                retry_of_run_id,
+            )?;
             self.record_log(
                 StructuredLogEvent::info(
                     "evaluation",
@@ -115,6 +164,7 @@ impl EvaluationService {
             correlation_id: correlation_id.clone(),
             job_id: job_id.clone(),
             object_id: input.object_id.clone(),
+            retry_of_run_id: retry_of_run_id.map(str::to_string),
             requested_evaluator_type: requested_type.clone(),
             evaluator_type: capability.evaluator_type.clone(),
             evaluator_version: capability.evaluator_version.clone(),
@@ -146,7 +196,12 @@ impl EvaluationService {
                             "evaluation idempotency conflict could not be resolved".to_string(),
                         )
                     })?;
-                return response_from_existing_operation(operation, object_id, &requested_type);
+                return response_from_existing_operation(
+                    operation,
+                    object_id,
+                    &requested_type,
+                    retry_of_run_id,
+                );
             }
             Err(error) => return Err(error),
         }
@@ -228,6 +283,7 @@ impl EvaluationService {
                 "requestId": request_id,
                 "correlationId": correlation_id,
                 "objectId": input.object_id,
+                "retryOfRunId": retry_of_run_id,
                 "capability": capability,
                 "plan": plan,
                 "input": input_snapshot,
@@ -391,6 +447,7 @@ impl EvaluationService {
             job_id,
             request_id,
             correlation_id,
+            retry_of_run_id: retry_of_run_id.map(str::to_string),
             status: "passed".to_string(),
             reused: false,
         })
@@ -783,9 +840,11 @@ fn response_from_existing_operation(
     operation: EvaluationOperation,
     object_id: &str,
     requested_evaluator_type: &str,
+    retry_of_run_id: Option<&str>,
 ) -> AppResult<TriggerEvaluationResponse> {
     if operation.object_id != object_id
         || operation.requested_evaluator_type != requested_evaluator_type
+        || operation.retry_of_run_id.as_deref() != retry_of_run_id
         || operation.request_id != operation.job_id
         || operation.correlation_id != operation.request_id
     {
@@ -798,6 +857,7 @@ fn response_from_existing_operation(
         job_id: operation.job_id,
         request_id: operation.request_id,
         correlation_id: operation.correlation_id,
+        retry_of_run_id: operation.retry_of_run_id,
         status: operation.status,
         reused: true,
     })
@@ -1438,6 +1498,115 @@ mod tests {
         assert!(!serialized.contains("assess {{input}}"));
         assert!(!serialized.contains("example.com"));
         let _ = std::fs::remove_dir_all(telemetry_dir);
+    }
+
+    #[tokio::test]
+    async fn retry_preserves_failed_history_and_is_idempotent_per_new_request() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        let object_store = test_object_store();
+        seed_parsed_object(
+            database.pool(),
+            "obj-retry-evaluation",
+            "prompt",
+            Some("Retry Prompt"),
+            Some("You are a reviewer. Task: assess {{input}}. Output format: JSON."),
+        )
+        .await;
+        let failed_service = EvaluationService::new(database.pool().clone(), object_store.clone())
+            .with_execution_timeout(Duration::from_millis(5))
+            .with_execution_delay(Duration::from_millis(50));
+        let original_request_id = uuid::Uuid::new_v4().to_string();
+        failed_service
+            .trigger_evaluation(
+                "obj-retry-evaluation",
+                "prompt_evaluator",
+                Some(&original_request_id),
+            )
+            .await
+            .expect_err("original evaluation should time out");
+        let original_run_id: String =
+            sqlx::query_scalar("SELECT id FROM evaluation_runs WHERE request_id = ?1")
+                .bind(&original_request_id)
+                .fetch_one(database.pool())
+                .await
+                .expect("original run should query");
+
+        let service = EvaluationService::new(database.pool().clone(), object_store);
+        let retry_request_id = uuid::Uuid::new_v4().to_string();
+        let retry = service
+            .retry_evaluation(&original_run_id, Some(&retry_request_id))
+            .await
+            .expect("retry should create a new successful run");
+        let repeated = service
+            .retry_evaluation(&original_run_id, Some(&retry_request_id))
+            .await
+            .expect("same retry request should resolve idempotently");
+
+        assert_eq!(retry.status, "passed");
+        assert_eq!(
+            retry.retry_of_run_id.as_deref(),
+            Some(original_run_id.as_str())
+        );
+        assert_ne!(retry.run_id, original_run_id);
+        assert!(repeated.reused);
+        assert_eq!(repeated.run_id, retry.run_id);
+        let runs: Vec<(String, String, Option<String>)> = sqlx::query_as(
+            r#"
+            SELECT id, status, retry_of_run_id
+            FROM evaluation_runs
+            WHERE object_id = 'obj-retry-evaluation'
+            ORDER BY created_at, rowid
+            "#,
+        )
+        .fetch_all(database.pool())
+        .await
+        .expect("run lineage should query");
+        assert_eq!(runs.len(), 2);
+        assert_eq!(
+            runs[0],
+            (original_run_id.clone(), "failed".to_string(), None)
+        );
+        assert_eq!(
+            runs[1],
+            (
+                retry.run_id.clone(),
+                "passed".to_string(),
+                Some(original_run_id.clone()),
+            )
+        );
+        let counts: (i64, i64, i64, i64) = sqlx::query_as(
+            "SELECT (SELECT COUNT(*) FROM evaluation_runs), (SELECT COUNT(*) FROM evaluation_traces), (SELECT COUNT(*) FROM background_jobs WHERE job_type = 'evaluation.run'), (SELECT COUNT(*) FROM evaluation_artifacts)",
+        )
+        .fetch_one(database.pool())
+        .await
+        .expect("retry counts should query");
+        assert_eq!(counts, (2, 2, 2, 1));
+        let retry_payload: String =
+            sqlx::query_scalar("SELECT payload_json FROM background_jobs WHERE id = ?1")
+                .bind(&retry_request_id)
+                .fetch_one(database.pool())
+                .await
+                .expect("retry job payload should query");
+        let retry_payload: serde_json::Value =
+            serde_json::from_str(&retry_payload).expect("retry payload should be JSON");
+        assert_eq!(retry_payload["retryOfRunId"], original_run_id);
+
+        let trigger_conflict = service
+            .trigger_evaluation(
+                "obj-retry-evaluation",
+                "prompt_evaluator",
+                Some(&retry_request_id),
+            )
+            .await
+            .expect_err("retry request id cannot be reused as a root trigger");
+        assert!(matches!(trigger_conflict, AppError::PolicyDenied(_)));
+        let passed_retry = service
+            .retry_evaluation(&retry.run_id, None)
+            .await
+            .expect_err("passed runs cannot be retried");
+        assert!(matches!(passed_retry, AppError::PolicyDenied(_)));
     }
 
     #[tokio::test]

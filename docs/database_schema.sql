@@ -142,6 +142,7 @@ CREATE TABLE IF NOT EXISTS evaluation_runs (
     id TEXT PRIMARY KEY,
     request_id TEXT,
     correlation_id TEXT,
+    retry_of_run_id TEXT,
     object_id TEXT NOT NULL,
     evaluator_type TEXT NOT NULL,      -- 'prompt_evaluator', 'repo_evaluator', etc.
     evaluator_version TEXT NOT NULL,
@@ -165,7 +166,8 @@ CREATE TABLE IF NOT EXISTS evaluation_runs (
     failure_reason TEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     completed_at DATETIME,
-    FOREIGN KEY (object_id) REFERENCES knowledge_objects(id) ON DELETE CASCADE
+    FOREIGN KEY (object_id) REFERENCES knowledge_objects(id) ON DELETE CASCADE,
+    FOREIGN KEY (retry_of_run_id) REFERENCES evaluation_runs(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_evaluation_runs_object_created
@@ -177,6 +179,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_evaluation_runs_request_id
 
 CREATE INDEX IF NOT EXISTS idx_evaluation_runs_status_created
     ON evaluation_runs(status, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_evaluation_runs_retry_parent
+    ON evaluation_runs(retry_of_run_id, created_at)
+    WHERE retry_of_run_id IS NOT NULL;
 
 -- 7. 评估执行追踪表（只存身份、指纹、时序和稳定错误码，不存正文/URL）
 CREATE TABLE IF NOT EXISTS evaluation_traces (

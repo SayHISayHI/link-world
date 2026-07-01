@@ -357,6 +357,7 @@ export interface EvaluationRun {
   id: string;
   requestId?: string;
   correlationId?: string;
+  retryOfRunId?: string;
   objectId: string;
   evaluatorType: string;
   evaluatorVersion: string;
@@ -397,6 +398,7 @@ export interface TriggerEvaluationResponse {
   jobId: string;
   requestId: string;
   correlationId: string;
+  retryOfRunId?: string;
   status: "planned" | "running" | "passed" | "failed" | string;
   reused: boolean;
 }

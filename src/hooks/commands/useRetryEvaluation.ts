@@ -3,22 +3,21 @@ import { invokeCommand } from "../../lib/tauri";
 import type { AppUiError } from "../../lib/errors";
 import type { TriggerEvaluationResponse } from "../../types/api";
 
-interface TriggerEvaluationState {
+interface RetryEvaluationState {
   data?: TriggerEvaluationResponse;
   error?: AppUiError;
   loading: boolean;
 }
 
-interface TriggerEvaluationArgs {
-  objectId: string;
-  evaluatorType: string;
+interface RetryEvaluationArgs {
+  runId: string;
   requestId?: string;
 }
 
-export function useTriggerEvaluation() {
-  const [state, setState] = useState<TriggerEvaluationState>({ loading: false });
+export function useRetryEvaluation() {
+  const [state, setState] = useState<RetryEvaluationState>({ loading: false });
 
-  const triggerEvaluation = useCallback(async (args: TriggerEvaluationArgs) => {
+  const retryEvaluation = useCallback(async (args: RetryEvaluationArgs) => {
     setState({ loading: true });
 
     try {
@@ -26,8 +25,8 @@ export function useTriggerEvaluation() {
         ...args,
         requestId: args.requestId ?? globalThis.crypto.randomUUID(),
       };
-      const data = await invokeCommand<TriggerEvaluationArgs, TriggerEvaluationResponse>(
-        "trigger_evaluation",
+      const data = await invokeCommand<RetryEvaluationArgs, TriggerEvaluationResponse>(
+        "retry_evaluation",
         request,
       );
       setState({ data, loading: false });
@@ -38,9 +37,9 @@ export function useTriggerEvaluation() {
     }
   }, []);
 
-  const resetTriggerEvaluation = useCallback(() => {
+  const resetRetryEvaluation = useCallback(() => {
     setState({ loading: false });
   }, []);
 
-  return { ...state, triggerEvaluation, resetTriggerEvaluation };
+  return { ...state, retryEvaluation, resetRetryEvaluation };
 }

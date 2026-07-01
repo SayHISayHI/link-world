@@ -216,6 +216,7 @@ export interface EvaluationRun {
   id: string;
   requestId?: string;
   correlationId?: string;
+  retryOfRunId?: string;
   objectId: string;
   evaluatorType: string;
   evaluatorVersion: string;
@@ -689,6 +690,22 @@ export interface AgentCommands {
     jobId: string;
     requestId: string;
     correlationId: string;
+    retryOfRunId?: string;
+    status: 'planned' | 'running' | 'passed' | 'failed';
+    reused: boolean;
+  }>>;
+
+  // 仅允许 failed run；保留原 run，并以新的 UUID requestId 创建带 retryOfRunId 的新历史。
+  // 相同 requestId 对同一父 run 幂等；跨父 run 或普通 trigger 复用会 fail closed。
+  retry_evaluation: (args: {
+    runId: string;
+    requestId?: string;
+  }) => Promise<IpcResponse<{
+    runId: string;
+    jobId: string;
+    requestId: string;
+    correlationId: string;
+    retryOfRunId: string;
     status: 'planned' | 'running' | 'passed' | 'failed';
     reused: boolean;
   }>>;

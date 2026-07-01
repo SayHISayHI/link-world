@@ -39,6 +39,37 @@ pub async fn trigger_evaluation(
 }
 
 #[tauri::command]
+pub async fn retry_evaluation(
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    run_id: String,
+    request_id: Option<String>,
+) -> Result<IpcResponse<TriggerEvaluationResponse>, String> {
+    let result = async {
+        let service = EvaluationService::from_state(state.inner())?;
+        service
+            .retry_evaluation(&run_id, request_id.as_deref())
+            .await
+    }
+    .await;
+
+    if let Ok(response) = &result {
+        if response.status == "passed" {
+            let _ = app_handle.emit(
+                "evaluation://completed",
+                json!({
+                    "runId": response.run_id,
+                    "retryOfRunId": response.retry_of_run_id,
+                }),
+            );
+            let _ = app_handle.emit("library://objects-updated", ());
+        }
+    }
+
+    Ok(map_ipc_result(result))
+}
+
+#[tauri::command]
 pub async fn list_evaluator_capabilities(
     state: tauri::State<'_, AppState>,
 ) -> Result<IpcResponse<Vec<EvaluatorCapability>>, String> {
