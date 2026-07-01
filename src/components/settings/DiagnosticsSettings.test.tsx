@@ -105,7 +105,7 @@ describe("DiagnosticsSettings", () => {
     render(<DiagnosticsSettings />);
 
     expect(screen.getByText("Diagnostics")).toBeInTheDocument();
-    expect(screen.getByText("Healthy")).toBeInTheDocument();
+    expect(screen.getAllByText("Healthy")).toHaveLength(2);
     expect(screen.getByText("Not configured - normal degradation")).toBeInTheDocument();
     expect(screen.getByText(/AI features are degraded by design/)).toBeInTheDocument();
     expect(screen.getByText(/https:\/\/example.com\/a\[redacted\]/)).toBeInTheDocument();
