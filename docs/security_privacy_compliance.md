@@ -122,6 +122,7 @@ AI 输出展示规则：
 - evaluator verdict/score 属于推断，不得与 evidence 混排为原文事实；evidence 必须携带 `original_content`、`internal_library`、`external_check`、`sandbox_run` 或 `user_feedback` 来源标签。
 - 无 evidence 时只允许 `unknown` verdict 且必须给出 limitation；当前 `local_deterministic` evaluator 不访问第三方，未来 `model_assisted` evaluator 必须经过与 AI enrichment 相同或更严格的 privacy policy gate。
 - `evaluation_traces` 是独立审计记录，但只允许 request/correlation/evaluator identity、execution kind、input/output hash、timeout/latency、status、稳定 `evaluation.*` code 和时间戳；禁止 title、URL、正文、plan/input/output JSON、artifact URI 或 raw error。
+- GitHub public metadata enrichment 遵守 metadata-only policy：secret 对象禁止外呼；README 原文和 GitHub error body 禁止持久化；`GITHUB_TOKEN` 仅经 SecretStore 环境引用解析且客户端类型不得派生可打印 token 的 `Debug`。structured logs 只含内部 object/job/correlation 与稳定 `github.*` code。
 - 可选 `displayHints` 只允许选择版本化的文档级展示模式；无效提示不影响主体分析，并回退到 Markdown AST 推断。
 - 只有绑定当前 parsed document 且置信度至少为 `0.75` 的提示可以应用；提示不得改变正文、Markdown、AST 或渲染安全策略。
 

@@ -342,7 +342,7 @@ export interface EvaluationTrace {
   correlationId: string;
   evaluatorType: string;
   evaluatorVersion: string;
-  executionKind: "local_deterministic" | "model_assisted" | "sandboxed" | string;
+  executionKind: "local_deterministic" | "network_optional" | "model_assisted" | "sandboxed" | string;
   inputHash: string;
   outputHash?: string;
   timeoutMs: number;
@@ -384,7 +384,7 @@ export interface EvaluatorCapability {
   evaluatorVersion: string;
   displayName: string;
   supportedObjectTypes: string[];
-  executionKind: "local_deterministic" | "model_assisted" | "sandboxed" | string;
+  executionKind: "local_deterministic" | "network_optional" | "model_assisted" | "sandboxed" | string;
   requiresNetwork: boolean;
   requiresModel: boolean;
   requiresSandbox: boolean;

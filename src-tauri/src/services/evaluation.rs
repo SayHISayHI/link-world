@@ -4,11 +4,16 @@ use crate::domain::evaluation::{
     EvaluationRunSubmission, EvaluationTraceCompletion, EvaluatorCapability,
     TriggerEvaluationResponse, DEFAULT_EVALUATION_TIMEOUT_MS, EVALUATION_CAPABILITY_SCHEMA_VERSION,
     EVALUATION_INPUT_SCHEMA_VERSION, EVALUATION_OUTPUT_SCHEMA_VERSION,
-    EVALUATION_PLAN_SCHEMA_VERSION,
+    EVALUATION_PLAN_SCHEMA_VERSION, GITHUB_EVALUATION_TIMEOUT_MS,
 };
 use crate::domain::knowledge::{EvaluationRun, EvidenceItem};
 use crate::errors::{AppError, AppResult};
 use crate::repositories::evaluation::EvaluationRepository;
+use crate::services::github::{
+    GitHubMetadataClient, GitHubMetadataOutcome, GitHubRepositoryRef, GITHUB_INVALID_REPOSITORY,
+    GITHUB_POLICY_DENIED, GITHUB_TIMEOUT,
+};
+use crate::services::github_evaluator::evaluate_github_repository;
 use crate::state::AppState;
 use crate::storage::object_store::{sha256_hex, ObjectStore};
 use crate::telemetry::{StructuredLogEvent, StructuredLogger};
@@ -29,7 +34,8 @@ pub struct EvaluationService {
     repository: EvaluationRepository,
     object_store: ObjectStore,
     structured_logger: Option<StructuredLogger>,
-    execution_timeout: Duration,
+    github_metadata_client: GitHubMetadataClient,
+    execution_timeout_override: Option<Duration>,
     execution_delay: Duration,
 }
 
@@ -41,7 +47,12 @@ trait EvaluatorPlugin: Send + Sync {
     fn capability(&self) -> EvaluatorCapability;
     fn supports(&self, input: &EvaluationInput, requested_type: &str) -> bool;
     fn plan(&self, input: &EvaluationInput) -> EvaluationPlan;
-    fn run(&self, input: &EvaluationInput, plan: &EvaluationPlan) -> EvaluationOutput;
+    fn run(
+        &self,
+        input: &EvaluationInput,
+        plan: &EvaluationPlan,
+        github_metadata: Option<&GitHubMetadataOutcome>,
+    ) -> EvaluationOutput;
 }
 
 struct PromptEvaluator;
@@ -53,7 +64,10 @@ impl EvaluationService {
             repository: EvaluationRepository::new(state.database()?.pool().clone()),
             object_store: state.object_store()?.clone(),
             structured_logger: state.structured_logger().cloned(),
-            execution_timeout: Duration::from_millis(DEFAULT_EVALUATION_TIMEOUT_MS as u64),
+            github_metadata_client: GitHubMetadataClient::public(
+                state.secrets().resolve("env:GITHUB_TOKEN")?,
+            ),
+            execution_timeout_override: None,
             execution_delay: Duration::ZERO,
         })
     }
@@ -63,7 +77,8 @@ impl EvaluationService {
             repository: EvaluationRepository::new(pool),
             object_store,
             structured_logger: None,
-            execution_timeout: Duration::from_millis(DEFAULT_EVALUATION_TIMEOUT_MS as u64),
+            github_metadata_client: GitHubMetadataClient::public(None),
+            execution_timeout_override: None,
             execution_delay: Duration::ZERO,
         }
     }
@@ -151,6 +166,9 @@ impl EvaluationService {
         let input = self.repository.get_evaluation_input(object_id).await?;
         let evaluator = select_evaluator(&input, &requested_type)?;
         let capability = evaluator.capability();
+        let execution_timeout = self
+            .execution_timeout_override
+            .unwrap_or_else(|| evaluation_timeout_for(&capability.evaluator_type));
         let plan = evaluator.plan(&input);
         let input_snapshot = build_input_snapshot(&input, &requested_type);
         let run_id = Uuid::new_v4().to_string();
@@ -174,7 +192,7 @@ impl EvaluationService {
             trace_id,
             execution_kind: capability.execution_kind.clone(),
             input_hash: input.content_hash.clone(),
-            timeout_ms: self.execution_timeout.as_millis().min(i64::MAX as u128) as i64,
+            timeout_ms: execution_timeout.as_millis().min(i64::MAX as u128) as i64,
             plan_json: serialize_json(&plan)?,
             input_json: serialize_json(&input_snapshot)?,
             created_at: now.clone(),
@@ -264,11 +282,21 @@ impl EvaluationService {
             EvaluationArtifactSubmission,
             EvaluationTraceCompletion,
         )> = async {
+            let github_metadata = self
+                .collect_github_metadata(
+                    &input,
+                    &capability.evaluator_type,
+                    execution_timeout,
+                    &correlation_id,
+                    &job_id,
+                )
+                .await;
             let output = run_evaluator_with_timeout(
                 capability.evaluator_type.clone(),
                 input.clone(),
                 plan.clone(),
-                self.execution_timeout,
+                github_metadata,
+                remaining_timeout(execution_started, execution_timeout),
                 self.execution_delay,
             )
             .await?;
@@ -452,6 +480,72 @@ impl EvaluationService {
             reused: false,
         })
     }
+    async fn collect_github_metadata(
+        &self,
+        input: &EvaluationInput,
+        evaluator_type: &str,
+        execution_timeout: Duration,
+        correlation_id: &str,
+        job_id: &str,
+    ) -> Option<GitHubMetadataOutcome> {
+        if evaluator_type != GITHUB_REPO_EVALUATOR_TYPE {
+            return None;
+        }
+        let outcome = if input.privacy_level == "secret" {
+            GitHubMetadataOutcome::Unavailable {
+                code: GITHUB_POLICY_DENIED.to_string(),
+            }
+        } else if let Some(reference) = input
+            .canonical_url
+            .as_deref()
+            .and_then(GitHubRepositoryRef::from_github_url)
+        {
+            let budget = github_metadata_budget(execution_timeout);
+            match tokio::time::timeout(
+                budget,
+                self.github_metadata_client
+                    .fetch_public_repository(&reference),
+            )
+            .await
+            {
+                Ok(outcome) => outcome,
+                Err(_) => GitHubMetadataOutcome::Unavailable {
+                    code: GITHUB_TIMEOUT.to_string(),
+                },
+            }
+        } else {
+            GitHubMetadataOutcome::Unavailable {
+                code: GITHUB_INVALID_REPOSITORY.to_string(),
+            }
+        };
+
+        let (event, error_code) = match &outcome {
+            GitHubMetadataOutcome::Available(metadata) if metadata.limitations.is_empty() => {
+                ("evaluation.github_metadata.succeeded", None)
+            }
+            GitHubMetadataOutcome::Available(metadata) => (
+                "evaluation.github_metadata.degraded",
+                metadata.limitations.first().map(String::as_str),
+            ),
+            GitHubMetadataOutcome::Unavailable { code } => {
+                ("evaluation.github_metadata.degraded", Some(code.as_str()))
+            }
+        };
+        let log_event =
+            StructuredLogEvent::info("evaluation", event, "GitHub metadata collection completed.")
+                .with_correlation_id(correlation_id)
+                .with_object_id(&input.object_id)
+                .with_job_id(job_id);
+        let log_event = if let Some(error_code) = error_code {
+            log_event.with_error_code(error_code)
+        } else {
+            log_event
+        };
+        self.record_log(log_event).await;
+
+        Some(outcome)
+    }
+
     pub async fn get_evaluation_run(&self, run_id: &str) -> AppResult<EvaluationRun> {
         self.repository.get_evaluation_run(run_id).await
     }
@@ -464,7 +558,13 @@ impl EvaluationService {
 
     #[cfg(test)]
     fn with_execution_timeout(mut self, execution_timeout: Duration) -> Self {
-        self.execution_timeout = execution_timeout;
+        self.execution_timeout_override = Some(execution_timeout);
+        self
+    }
+
+    #[cfg(test)]
+    fn with_github_metadata_client(mut self, client: GitHubMetadataClient) -> Self {
+        self.github_metadata_client = client;
         self
     }
 
@@ -526,7 +626,12 @@ impl EvaluatorPlugin for PromptEvaluator {
         }
     }
 
-    fn run(&self, input: &EvaluationInput, plan: &EvaluationPlan) -> EvaluationOutput {
+    fn run(
+        &self,
+        input: &EvaluationInput,
+        plan: &EvaluationPlan,
+        _github_metadata: Option<&GitHubMetadataOutcome>,
+    ) -> EvaluationOutput {
         let text = input.text_content.as_str();
         let lower = text.to_lowercase();
         let variable_count = count_prompt_variables(text);
@@ -639,7 +744,7 @@ impl EvaluatorPlugin for GitHubRepoEvaluator {
             evaluator_version: self.evaluator_version().to_string(),
             display_name: "GitHub repository evaluator".to_string(),
             supported_object_types: vec!["github_repo".to_string()],
-            execution_kind: "local_deterministic".to_string(),
+            execution_kind: "network_optional".to_string(),
             requires_network: false,
             requires_model: false,
             requires_sandbox: false,
@@ -660,105 +765,29 @@ impl EvaluatorPlugin for GitHubRepoEvaluator {
             evaluator_type: self.evaluator_type().to_string(),
             evaluator_version: self.evaluator_version().to_string(),
             steps: vec![
-                "Inspect saved repository page or README content.".to_string(),
-                "Score documentation, installation path, maintenance signals and risk.".to_string(),
-                "Record limitations when live GitHub metadata is unavailable.".to_string(),
+                "Inspect saved repository content and bounded public GitHub metadata.".to_string(),
+                "Check README, license, recent push, release, maintenance and adoption signals."
+                    .to_string(),
+                "Score usefulness without treating stars as a standalone value conclusion."
+                    .to_string(),
+                "Record stable limitations for policy, rate limit, private or missing metadata."
+                    .to_string(),
             ],
             checks: vec![
-                format!(
-                    "repo_url: {}",
-                    input.canonical_url.as_deref().unwrap_or("unknown")
-                ),
-                "live GitHub API lookup is intentionally not used in MVP local evaluator"
-                    .to_string(),
+                format!("content_hash: {}", input.content_hash),
+                "GitHub REST metadata is optional; saved content remains the fallback.".to_string(),
+                "No repository code is cloned or executed by the Week 7 evaluator.".to_string(),
             ],
         }
     }
 
-    fn run(&self, input: &EvaluationInput, plan: &EvaluationPlan) -> EvaluationOutput {
-        let lower = input.text_content.to_lowercase();
-        let has_readme = contains_any(&lower, &["readme", "# ", "overview"]);
-        let has_install = contains_any(
-            &lower,
-            &["install", "npm install", "cargo add", "pip install"],
-        );
-        let has_usage = contains_any(
-            &lower,
-            &["usage", "quickstart", "example", "getting started"],
-        );
-        let has_license = contains_any(&lower, &["license", "mit", "apache", "gpl"]);
-        let has_activity = contains_any(&lower, &["stars", "forks", "last commit", "contributors"]);
-        let has_risk = contains_any(
-            &lower,
-            &["deprecated", "unmaintained", "archived", "warning"],
-        );
-
-        let dimensions = json!({
-            "documentation": clamp_score(0.25 + score_bool(has_readme, 0.2) + score_bool(has_usage, 0.25)),
-            "adoptionSignals": clamp_score(0.35 + score_bool(has_activity, 0.25)),
-            "maintenanceSignals": clamp_score(if has_risk { 0.35 } else { 0.65 } + score_bool(has_activity, 0.15)),
-            "actionability": clamp_score(0.25 + score_bool(has_install, 0.25) + score_bool(has_usage, 0.25)),
-            "licensing": clamp_score(0.35 + score_bool(has_license, 0.35)),
-        });
-        let score = average_dimension_scores(&dimensions);
-        let verdict = verdict_from_score(score, 0.8);
-        let evidence = vec![
-            EvidenceItem {
-                source: "original_content".to_string(),
-                text: if has_install {
-                    "Installation guidance was detected in the saved content.".to_string()
-                } else {
-                    "No clear installation guidance was detected in the saved content.".to_string()
-                },
-                reference: Some("install_check".to_string()),
-            },
-            EvidenceItem {
-                source: "original_content".to_string(),
-                text: if has_license {
-                    "License-related signal was detected.".to_string()
-                } else {
-                    "No license signal was detected from saved content.".to_string()
-                },
-                reference: Some("license_check".to_string()),
-            },
-        ];
-        let next_actions = vec![
-            json!({
-                "title": "Open repository and verify stars, latest commit and license before adoption.",
-                "priority": "high",
-            }),
-            json!({
-                "title": "Try the documented quickstart in a sandbox before adding it to a workflow.",
-                "priority": "medium",
-            }),
-        ];
-        let limitations = vec![
-            "MVP GitHub evaluator only uses saved content and URL structure; it does not call GitHub API yet.".to_string(),
-            "Stars, last commit and issue health must be verified manually until the GitHub metadata adapter is added.".to_string(),
-        ];
-        let report = json!({
-            "plan": plan,
-            "repo": parse_github_repo(input.canonical_url.as_deref()),
-            "detectedSignals": {
-                "hasReadme": has_readme,
-                "hasInstall": has_install,
-                "hasUsage": has_usage,
-                "hasLicense": has_license,
-                "hasActivity": has_activity,
-                "hasRisk": has_risk,
-            }
-        });
-
-        EvaluationOutput {
-            schema_version: EVALUATION_OUTPUT_SCHEMA_VERSION,
-            score,
-            verdict,
-            dimensions,
-            evidence,
-            limitations,
-            next_actions,
-            report,
-        }
+    fn run(
+        &self,
+        input: &EvaluationInput,
+        plan: &EvaluationPlan,
+        github_metadata: Option<&GitHubMetadataOutcome>,
+    ) -> EvaluationOutput {
+        evaluate_github_repository(input, plan, github_metadata)
     }
 }
 
@@ -766,6 +795,7 @@ async fn run_evaluator_with_timeout(
     evaluator_type: String,
     input: EvaluationInput,
     plan: EvaluationPlan,
+    github_metadata: Option<GitHubMetadataOutcome>,
     execution_timeout: Duration,
     execution_delay: Duration,
 ) -> AppResult<EvaluationOutput> {
@@ -779,7 +809,7 @@ async fn run_evaluator_with_timeout(
             .ok_or_else(|| {
                 AppError::PolicyDenied("evaluation.unsupported_evaluator_for_object".to_string())
             })?;
-        Ok::<_, AppError>(evaluator.run(&input, &plan))
+        Ok::<_, AppError>(evaluator.run(&input, &plan, github_metadata.as_ref()))
     });
 
     match tokio::time::timeout(execution_timeout, task).await {
@@ -787,6 +817,28 @@ async fn run_evaluator_with_timeout(
         Ok(Err(_)) => Err(AppError::Unknown("evaluation.runner_stopped".to_string())),
         Err(_) => Err(AppError::NetworkTimeout),
     }
+}
+
+fn evaluation_timeout_for(evaluator_type: &str) -> Duration {
+    let timeout_ms = if evaluator_type == GITHUB_REPO_EVALUATOR_TYPE {
+        GITHUB_EVALUATION_TIMEOUT_MS
+    } else {
+        DEFAULT_EVALUATION_TIMEOUT_MS
+    };
+    Duration::from_millis(timeout_ms as u64)
+}
+
+fn github_metadata_budget(execution_timeout: Duration) -> Duration {
+    let budget = execution_timeout.mul_f64(0.8);
+    budget
+        .min(Duration::from_secs(12))
+        .max(Duration::from_millis(1))
+}
+
+fn remaining_timeout(started_at: Instant, execution_timeout: Duration) -> Duration {
+    execution_timeout
+        .saturating_sub(started_at.elapsed())
+        .max(Duration::from_millis(1))
 }
 
 fn elapsed_ms(started_at: Instant) -> i64 {
@@ -1138,10 +1190,14 @@ mod tests {
     use super::{validate_evaluation_output, EvaluationService};
     use crate::domain::evaluation::{EvaluationOutput, EVALUATION_OUTPUT_SCHEMA_VERSION};
     use crate::errors::AppError;
+    use crate::services::github::GitHubMetadataClient;
     use crate::storage::database::Database;
     use crate::storage::object_store::ObjectStore;
     use crate::telemetry::StructuredLogger;
+    use std::sync::{Arc, Mutex};
     use std::time::Duration;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
 
     #[test]
     fn evidence_less_conclusion_requires_unknown_verdict_and_limitation() {
@@ -1279,11 +1335,24 @@ mod tests {
                 && capability.plan_schema_version == 1
                 && capability.input_schema_version == 1
                 && capability.output_schema_version == 1
-                && capability.execution_kind == "local_deterministic"
                 && !capability.requires_network
                 && !capability.requires_model
                 && !capability.requires_sandbox
         }));
+        assert_eq!(
+            capabilities
+                .iter()
+                .find(|capability| capability.evaluator_type == "prompt_evaluator")
+                .map(|capability| capability.execution_kind.as_str()),
+            Some("local_deterministic")
+        );
+        assert_eq!(
+            capabilities
+                .iter()
+                .find(|capability| capability.evaluator_type == "github_repo_evaluator")
+                .map(|capability| capability.execution_kind.as_str()),
+            Some("network_optional")
+        );
     }
 
     #[tokio::test]
@@ -1610,6 +1679,173 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn github_evaluator_collects_public_fixture_without_token_and_persists_external_evidence()
+    {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        let object_store = test_object_store();
+        seed_parsed_object(
+            database.pool(),
+            "obj-github-public",
+            "github_repo",
+            Some("Public Repository"),
+            Some("Repository overview with local fallback content."),
+        )
+        .await;
+        sqlx::query(
+            "UPDATE knowledge_objects SET canonical_url = 'https://github.com/owner/repo' WHERE id = 'obj-github-public'",
+        )
+        .execute(database.pool())
+        .await
+        .expect("GitHub URL should update");
+        let repository = r#"{
+            "description":"Public fixture",
+            "default_branch":"main",
+            "language":"Rust",
+            "topics":["local-first"],
+            "stargazers_count":321,
+            "forks_count":42,
+            "open_issues_count":7,
+            "archived":false,
+            "disabled":false,
+            "fork":false,
+            "private":false,
+            "pushed_at":"2026-06-30T12:00:00Z",
+            "license":{"name":"MIT License","spdx_id":"MIT"}
+        }"#;
+        let readme = "# Repo\n## Install\ncargo add repo\n## Usage\nExample workflow";
+        let release =
+            r#"{"tag_name":"v1.0.0","published_at":"2026-06-29T12:00:00Z","prerelease":false}"#;
+        let (base_url, requests) = start_github_fixture_server(vec![
+            ("200 OK", "application/json", repository),
+            ("200 OK", "text/plain", readme),
+            ("200 OK", "application/json", release),
+        ])
+        .await;
+        let telemetry_dir = std::env::temp_dir().join(format!(
+            "link-world-github-evaluation-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let service = EvaluationService::new(database.pool().clone(), object_store)
+            .with_github_metadata_client(GitHubMetadataClient::for_test(
+                &base_url,
+                None,
+                Duration::from_secs(1),
+            ))
+            .with_structured_logger(StructuredLogger::new(&telemetry_dir));
+
+        let response = service
+            .trigger_evaluation("obj-github-public", "github_repo_evaluator", None)
+            .await
+            .expect("GitHub evaluation should run");
+        let run = service
+            .get_evaluation_run(&response.run_id)
+            .await
+            .expect("GitHub run should query");
+        assert_eq!(run.status, "passed");
+        assert_eq!(
+            run.trace.as_ref().map(|trace| trace.timeout_ms),
+            Some(15_000)
+        );
+        assert!(run
+            .evidence
+            .iter()
+            .any(|item| item.source == "external_check"
+                && item.reference.as_deref() == Some("github:readme")));
+        assert!(run.evidence.iter().any(|item| {
+            item.reference.as_deref() == Some("github:adoption_context")
+                && item.text.contains("do not determine")
+        }));
+        let output_json: String =
+            sqlx::query_scalar("SELECT output_json FROM evaluation_runs WHERE id = ?1")
+                .bind(&response.run_id)
+                .fetch_one(database.pool())
+                .await
+                .expect("GitHub output should query");
+        assert!(output_json.contains("publicMetadata"));
+        assert!(output_json.contains("contentHash"));
+        assert!(!output_json.contains("cargo add repo"));
+        {
+            let requests = requests.lock().expect("request log should lock");
+            assert_eq!(requests.len(), 3);
+            assert!(requests
+                .iter()
+                .all(|request| !request.to_ascii_lowercase().contains("authorization:")));
+        }
+        let logs = StructuredLogger::read_recent(&telemetry_dir, Some(20))
+            .await
+            .expect("GitHub evaluation logs should read");
+        assert!(logs.iter().any(|entry| {
+            entry.event == "evaluation.github_metadata.succeeded"
+                && entry.correlation_id.as_deref() == Some(response.correlation_id.as_str())
+        }));
+        let serialized_logs =
+            std::fs::read_to_string(telemetry_dir.join("logs").join("link-world.jsonl"))
+                .expect("GitHub logs should read");
+        assert!(!serialized_logs.contains("github.com/owner/repo"));
+        assert!(!serialized_logs.contains("cargo add repo"));
+        let _ = std::fs::remove_dir_all(telemetry_dir);
+    }
+
+    #[tokio::test]
+    async fn github_evaluator_denies_external_metadata_for_secret_object_and_falls_back() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        let object_store = test_object_store();
+        seed_parsed_object(
+            database.pool(),
+            "obj-github-secret",
+            "github_repo",
+            Some("Secret Repository Reference"),
+            Some("Saved local repository notes with install guidance."),
+        )
+        .await;
+        sqlx::query(
+            "UPDATE knowledge_objects SET canonical_url = 'https://github.com/owner/private', privacy_level = 'secret' WHERE id = 'obj-github-secret'",
+        )
+        .execute(database.pool())
+        .await
+        .expect("secret GitHub object should update");
+        let telemetry_dir =
+            std::env::temp_dir().join(format!("link-world-github-policy-{}", uuid::Uuid::new_v4()));
+        let service = EvaluationService::new(database.pool().clone(), object_store)
+            .with_github_metadata_client(GitHubMetadataClient::for_test(
+                "http://127.0.0.1:1/",
+                None,
+                Duration::from_millis(10),
+            ))
+            .with_structured_logger(StructuredLogger::new(&telemetry_dir));
+
+        let response = service
+            .trigger_evaluation("obj-github-secret", "github_repo_evaluator", None)
+            .await
+            .expect("secret object should use saved-content fallback");
+        let run = service
+            .get_evaluation_run(&response.run_id)
+            .await
+            .expect("secret fallback run should query");
+        assert_eq!(run.status, "passed");
+        assert!(run
+            .limitations
+            .iter()
+            .any(|limitation| limitation.contains("privacy policy")));
+        assert!(run
+            .evidence
+            .iter()
+            .all(|item| item.source != "external_check"));
+        let logs = StructuredLogger::read_recent(&telemetry_dir, Some(20))
+            .await
+            .expect("policy logs should read");
+        assert!(logs.iter().any(|entry| {
+            entry.event == "evaluation.github_metadata.degraded"
+                && entry.error_code.as_deref() == Some("github.policy_denied")
+        }));
+        let _ = std::fs::remove_dir_all(telemetry_dir);
+    }
+
+    #[tokio::test]
     async fn unsupported_evaluator_is_policy_denied() {
         let database = Database::initialize_in_memory()
             .await
@@ -1669,6 +1905,46 @@ mod tests {
         .execute(pool)
         .await
         .expect("parsed document should insert");
+    }
+
+    async fn start_github_fixture_server(
+        responses: Vec<(&'static str, &'static str, &'static str)>,
+    ) -> (String, Arc<Mutex<Vec<String>>>) {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("GitHub fixture server should bind");
+        let address = listener
+            .local_addr()
+            .expect("GitHub fixture address should be readable");
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let request_log = requests.clone();
+        tokio::spawn(async move {
+            for (status, content_type, body) in responses {
+                let (mut socket, _) = listener
+                    .accept()
+                    .await
+                    .expect("GitHub fixture should accept request");
+                let mut buffer = vec![0_u8; 8192];
+                let read = socket
+                    .read(&mut buffer)
+                    .await
+                    .expect("GitHub fixture request should read");
+                request_log
+                    .lock()
+                    .expect("request log should lock")
+                    .push(String::from_utf8_lossy(&buffer[..read]).to_string());
+                let response = format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                socket
+                    .write_all(response.as_bytes())
+                    .await
+                    .expect("GitHub fixture response should write");
+            }
+        });
+
+        (format!("http://{address}/"), requests)
     }
 
     fn test_object_store() -> ObjectStore {

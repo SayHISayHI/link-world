@@ -646,7 +646,7 @@ Evaluation Engine 是 Link World 和普通 AI 收藏工具的主要差异。它�
 - 给出明确 verdict，而不是模糊摘要。
 - 记录评估证据，避免 AI 空泛判断。
 
-当前实现边界：Prompt 与 GitHub Repo evaluator 以 `local_deterministic` capability 运行，不访问网络、模型或 sandbox。客户端为一次用户动作生成 UUID `requestId`；后端以同一值作为 job id 和 correlation id，在短事务中先写 `evaluation_runs(planned)`、`background_jobs(queued)`、`evaluation_traces(planned)` 与 `evaluation.planned`，再推进 running，最后原子提交 passed/trace/artifact/object lifecycle/`evaluation.completed`。重复的同 identity 请求返回原 run；跨 object/evaluator 复用同 UUID fail closed。failed retry 使用新的 request UUID 创建不可变历史子 run，`retry_of_run_id` 指向父 run；同一 retry request 幂等，跨父 run 或与普通 trigger 混用 UUID 均 fail closed。plan/input/output contract 当前均为 schema version 1；本地 evaluator 在 2 秒上限内由独立阻塞任务执行，超时收敛为 `evaluation.timeout`。每个新 run 同事务创建 privacy-bounded `evaluation_traces` 行，成功或失败时与 run/job 一起终结；应用启动会把残留 running run（包括旧版本已先标记 failed 的 job）收敛为 `evaluation.interrupted`、清理孤立 artifact，并延续 correlation 日志。
+当前实现边界：Prompt evaluator 以 `local_deterministic` capability 运行；GitHub Repo evaluator 以可降级的 `network_optional` capability 运行，并在网络不可用、策略拒绝或远端失败时回退 saved content；两者都不调用模型或 sandbox。客户端为一次用户动作生成 UUID `requestId`；后端以同一值作为 job id 和 correlation id，在短事务中先写 `evaluation_runs(planned)`、`background_jobs(queued)`、`evaluation_traces(planned)` 与 `evaluation.planned`，再推进 running，最后原子提交 passed/trace/artifact/object lifecycle/`evaluation.completed`。重复的同 identity 请求返回原 run；跨 object/evaluator 复用同 UUID fail closed。failed retry 使用新的 request UUID 创建不可变历史子 run，`retry_of_run_id` 指向父 run；同一 retry request 幂等，跨父 run 或与普通 trigger 混用 UUID 均 fail closed。plan/input/output contract 当前均为 schema version 1；Prompt evaluator 上限 2 秒，GitHub Evaluation 总上限 15 秒。每个新 run 同事务创建 privacy-bounded `evaluation_traces` 行，成功或失败时与 run/job 一起终结；应用启动会把残留 running run（包括旧版本已先标记 failed 的 job）收敛为 `evaluation.interrupted`、清理孤立 artifact，并延续 correlation 日志。
 ### 7.2 Evaluator routing
 
 ```mermaid
@@ -687,6 +687,8 @@ GitHub Repo Evaluator:
 - 识别安装方式和运行环境。
 - 在允许时执行 dry-run 或 sandbox install。
 - 输出可用性、维护状态和安全风险。
+
+当前 Week 7 边界：`network_optional` adapter 串行读取公开 repository metadata、README signals 和 latest release，总 Evaluation 上限 15 秒，metadata 预算不超过 12 秒；无 token 使用公开 API，`GITHUB_TOKEN` 只经 SecretStore 环境引用解析。README 原文不持久化，只保留有界 signals/SHA-256。secret object 禁止外部请求，private/404、rate limit、timeout、缺失 README/release 均转为稳定 `github.*` limitation 并回退 saved content。当前不 clone、不执行 dry-run/sandbox install；stars/forks 仅为有上限 adoption context，不能单独决定 verdict。
 
 Tutorial Evaluator:
 

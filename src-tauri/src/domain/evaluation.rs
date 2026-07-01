@@ -8,6 +8,7 @@ pub const EVALUATION_INPUT_SCHEMA_VERSION: i64 = 1;
 pub const EVALUATION_OUTPUT_SCHEMA_VERSION: i64 = 1;
 pub const EVALUATION_TRACE_SCHEMA_VERSION: i64 = 1;
 pub const DEFAULT_EVALUATION_TIMEOUT_MS: i64 = 2_000;
+pub const GITHUB_EVALUATION_TIMEOUT_MS: i64 = 15_000;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

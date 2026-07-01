@@ -114,18 +114,32 @@ Local Edition 必须支持：
 
 当前 Week 6 基线：
 
-- `list_evaluator_capabilities` 返回 schema v1 capability；内置 Prompt/GitHub evaluator 标明 `local_deterministic`，不需要 network/model/sandbox。
+- `list_evaluator_capabilities` 返回 schema v1 capability；Prompt 为 `local_deterministic`，GitHub 为可降级的 `network_optional`；两者都不需要 model/sandbox。
 - 客户端生成 UUID requestId；后端以相同 job/correlation identity 先持久化 planned/queued，再推进 running 和 passed/failed。
 - 同 identity 重试返回原 run，不重复写 artifact/event；跨 object 或 requested evaluator 的 UUID 复用 fail closed。
 - 对 failed run 的显式 retry 使用新的客户端 UUID，创建带 `retryOfRunId` 的新 run 并保留父 run；同一父 run/requestId 幂等，普通 trigger 或不同父 run 复用该 UUID fail closed。
 - plan/input/output schema version 均持久化为 1；0004 前的 legacy run 保留 NULL identity 并按 version 1 读取；0005 不为 legacy run 伪造 trace。
 - artifact/DB 失败会把已占位 run/job/trace 收敛为稳定 `evaluation.*` reason；不允许永久 running 或“失败但无记录”。
-- 本地 evaluator 在独立阻塞任务中执行，默认上限 2 秒；timeout 持久化为 `evaluation.timeout`，迟到的纯计算结果不具有外部副作用且不会反写。
+- Prompt 本地 evaluator 上限 2 秒；GitHub Evaluation 总上限 15 秒，其中 metadata 预算最多 12 秒；terminal timeout 持久化为 `evaluation.timeout`，GitHub 子请求 timeout 优先降级为 limitation。迟到的纯计算结果不具有外部副作用且不会反写。
 - 启动恢复会处理当前 running job，也兼容旧版本“job 已 failed、run 仍 running”的不一致；run/job/trace 统一写 `evaluation.interrupted`，记录 terminal event、清理 artifact 目录并写同 correlation 的脱敏日志。
 - `evaluation_traces` 只保存 request/correlation/evaluator identity、input/output hash、execution kind、timeout/latency、status、稳定 error code 与时间戳；不保存标题、URL、正文、plan/output 或 raw error。
 - verdict 的 TSX 实现标记为 evaluator inference，evidence 显示 saved content/local/external/sandbox/user 来源；折叠 trace 详情显示 executor、status、latency/timeout、correlation 与截断 fingerprint；定向 TypeScript 编译通过，localhost rendered QA 尚未完成；无 evidence 的非 unknown 结论被 output validator 拒绝。
 
 Week 6 代码契约已覆盖 capability、version、idempotency、timeout、terminal failure、trace、startup recovery、不可变历史 retry 和运行详情 UI。尚未达到发布完成线：相应 readiness 聚合门禁与 localhost rendered QA 仍待实现；真实进程强制终止仍需发布候选矩阵留证。
+### 5.2 GitHub Repo Evaluator
+
+当前 Week 7 自动化基线：
+
+- 固定公开 fixture 在无 token 下串行返回 repository/README/latest release，产生 `external_check` evidence、六维评分和 15 秒 trace contract。
+- README 只保留 byte length、SHA-256 与 install/usage/example/security 布尔 signals；正文诱饵不进入 output/log。
+- `GITHUB_TOKEN` 只允许 `env:GITHUB_TOKEN` SecretStore 引用；adapter 不实现可泄露 token 的 Debug。
+- secret object 不发网络请求，返回 `github.policy_denied` limitation；private/404 不复制响应 body。
+- 403/429 rate limit 后停止后续可选请求；无自动重试。
+- archived/disabled 强制 low-value 风险边界；stars/forks 有权重上限，不能单独决定 verdict。
+- 当前未 clone、安装或执行仓库代码；sandbox dry-run 属于后续显式权限能力。
+
+Week 7 代码级 fixture 已完成；真实 GitHub API、Windows 代理/DNS、真实 rate window 和 rendered UI 仍需发布候选留证。
+
 ## 6. Incident Playbooks
 
 ### 6.1 AI provider failure

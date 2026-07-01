@@ -12,7 +12,7 @@ Link World 依赖外部网络和第三方 API，但产品必须在外部服务�
 | Class | Examples | Criticality | Default behavior when down |
 | --- | --- | --- | --- |
 | Model provider | OpenAI, Anthropic, Gemini, OpenAI-compatible, Ollama HTTP | optional for core library | keep parsed state, mark AI job failed/blocked |
-| GitHub API | repo metadata | optional enrichment | fallback to public HTML/README if available |
+| GitHub API | public repo metadata/README/release | optional enrichment | fall back to already saved content with explicit limitation |
 | URL fetch | user submitted URL | needed for URL capture | mark object failed, suggest browser capture |
 | Browser bridge | extension/deep link | capture path | keep app usable, suggest manual Add URL |
 | Cloud sync | future sync API | optional | queue local changes |
@@ -56,6 +56,7 @@ Backoff:
 - max 3 attempts by default.
 - user-triggered retry allowed after terminal UI feedback.
 - 内置文本生成 adapter 统一执行该策略，service 不得按供应商各自重试。
+- GitHub Evaluation 例外：403/429 且 remaining=0 或存在 Retry-After 时，不在同一用户操作内自动重试；立即停止后续 README/release 请求并等待用户在窗口恢复后显式 retry。
 
 ## 5. Circuit Breaker
 
@@ -98,9 +99,10 @@ Model provider:
 
 GitHub:
 
-- prefer official API if configured.
-- fallback to public README URL.
-- if both fail, keep URL object and mark evaluation blocked.
+- 固定使用 official REST API；无 token 可读取公开资源，可选 `GITHUB_TOKEN` 只提高公开请求额度。
+- repository metadata 成功后，README/release 子请求可以独立降级；README 正文不持久化。
+- 主 metadata、网络或 policy 不可用时，使用已保存正文完成带 `github.*` limitation 的 Evaluation，不伪造 external evidence。
+- private/404 统一 fail closed，不 clone、不执行仓库代码。
 
 URL fetch:
 

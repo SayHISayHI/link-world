@@ -186,7 +186,7 @@ export interface EvaluatorCapability {
   evaluatorVersion: string;
   displayName: string;
   supportedObjectTypes: string[];
-  executionKind: 'local_deterministic' | 'model_assisted' | 'sandboxed' | string;
+  executionKind: 'local_deterministic' | 'network_optional' | 'model_assisted' | 'sandboxed' | string;
   requiresNetwork: boolean;
   requiresModel: boolean;
   requiresSandbox: boolean;
@@ -201,7 +201,7 @@ export interface EvaluationTrace {
   correlationId: string;
   evaluatorType: string;
   evaluatorVersion: string;
-  executionKind: 'local_deterministic' | 'model_assisted' | 'sandboxed' | string;
+  executionKind: 'local_deterministic' | 'network_optional' | 'model_assisted' | 'sandboxed' | string;
   inputHash: string;
   outputHash?: string;
   timeoutMs: number;
@@ -676,7 +676,7 @@ export interface AgentCommands {
     objectId: string;
   }) => Promise<IpcResponse<AIEnrichmentRunResult>>;
 
-  // 返回版本化 evaluator capability；当前 local deterministic evaluator 不访问网络、模型或 sandbox。
+  // 返回版本化 evaluator capability；Prompt 为 local_deterministic，GitHub 为 network_optional；两者均不调用模型或 sandbox。
   list_evaluator_capabilities: () => Promise<IpcResponse<EvaluatorCapability[]>>;
 
   // requestId 是客户端生成的 UUID 幂等键；同一 object/evaluator/requestId 返回同一 run/job。

@@ -49,7 +49,7 @@
 | Sprint 3 采集可靠性 | 执行中 | 启动时 running job 收敛、capture 超时/HTTP/受限页/空正文分类、任务隔离、失败原因脱敏、扩展回退提示、手动 URL 去重和 AI job failureReason 已实现；readiness 自动化已建立，真实网络/进程矩阵待执行 |
 | Sprint 4 搜索质量 | 已完成 | FTS 字段权重、secret snippet 抑制、Library filter 组合搜索、索引一致性检查、可重复大库搜索基准、搜索空态/失败态、重建进度和取消边界已实现；5k/20k benchmark 已实测通过 |
 | Sprint 5 可观测性 | 执行中 | Diagnostics、失败 job 操作、脱敏支持包、插件指纹/audit/domain correlation 摘要、size/SHA-256 已实现；capture submit/fetch、AI enrichment、search rebuild/reindex、startup migration 与 restore 已接入 2 MiB 有界 JSONL 和持久化 correlation UUID，migration/restore UUID 另写入跨启动 control/result；计划内关键流程的代码级日志覆盖已完成，readiness 自动化与 W5-01 至 W5-14 发布候选矩阵已建立，完整前端门禁和真实 Windows/轮转/支持交接证据仍待完成 |
-| Sprint 6-8 Evaluation | 执行中 | Week 6 已建立 capability/plan/input/output/trace v1、UUID request idempotency、planned/running/passed/failed run+job+trace 事务、2 秒执行 timeout、跨版本启动中断 recovery、artifact cleanup、稳定失败码、结构化 correlation 日志，以及 UI inference/evidence/trace 详情（定向 TypeScript 编译通过，rendered QA 待完成）；既有 Prompt/GitHub evaluator 仍为无网络/无模型/无 sandbox 的本地确定性原型；不可变历史 retry 已通过 0006 lineage 实现，聚合 readiness 与 Week 7-8 外部验证尚未完成 |
+| Sprint 6-8 Evaluation | 执行中 | Week 6 已建立 capability/plan/input/output/trace v1、UUID request idempotency、planned/running/passed/failed run+job+trace 事务、2 秒执行 timeout、跨版本启动中断 recovery、artifact cleanup、稳定失败码、结构化 correlation 日志，以及 UI inference/evidence/trace 详情（定向 TypeScript 编译通过，rendered QA 待完成）；Prompt evaluator 保持无模型/无 sandbox 的本地确定性执行，GitHub evaluator 已升级为可降级的 `network_optional` 执行；不可变历史 retry 已通过 0006 lineage 实现；Week 7 已加入无 token 公共 GitHub metadata/README/release adapter、隐私与限流降级、六维评分和 stars 非决定性测试，真实 API/Windows 矩阵与 Week 8 Prompt 外部验证尚未完成 |
 | Sprint 9-10 Alpha 发布 | 未开始 | 安装升级、安全审计、真实用户反馈闭环 |
 
 ## 4. 周度实施计划
@@ -163,16 +163,16 @@
 
 交付：
 
-- README、license、最近活动和公开仓库元数据采集。
-- 维护性、适用性、接入成本、风险与替代方案维度。
-- 每个结论关联来源或 limitation。
-- API 限流、私有仓库和元数据缺失边界。
+- README、license、最近活动和公开仓库元数据采集。（已实现：repo/README/latest release 串行有界 adapter；无 token public fixture 通过）
+- 维护性、适用性、接入成本、风险与替代方案维度。（已实现：documentation/licensing/maintenance/adoption/actionability/risk + alternative action）
+- 每个结论关联来源或 limitation。（已实现：external_check refs；saved fallback 使用稳定 github.* limitation）
+- API 限流、私有仓库和元数据缺失边界。（已实现：rate limit 停止后续请求；private/404 fail closed；README/release 独立降级）
 
 验收：
 
-- 对固定公开仓库 fixture 产生稳定结构。
-- 无 token 时仍能使用公开数据或明确降级。
-- stars 不作为单一价值结论。
+- 对固定公开仓库 fixture 产生稳定结构。（自动化已通过）
+- 无 token 时仍能使用公开数据或明确降级。（自动化已通过；真实 API 待矩阵）
+- stars 不作为单一价值结论。（百万 stars archived fixture 仍为 low_value）
 
 ### Week 8：Prompt Evaluator
 
