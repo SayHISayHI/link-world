@@ -48,11 +48,13 @@
    - Connector、Parser、Evaluator、Prompt 资源和 Registry 规范。
 22. [github_repo_evaluator.md](./github_repo_evaluator.md)
    - GitHub 公共 metadata adapter、限流/私有边界、隐私策略、评分上限和 Week 7 验收证据。
-23. [post_mvp_roadmap.md](./post_mvp_roadmap.md)
+23. [prompt_evaluator.md](./prompt_evaluator.md)
+   - Prompt 抽取、rubric、结构化 diff、synthetic tests、注入与 secret 边界和 Week 8 验收证据。
+24. [post_mvp_roadmap.md](./post_mvp_roadmap.md)
    - MVP 后 10 周执行范围、周度交付、验收门槛、当前状态和明确排除项。
-24. [../tests/docs/testing_strategy.md](../tests/docs/testing_strategy.md)
+25. [../tests/docs/testing_strategy.md](../tests/docs/testing_strategy.md)
    - 测试分层、fixtures、AI evals、回归测试和发布测试清单。
-25. [adr/README.md](./adr/README.md)
+26. [adr/README.md](./adr/README.md)
    - 架构决策记录，解释关键技术和产品架构取舍，包括 Markdown/AST 渲染与 AI 展示提示边界。
 
 ## Source of Truth
@@ -76,6 +78,7 @@
 - URL capture 与后台任务发布故障矩阵以 `sprint3_capture_fault_matrix.md` 为准。
 - 本地可观测性、支持包隐私与支持交接发布矩阵以 `sprint5_observability_readiness.md` 为准。
 - GitHub Repo Evaluator 的外部数据、限流、隐私和评分边界以 `github_repo_evaluator.md` 为准。
+- Prompt Evaluator 的抽取、rubric、diff、测试与注入边界以 `prompt_evaluator.md` 为准。
 - 当前里程碑、周度范围与完成状态以 `post_mvp_roadmap.md` 为准。
 - 架构取舍的历史原因以 `adr/` 为准。
 

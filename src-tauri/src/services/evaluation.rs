@@ -6,7 +6,7 @@ use crate::domain::evaluation::{
     EVALUATION_INPUT_SCHEMA_VERSION, EVALUATION_OUTPUT_SCHEMA_VERSION,
     EVALUATION_PLAN_SCHEMA_VERSION, GITHUB_EVALUATION_TIMEOUT_MS,
 };
-use crate::domain::knowledge::{EvaluationRun, EvidenceItem};
+use crate::domain::knowledge::EvaluationRun;
 use crate::errors::{AppError, AppResult};
 use crate::repositories::evaluation::EvaluationRepository;
 use crate::services::github::{
@@ -14,6 +14,7 @@ use crate::services::github::{
     GITHUB_POLICY_DENIED, GITHUB_TIMEOUT,
 };
 use crate::services::github_evaluator::evaluate_github_repository;
+use crate::services::prompt_evaluator::{evaluate_prompt, looks_like_prompt};
 use crate::state::AppState;
 use crate::storage::object_store::{sha256_hex, ObjectStore};
 use crate::telemetry::{StructuredLogEvent, StructuredLogger};
@@ -632,106 +633,9 @@ impl EvaluatorPlugin for PromptEvaluator {
         plan: &EvaluationPlan,
         _github_metadata: Option<&GitHubMetadataOutcome>,
     ) -> EvaluationOutput {
-        let text = input.text_content.as_str();
-        let lower = text.to_lowercase();
-        let variable_count = count_prompt_variables(text);
-        let has_role = contains_any(&lower, &["you are", "act as", "role:", "system:"]);
-        let has_task = contains_any(
-            &lower,
-            &["task", "goal", "objective", "你是", "请", "目标", "任务"],
-        );
-        let has_constraints = contains_any(
-            &lower,
-            &["constraint", "must", "avoid", "不得", "必须", "不要"],
-        );
-        let has_output_format = contains_any(
-            &lower,
-            &["json", "markdown", "schema", "format", "输出格式", "表格"],
-        );
-        let has_examples = contains_any(&lower, &["example", "few-shot", "示例", "例如"]);
-        let unsafe_marker = contains_any(
-            &lower,
-            &["ignore previous", "api key", "cookie", "password", "绕过"],
-        );
-
-        let clarity = score_bool(has_task, 0.35) + score_length(text);
-        let specificity =
-            0.25 + score_bool(has_constraints, 0.25) + (variable_count.min(4) as f64 * 0.08);
-        let testability = 0.25 + score_bool(has_output_format, 0.3) + score_bool(has_examples, 0.2);
-        let reusability = 0.25 + (variable_count.min(5) as f64 * 0.1) + score_bool(has_role, 0.15);
-        let safety = if unsafe_marker { 0.25 } else { 0.85 };
-        let dimensions = json!({
-            "clarity": clamp_score(clarity),
-            "specificity": clamp_score(specificity),
-            "testability": clamp_score(testability),
-            "reusability": clamp_score(reusability),
-            "safety": clamp_score(safety),
-        });
-        let score = average_dimension_scores(&dimensions);
-        let verdict = verdict_from_score(score, safety);
-        let evidence = vec![
-            EvidenceItem {
-                source: "original_content".to_string(),
-                text: format!("Detected {variable_count} reusable placeholder(s)."),
-                reference: Some("placeholder_scan".to_string()),
-            },
-            EvidenceItem {
-                source: "original_content".to_string(),
-                text: if has_output_format {
-                    "Prompt declares an output format.".to_string()
-                } else {
-                    "Prompt does not clearly declare an output format.".to_string()
-                },
-                reference: Some("output_format_check".to_string()),
-            },
-            EvidenceItem {
-                source: "original_content".to_string(),
-                text: if has_examples {
-                    "Prompt includes example-style guidance.".to_string()
-                } else {
-                    "No example or few-shot pattern was detected.".to_string()
-                },
-                reference: Some("example_check".to_string()),
-            },
-        ];
-        let next_actions = build_prompt_next_actions(
-            has_role,
-            has_constraints,
-            has_output_format,
-            has_examples,
-            variable_count,
-        );
-        let limitations = vec![
-            "MVP prompt evaluator uses deterministic heuristics and does not execute the prompt against a live model.".to_string(),
-            "Scores should be treated as triage signals until sandboxed test runs are added.".to_string(),
-        ];
-        let report = json!({
-            "plan": plan,
-            "testCases": build_prompt_test_cases(input),
-            "detectedSignals": {
-                "hasRole": has_role,
-                "hasTask": has_task,
-                "hasConstraints": has_constraints,
-                "hasOutputFormat": has_output_format,
-                "hasExamples": has_examples,
-                "variableCount": variable_count,
-                "unsafeMarker": unsafe_marker,
-            }
-        });
-
-        EvaluationOutput {
-            schema_version: EVALUATION_OUTPUT_SCHEMA_VERSION,
-            score,
-            verdict,
-            dimensions,
-            evidence,
-            limitations,
-            next_actions,
-            report,
-        }
+        evaluate_prompt(input, plan)
     }
 }
-
 impl EvaluatorPlugin for GitHubRepoEvaluator {
     fn evaluator_type(&self) -> &'static str {
         GITHUB_REPO_EVALUATOR_TYPE
@@ -978,96 +882,6 @@ fn evaluation_error_code(error: &AppError) -> &'static str {
 fn stable_evaluation_error(error_code: &str) -> AppError {
     AppError::Unknown(error_code.to_string())
 }
-fn build_prompt_next_actions(
-    has_role: bool,
-    has_constraints: bool,
-    has_output_format: bool,
-    has_examples: bool,
-    variable_count: usize,
-) -> Vec<Value> {
-    let mut actions = Vec::new();
-
-    if !has_role {
-        actions.push(json!({
-            "title": "Add an explicit role or operating context.",
-            "priority": "medium",
-        }));
-    }
-    if !has_constraints {
-        actions.push(json!({
-            "title": "Add constraints for scope, exclusions and quality bar.",
-            "priority": "high",
-        }));
-    }
-    if !has_output_format {
-        actions.push(json!({
-            "title": "Declare the desired output schema or format.",
-            "priority": "high",
-        }));
-    }
-    if !has_examples {
-        actions.push(json!({
-            "title": "Add at least one example input and expected output.",
-            "priority": "medium",
-        }));
-    }
-    if variable_count == 0 {
-        actions.push(json!({
-            "title": "Introduce placeholders for reusable inputs.",
-            "priority": "low",
-        }));
-    }
-
-    if actions.is_empty() {
-        actions.push(json!({
-            "title": "Run this prompt against two realistic samples and compare outputs.",
-            "priority": "medium",
-        }));
-    }
-
-    actions
-}
-
-fn build_prompt_test_cases(input: &EvaluationInput) -> Vec<Value> {
-    vec![
-        json!({
-            "name": "happy_path",
-            "input": "Use a representative user request with complete context.",
-            "expected": "The response follows the requested format and includes actionable output.",
-        }),
-        json!({
-            "name": "missing_context",
-            "input": "Remove one required input variable or context block.",
-            "expected": "The prompt should ask for clarification instead of hallucinating.",
-        }),
-        json!({
-            "name": "edge_constraints",
-            "input": format!(
-                "Stress test with a long or ambiguous input for '{}'.",
-                input.title.as_deref().unwrap_or("this prompt")
-            ),
-            "expected": "The response should preserve constraints and avoid unsafe assumptions.",
-        }),
-    ]
-}
-
-fn looks_like_prompt(text: &str) -> bool {
-    let lower = text.to_lowercase();
-    contains_any(
-        &lower,
-        &[
-            "you are",
-            "act as",
-            "system:",
-            "prompt",
-            "输出格式",
-            "你是",
-            "{{",
-            "<input>",
-        ],
-    )
-}
-
 fn is_github_repo(input: &EvaluationInput) -> bool {
     input.object_type == "github_repo"
         || parse_github_repo(input.canonical_url.as_deref()).is_some()
@@ -1090,92 +904,6 @@ fn parse_github_repo(raw_url: Option<&str>) -> Option<Value> {
         "repo": repo.trim_end_matches(".git"),
         "url": url.as_str(),
     }))
-}
-
-fn count_prompt_variables(text: &str) -> usize {
-    let brace_pairs = text.match_indices("{{").count();
-    let angle_inputs = text
-        .match_indices('<')
-        .count()
-        .min(text.match_indices('>').count());
-    let dollar_vars = text
-        .split_whitespace()
-        .filter(|token| token.starts_with('$') && token.len() > 1)
-        .count();
-
-    brace_pairs + angle_inputs + dollar_vars
-}
-
-fn contains_any(text: &str, needles: &[&str]) -> bool {
-    needles.iter().any(|needle| text.contains(needle))
-}
-
-fn score_bool(value: bool, weight: f64) -> f64 {
-    if value {
-        weight
-    } else {
-        0.0
-    }
-}
-
-fn score_length(text: &str) -> f64 {
-    let chars = text
-        .chars()
-        .filter(|character| !character.is_whitespace())
-        .count();
-    if chars >= 240 {
-        0.35
-    } else if chars >= 120 {
-        0.25
-    } else if chars >= 48 {
-        0.15
-    } else {
-        0.05
-    }
-}
-
-fn average_dimension_scores(dimensions: &Value) -> f64 {
-    let Some(object) = dimensions.as_object() else {
-        return 0.0;
-    };
-    let mut total = 0.0;
-    let mut count = 0.0;
-
-    for value in object.values() {
-        if let Some(score) = value.as_f64() {
-            total += score;
-            count += 1.0;
-        }
-    }
-
-    if count == 0.0 {
-        return 0.0;
-    }
-
-    round_score(total / count)
-}
-
-fn verdict_from_score(score: f64, safety: f64) -> String {
-    if safety < 0.35 {
-        "unsafe"
-    } else if score >= 0.82 {
-        "high_value"
-    } else if score >= 0.65 {
-        "useful"
-    } else if score >= 0.45 {
-        "situational"
-    } else {
-        "low_value"
-    }
-    .to_string()
-}
-
-fn clamp_score(score: f64) -> f64 {
-    round_score(score.clamp(0.0, 1.0))
-}
-
-fn round_score(score: f64) -> f64 {
-    (score * 100.0).round() / 100.0
 }
 
 fn serialize_json<T>(value: &T) -> AppResult<String>
@@ -1328,6 +1056,24 @@ mod tests {
                 serde_json::from_str(raw).expect("versioned payload should be JSON");
             assert_eq!(value["schemaVersion"], 1);
         }
+        let output: serde_json::Value =
+            serde_json::from_str(&versions.5).expect("prompt output should be JSON");
+        assert_eq!(
+            output["report"]["executionBoundary"]["inputTreatment"],
+            "untrusted_data"
+        );
+        assert_eq!(
+            output["report"]["executionBoundary"]["externalActions"],
+            false
+        );
+        assert_eq!(output["report"]["rubric"]["version"], 1);
+        assert_eq!(
+            output["report"]["originalPrompt"],
+            "You are a precise assistant. Task: summarize {{topic}}. Output format: JSON. Example: input and output."
+        );
+        assert!(output["report"]["improvementDiff"]
+            .as_array()
+            .is_some_and(|changes| !changes.is_empty()));
         let capabilities = service.list_evaluator_capabilities();
         assert_eq!(capabilities.len(), 2);
         assert!(capabilities.iter().all(|capability| {

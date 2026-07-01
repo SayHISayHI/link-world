@@ -73,6 +73,8 @@ Decision table:
 | sensitive | allow | explicit authorization |
 | secret | deny unless special local-only future flow | deny |  GitHub Repo Evaluator 只发送 canonical URL 中的公开 owner/repo identity，不发送 saved body、title、annotation、AI output 或本机路径。`public`/`personal` 允许公开 metadata；`sensitive` 仅允许公开 metadata-only；`secret` 不发请求并记录 `github.policy_denied`。可选 `GITHUB_TOKEN` 只从 `env:GITHUB_TOKEN` 解析，禁止写入 SQLite、artifact、trace、日志、支持包或 IPC。即使 token 可见 private repo，返回 `private=true` 时也必须拒绝评估该 metadata。
 
+Prompt Evaluator 对所有 privacy level 都只做本地确定性分析。原 prompt 作为 Evaluation input/output snapshot 留在本地；trace、structured log 和 support bundle 禁止正文。generated tests 与 improvement diff 只允许固定 synthetic 文本和变量名，禁止复制用户 secret、credential value、cookie、token、session、本机路径或正文片段；输入内 injection 一律作为 untrusted data signal，不能取得 network/model/sandbox/external-action capability。
+
 ## 5. Plugin Policy Gates
 
 Plugin access must check:

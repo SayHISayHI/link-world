@@ -676,10 +676,12 @@ flowchart TB
 
 Prompt Evaluator:
 
-- 抽取 prompt 目标、变量和输出格式。
-- 生成基准测试任务。
-- 与 baseline prompt 对比。
-- 评估输出质量、稳定性和成本。
+- 抽取目标、变量、约束、验收标准、输出格式、危险动作与 injection signal。
+- 使用版本化五维 rubric 生成 evidence、limitations、next actions 和 synthetic test specifications。
+- 保留本地 immutable original prompt snapshot 与结构化 improvement diff，不自动覆盖原文。
+- 输入始终作为 untrusted data；不调用模型、网络、sandbox 或外部动作。
+
+当前 Week 8 边界：`local_deterministic` 纯评分模块在 2 秒 runtime 上限内运行。generated tests 和 diff 只使用固定 synthetic 文本与变量名，不复制用户 secret；credential-like literal 只降低 safety 并产生 limitation。injection 文本不能修改 score/verdict 规则。原 prompt 只保存在本地 Evaluation input/output/artifact，不进入 trace、structured log 或外部服务；当前不执行 test case、不自动应用 diff、不做真实模型 A/B。
 
 GitHub Repo Evaluator:
 

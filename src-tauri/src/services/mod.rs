@@ -8,6 +8,7 @@ pub mod github;
 pub mod github_evaluator;
 pub mod migration;
 pub mod portable_export;
+pub mod prompt_evaluator;
 pub mod restore;
 pub mod search;
 pub mod support_bundle;

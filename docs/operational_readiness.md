@@ -140,6 +140,19 @@ Week 6 代码契约已覆盖 capability、version、idempotency、timeout、term
 
 Week 7 代码级 fixture 已完成；真实 GitHub API、Windows 代理/DNS、真实 rate window 和 rendered UI 仍需发布候选留证。
 
+### 5.3 Prompt Evaluator
+
+当前 Week 8 自动化基线：
+
+- pure evaluator 抽取 goal、variables、constraints、acceptance、output formats、dangerous actions、injection 和 credential-like signals。
+- versioned 五维 rubric、原 prompt/hash、append-only improvement diff、四个 synthetic test specifications 进入本地 output/artifact。
+- 相同 input/plan 重复计算得到相同 score、verdict、dimensions 和 report。
+- injection fixture 不能强制 `high_value` 或 `score=1.0`；execution boundary 固定关闭 network/model/sandbox/external actions。
+- credential 诱饵保留在本地 immutable original snapshot；generated tests 与 diff 不复制诱饵值。
+- runtime integration 验证 versioned output、artifact、trace、lifecycle 和 2 秒上限。
+
+Week 8 代码级验收已完成；真实模型 A/B、sandbox test execution、自动 diff 应用和 rendered UI 不在本周范围，未来启用前需独立权限、trace 与发布矩阵。
+
 ## 6. Incident Playbooks
 
 ### 6.1 AI provider failure

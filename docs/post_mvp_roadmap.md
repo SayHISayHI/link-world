@@ -49,7 +49,7 @@
 | Sprint 3 采集可靠性 | 执行中 | 启动时 running job 收敛、capture 超时/HTTP/受限页/空正文分类、任务隔离、失败原因脱敏、扩展回退提示、手动 URL 去重和 AI job failureReason 已实现；readiness 自动化已建立，真实网络/进程矩阵待执行 |
 | Sprint 4 搜索质量 | 已完成 | FTS 字段权重、secret snippet 抑制、Library filter 组合搜索、索引一致性检查、可重复大库搜索基准、搜索空态/失败态、重建进度和取消边界已实现；5k/20k benchmark 已实测通过 |
 | Sprint 5 可观测性 | 执行中 | Diagnostics、失败 job 操作、脱敏支持包、插件指纹/audit/domain correlation 摘要、size/SHA-256 已实现；capture submit/fetch、AI enrichment、search rebuild/reindex、startup migration 与 restore 已接入 2 MiB 有界 JSONL 和持久化 correlation UUID，migration/restore UUID 另写入跨启动 control/result；计划内关键流程的代码级日志覆盖已完成，readiness 自动化与 W5-01 至 W5-14 发布候选矩阵已建立，完整前端门禁和真实 Windows/轮转/支持交接证据仍待完成 |
-| Sprint 6-8 Evaluation | 执行中 | Week 6 已建立 capability/plan/input/output/trace v1、UUID request idempotency、planned/running/passed/failed run+job+trace 事务、2 秒执行 timeout、跨版本启动中断 recovery、artifact cleanup、稳定失败码、结构化 correlation 日志，以及 UI inference/evidence/trace 详情（定向 TypeScript 编译通过，rendered QA 待完成）；Prompt evaluator 保持无模型/无 sandbox 的本地确定性执行，GitHub evaluator 已升级为可降级的 `network_optional` 执行；不可变历史 retry 已通过 0006 lineage 实现；Week 7 已加入无 token 公共 GitHub metadata/README/release adapter、隐私与限流降级、六维评分和 stars 非决定性测试，真实 API/Windows 矩阵与 Week 8 Prompt 外部验证尚未完成 |
+| Sprint 6-8 Evaluation | 执行中 | Week 6 已建立 capability/plan/input/output/trace v1、UUID request idempotency、planned/running/passed/failed run+job+trace 事务、2 秒执行 timeout、跨版本启动中断 recovery、artifact cleanup、稳定失败码、结构化 correlation 日志，以及 UI inference/evidence/trace 详情（定向 TypeScript 编译通过，rendered QA 待完成）；Prompt evaluator 保持无模型/无 sandbox 的本地确定性执行，GitHub evaluator 已升级为可降级的 `network_optional` 执行；不可变历史 retry 已通过 0006 lineage 实现；Week 7 已加入无 token 公共 GitHub metadata/README/release adapter、隐私与限流降级、六维评分和 stars 非决定性测试，真实 GitHub API/Windows 矩阵尚未完成；Week 8 Prompt 的纯评分抽取、rubric、diff、synthetic tests、注入和 secret 边界已完成 |
 | Sprint 9-10 Alpha 发布 | 未开始 | 安装升级、安全审计、真实用户反馈闭环 |
 
 ## 4. 周度实施计划
@@ -178,16 +178,16 @@
 
 交付：
 
-- 目标、变量、约束、输出格式和危险动作抽取。
-- 小型测试用例与评分 rubric。
-- 改进建议保留原 prompt 与 diff。
-- 不执行外部动作、不自动发送敏感样例。
+- 目标、变量、约束、输出格式和危险动作抽取。（已实现：有界变量名、goal/acceptance、format、dangerous action/injection/credential 类别）
+- 小型测试用例与评分 rubric。（已实现：rubric v1 五维评分；四个固定 synthetic specifications）
+- 改进建议保留原 prompt 与 diff。（已实现：本地 immutable original/hash + append-only improvement diff；不自动应用）
+- 不执行外部动作、不自动发送敏感样例。（已实现：network/model/sandbox/external actions 固定关闭）
 
 验收：
 
-- 结果包含 evidence、limitations 和 next actions。
-- prompt injection 文本不能改变 evaluator 系统边界。
-- 测试样例不包含真实用户 secret。
+- 结果包含 evidence、limitations 和 next actions。（自动化已通过）
+- prompt injection 文本不能改变 evaluator 系统边界。（自动化已通过：无法强制 `high_value`/`score=1.0`）
+- 测试样例不包含真实用户 secret。（自动化已通过：credential 诱饵不进入 generated tests/diff）
 
 ### Week 9：Windows Alpha 工程化
 
