@@ -180,11 +180,30 @@ export interface AITrace {
   latencyMs?: number;
 }
 
+export interface EvaluatorCapability {
+  schemaVersion: 1;
+  evaluatorType: string;
+  evaluatorVersion: string;
+  displayName: string;
+  supportedObjectTypes: string[];
+  executionKind: 'local_deterministic' | 'model_assisted' | 'sandboxed' | string;
+  requiresNetwork: boolean;
+  requiresModel: boolean;
+  requiresSandbox: boolean;
+  planSchemaVersion: 1;
+  inputSchemaVersion: 1;
+  outputSchemaVersion: 1;
+}
 export interface EvaluationRun {
   id: string;
+  requestId?: string;
+  correlationId?: string;
   objectId: string;
   evaluatorType: string;
   evaluatorVersion: string;
+  planSchemaVersion: number;
+  inputSchemaVersion: number;
+  outputSchemaVersion: number;
   status: 'planned' | 'running' | 'passed' | 'failed' | 'skipped' | 'blocked';
   score?: number;
   verdict: 'high_value' | 'useful' | 'situational' | 'low_value' | 'unsafe' | 'unknown';
@@ -193,7 +212,9 @@ export interface EvaluationRun {
   artifacts: EvaluationArtifact[];
   limitations: string[];
   nextActions: unknown[];
+  failureReason?: string;
   createdAt: string;
+  completedAt?: string;
 }
 
 export interface EvidenceItem {
@@ -328,6 +349,7 @@ export interface DomainEvent<TPayload = unknown> {
     | 'analysis.failed'
     | 'evaluation.planned'
     | 'evaluation.completed'
+    | 'evaluation.failed'
     | 'object.deleted'
     | 'privacy.changed'
     | 'plugin.permission.changed';
@@ -634,14 +656,25 @@ export interface AgentCommands {
     objectId: string;
   }) => Promise<IpcResponse<AIEnrichmentRunResult>>;
 
-  // 手动触发指定对象的深度 AI 评估 (Evaluation Engine)
-  // invoke('trigger_evaluation', { objectId, evaluatorType })
+  // 返回版本化 evaluator capability；当前 local deterministic evaluator 不访问网络、模型或 sandbox。
+  list_evaluator_capabilities: () => Promise<IpcResponse<EvaluatorCapability[]>>;
+
+  // requestId 是客户端生成的 UUID 幂等键；同一 object/evaluator/requestId 返回同一 run/job。
+  // 省略 requestId 仅用于旧客户端兼容，后端会生成一次性 UUID。
   trigger_evaluation: (args: {
     objectId: string;
     evaluatorType: string;
-  }) => Promise<IpcResponse<{ runId: string }>>;
+    requestId?: string;
+  }) => Promise<IpcResponse<{
+    runId: string;
+    jobId: string;
+    requestId: string;
+    correlationId: string;
+    status: 'planned' | 'running' | 'passed' | 'failed';
+    reused: boolean;
+  }>>;
 
-  // 查询评估运行详情，前端可用于展示 evidence、artifact 和失败原因。
+  // 查询评估运行详情，前端可用于展示版本、evidence、artifact 和稳定失败原因。
   // invoke('get_evaluation_run', { runId })
   get_evaluation_run: (args: { runId: string }) => Promise<IpcResponse<EvaluationRun>>;
 }

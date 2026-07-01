@@ -492,9 +492,14 @@ impl KnowledgeObjectRepository {
             r#"
             SELECT
                 id,
+                request_id,
+                correlation_id,
                 object_id,
                 evaluator_type,
                 evaluator_version,
+                plan_schema_version,
+                input_schema_version,
+                output_schema_version,
                 status,
                 dimensions_json,
                 evidence_json,
@@ -654,9 +659,14 @@ fn ai_analysis_from_row(row: SqliteRow) -> AIAnalysis {
 fn evaluation_run_from_row(row: SqliteRow, artifacts: Vec<EvaluationArtifact>) -> EvaluationRun {
     EvaluationRun {
         id: row.get("id"),
+        request_id: row.get("request_id"),
+        correlation_id: row.get("correlation_id"),
         object_id: row.get("object_id"),
         evaluator_type: row.get("evaluator_type"),
         evaluator_version: row.get("evaluator_version"),
+        plan_schema_version: row.get("plan_schema_version"),
+        input_schema_version: row.get("input_schema_version"),
+        output_schema_version: row.get("output_schema_version"),
         status: row.get("status"),
         score: row.get("score"),
         verdict: row.get("verdict"),

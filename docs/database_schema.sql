@@ -140,9 +140,14 @@ CREATE INDEX IF NOT EXISTS idx_ai_traces_object
 -- 6. 评估验证表 (Evaluation Engine 的核心产物)
 CREATE TABLE IF NOT EXISTS evaluation_runs (
     id TEXT PRIMARY KEY,
+    request_id TEXT,
+    correlation_id TEXT,
     object_id TEXT NOT NULL,
     evaluator_type TEXT NOT NULL,      -- 'prompt_evaluator', 'repo_evaluator', etc.
     evaluator_version TEXT NOT NULL,
+    plan_schema_version INTEGER NOT NULL DEFAULT 1,
+    input_schema_version INTEGER NOT NULL DEFAULT 1,
+    output_schema_version INTEGER NOT NULL DEFAULT 1,
     status TEXT NOT NULL CHECK (
         status IN ('planned', 'running', 'passed', 'failed', 'skipped', 'blocked')
     ),
@@ -165,6 +170,13 @@ CREATE TABLE IF NOT EXISTS evaluation_runs (
 
 CREATE INDEX IF NOT EXISTS idx_evaluation_runs_object_created
     ON evaluation_runs(object_id, created_at);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_evaluation_runs_request_id
+    ON evaluation_runs(request_id)
+    WHERE request_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_evaluation_runs_status_created
+    ON evaluation_runs(status, created_at);
 
 -- 7. 评估产物表
 CREATE TABLE IF NOT EXISTS evaluation_artifacts (

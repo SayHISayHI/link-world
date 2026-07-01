@@ -200,10 +200,12 @@ Recommended repositories:
 - 写入 `source_snapshots` + 更新 lifecycle。
 - 写入 `parsed_documents` + 更新 lifecycle + FTS enqueue event。
 - 写入 `ai_analysis`（包括可选 `display_hints_json`）+ `ai_traces` + 更新 lifecycle。
-- 写入 `evaluation_runs` + artifacts + 更新 lifecycle。
+- Evaluation reservation：`evaluation_runs(planned)` + `background_jobs(queued)` + `evaluation.planned`，以唯一 request UUID 占位。
+- Evaluation completion/failure：校验 run/job/correlation identity 后，原子更新 run/job、artifact、object lifecycle 与 terminal domain event。
 - 删除对象 + tombstone + cleanup job。
 - 插件权限变更 + audit log。
 
+`EvaluationService` 当前先查询 request UUID；已存在且 object/requested evaluator identity 一致时直接返回原 run，不重复生成 artifact。新请求在执行 evaluator 前持久化 planned/queued 状态，再进入 running；artifact I/O 位于数据库 transaction 外，成功结果以短事务发布，失败只保存稳定 `evaluation.*` code。0004 migration 为 legacy run 保留 nullable identity，并把 plan/input/output schema version 默认到 1。timeout、独立 trace 和异步 runner recovery 仍是后续 Week 6 工作。
 禁止一个 transaction 内：
 
 - 发 HTTP 请求。
@@ -523,7 +525,7 @@ Backend minimum test matrix:
 
 - State machine: all lifecycle transitions including `failed`。
 - Error mapping: every `AppError` maps to `IpcErrorCode`。
-- Migration: empty DB；production migrator 生成的 0001/0002/0003 file fixtures；1000-object invariants；unknown future version fail-closed；existing-schema restore point；guard interruption convergence。
+- Migration: empty DB；production migrator 生成的 0001/0002/0003 historical fixtures → current 0004；1000-object invariants；unknown future version fail-closed；existing-schema restore point；guard interruption convergence。
 - Portable export: non-secret object markdown/metadata export, secret skip count, and storage URI / credential-reference omission.
 - Support bundle: explicit confirmation, atomic local publication, valid schema/hash, bounded validated runtime logs, and adversarial omission of object bodies, job/domain-event payloads, audit metadata, plugin manifest secrets, URL query values, credential references and local absolute paths.
 - Structured logging: JSONL round-trip, redaction rejection, size bounds and capture submit/start/success/failure correlation continuity.

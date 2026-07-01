@@ -116,6 +116,7 @@ Old data:
 - Old `ai_analysis` remains visible.
 - Migration `0002_ai_display_hints.sql` only adds nullable `ai_analysis.display_hints_json`; it does not backfill or rewrite existing analysis rows.
 - Migration `0003_model_provider_api_family.sql` adds a required `model_provider_configs.api_family` with the backward-compatible `openai_chat_completions` default; existing provider rows continue using their previous behavior.
+- Migration `0004_evaluation_runtime_contract.sql` adds nullable request/correlation UUIDs, plan/input/output schema versions defaulting to 1, a partial unique request index and a status index. Legacy evaluation rows remain readable with NULL identity and version 1 contracts.
 - Analysis schema version 1 with `display_hints_json IS NULL` must deserialize as `displayHints: undefined` and use deterministic Markdown AST layout inference.
 - Newly generated general analyses use analysis schema version 2; the nested display hint has its own independent schema version 1.
 - Old `evaluation_runs` remain visible.
@@ -144,7 +145,8 @@ Every migration must be tested against:
 - 0001 fixture：1000 个对象，并覆盖 sensitive/secret、snapshot、parsed document、legacy AI analysis、AI trace、Evaluation artifact、失败 job、FTS、provider、tombstone 和 local setting。
 - 0001 → latest：验证所有核心/派生行数、隐私级别、FTS 可检索性、外键、`display_hints_json IS NULL` 兼容和 provider 默认 API family。
 - 0002 → latest：验证已有 display hints 原样保留，历史 provider identity 不改写。
-- 0003 → latest：验证重复启动幂等，非默认 `anthropic_messages` 不回退。
+- 0003 → latest：验证非默认 `anthropic_messages` 不回退，并新增 0004 Evaluation runtime identity/version columns 与索引。
+- 0001 legacy Evaluation row → latest：验证 request/correlation 保持 NULL，plan/input/output schema version 均为 1，artifact 和历史 verdict 不丢失。
 - future version：注入未知 migration 999 后必须返回 `DbMigration`，用户对象和 migration metadata 不被重写。
 
 自动化 fixture 只证明 schema/data compatibility，不等同于发布包升级回归。仍需：

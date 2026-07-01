@@ -85,6 +85,29 @@ impl ObjectStore {
         })
     }
 
+    pub async fn remove_evaluation_run_artifacts(
+        &self,
+        object_id: &str,
+        evaluation_run_id: &str,
+    ) -> AppResult<()> {
+        let object_id = normalize_storage_segment(object_id)?;
+        let evaluation_run_id = normalize_storage_segment(evaluation_run_id)?;
+        let artifact_dir = self
+            .root
+            .join(object_id)
+            .join("evaluations")
+            .join(evaluation_run_id);
+        tokio::task::spawn_blocking(move || -> AppResult<()> {
+            match std::fs::remove_dir_all(artifact_dir) {
+                Ok(()) => Ok(()),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                Err(error) => Err(error.into()),
+            }
+        })
+        .await
+        .map_err(|_| AppError::Filesystem("evaluation artifact cleanup stopped".to_string()))??;
+        Ok(())
+    }
     async fn write_object_file(
         &self,
         object_id: &str,
@@ -202,5 +225,16 @@ mod tests {
             "local://objects/object-1/evaluations/run-1/artifact-1.json"
         );
         assert_eq!(stored.content_hash, sha256_hex(b"{\"score\":0.8}"));
+        let artifact_dir = store
+            .root()
+            .join("object-1")
+            .join("evaluations")
+            .join("run-1");
+        assert!(artifact_dir.is_dir());
+        store
+            .remove_evaluation_run_artifacts("object-1", "run-1")
+            .await
+            .expect("evaluation artifacts should remove");
+        assert!(!artifact_dir.exists());
     }
 }

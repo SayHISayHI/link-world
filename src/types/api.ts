@@ -324,16 +324,32 @@ export interface EvaluationArtifact {
   metadata?: unknown;
 }
 
+export interface EvidenceItem {
+  source:
+    | "original_content"
+    | "internal_library"
+    | "external_check"
+    | "sandbox_run"
+    | "user_feedback"
+    | string;
+  text: string;
+  reference?: string;
+}
 export interface EvaluationRun {
   id: string;
+  requestId?: string;
+  correlationId?: string;
   objectId: string;
   evaluatorType: string;
   evaluatorVersion: string;
+  planSchemaVersion: number;
+  inputSchemaVersion: number;
+  outputSchemaVersion: number;
   status: "planned" | "running" | "passed" | "failed" | "skipped" | "blocked" | string;
   score?: number;
   verdict: "high_value" | "useful" | "situational" | "low_value" | "unsafe" | "unknown" | string;
   dimensions: unknown;
-  evidence: unknown[];
+  evidence: EvidenceItem[];
   artifacts: EvaluationArtifact[];
   limitations: string[];
   nextActions: unknown[];
@@ -342,8 +358,28 @@ export interface EvaluationRun {
   completedAt?: string;
 }
 
+export interface EvaluatorCapability {
+  schemaVersion: number;
+  evaluatorType: string;
+  evaluatorVersion: string;
+  displayName: string;
+  supportedObjectTypes: string[];
+  executionKind: "local_deterministic" | "model_assisted" | "sandboxed" | string;
+  requiresNetwork: boolean;
+  requiresModel: boolean;
+  requiresSandbox: boolean;
+  planSchemaVersion: number;
+  inputSchemaVersion: number;
+  outputSchemaVersion: number;
+}
+
 export interface TriggerEvaluationResponse {
   runId: string;
+  jobId: string;
+  requestId: string;
+  correlationId: string;
+  status: "planned" | "running" | "passed" | "failed" | string;
+  reused: boolean;
 }
 
 export interface KnowledgeObjectDetail {

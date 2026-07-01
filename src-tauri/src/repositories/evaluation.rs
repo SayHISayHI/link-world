@@ -1,5 +1,6 @@
 use crate::domain::evaluation::{
-    EvaluationArtifactSubmission, EvaluationInput, EvaluationRunSubmission,
+    EvaluationArtifactSubmission, EvaluationFailureSubmission, EvaluationInput,
+    EvaluationOperation, EvaluationRunReservation, EvaluationRunSubmission,
 };
 use crate::domain::knowledge::{EvaluationArtifact, EvaluationRun};
 use crate::errors::{AppError, AppResult};
@@ -17,6 +18,217 @@ impl EvaluationRepository {
         Self { pool }
     }
 
+    pub async fn find_operation(&self, request_id: &str) -> AppResult<Option<EvaluationOperation>> {
+        let row = sqlx::query(
+            r#"
+            SELECT
+                runs.id AS run_id,
+                runs.request_id,
+                runs.correlation_id,
+                runs.object_id,
+                runs.evaluator_type,
+                runs.evaluator_version,
+                runs.status,
+                jobs.id AS job_id,
+                jobs.payload_json
+            FROM evaluation_runs AS runs
+            INNER JOIN background_jobs AS jobs
+                ON jobs.id = runs.request_id
+               AND jobs.job_type = 'evaluation.run'
+            WHERE runs.request_id = ?1
+            "#,
+        )
+        .bind(request_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let payload = row
+            .try_get::<Option<String>, _>("payload_json")?
+            .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+            .ok_or_else(|| {
+                AppError::Database("evaluation operation payload is invalid".to_string())
+            })?;
+        let requested_evaluator_type = payload
+            .get("requestedEvaluatorType")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                AppError::Database(
+                    "evaluation operation is missing requested evaluator identity".to_string(),
+                )
+            })?;
+
+        Ok(Some(EvaluationOperation {
+            run_id: row.get("run_id"),
+            request_id: row.get("request_id"),
+            correlation_id: row.get("correlation_id"),
+            job_id: row.get("job_id"),
+            object_id: row.get("object_id"),
+            requested_evaluator_type: requested_evaluator_type.to_string(),
+            evaluator_type: row.get("evaluator_type"),
+            evaluator_version: row.get("evaluator_version"),
+            status: row.get("status"),
+        }))
+    }
+
+    pub async fn reserve_evaluation(
+        &self,
+        user_id: &str,
+        reservation: &EvaluationRunReservation,
+    ) -> AppResult<()> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query(
+            r#"
+            INSERT INTO evaluation_runs (
+                id,
+                request_id,
+                correlation_id,
+                object_id,
+                evaluator_type,
+                evaluator_version,
+                plan_schema_version,
+                input_schema_version,
+                output_schema_version,
+                status,
+                plan_json,
+                input_json,
+                dimensions_json,
+                evidence_json,
+                limitations_json,
+                next_actions_json,
+                verdict,
+                created_at
+            ) VALUES (
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
+                'planned', ?10, ?11, '{}', '[]', '[]', '[]', 'unknown', ?12
+            )
+            "#,
+        )
+        .bind(&reservation.id)
+        .bind(&reservation.request_id)
+        .bind(&reservation.correlation_id)
+        .bind(&reservation.object_id)
+        .bind(&reservation.evaluator_type)
+        .bind(&reservation.evaluator_version)
+        .bind(reservation.plan_schema_version)
+        .bind(reservation.input_schema_version)
+        .bind(reservation.output_schema_version)
+        .bind(&reservation.plan_json)
+        .bind(&reservation.input_json)
+        .bind(&reservation.created_at)
+        .execute(&mut *tx)
+        .await?;
+
+        let job_payload = json!({
+            "schemaVersion": 1,
+            "requestId": reservation.request_id,
+            "correlationId": reservation.correlation_id,
+            "runId": reservation.id,
+            "objectId": reservation.object_id,
+            "requestedEvaluatorType": reservation.requested_evaluator_type,
+            "evaluatorType": reservation.evaluator_type,
+            "evaluatorVersion": reservation.evaluator_version,
+            "planSchemaVersion": reservation.plan_schema_version,
+            "inputSchemaVersion": reservation.input_schema_version,
+            "outputSchemaVersion": reservation.output_schema_version,
+        })
+        .to_string();
+        sqlx::query(
+            r#"
+            INSERT INTO background_jobs (
+                id, job_type, status, object_id, payload_json,
+                attempt_count, max_attempts, created_at, updated_at
+            ) VALUES (?1, 'evaluation.run', 'queued', ?2, ?3, 0, 1, ?4, ?4)
+            "#,
+        )
+        .bind(&reservation.job_id)
+        .bind(&reservation.object_id)
+        .bind(job_payload)
+        .bind(&reservation.created_at)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO domain_events (
+                id, event_type, event_version, user_id, object_id,
+                causation_id, correlation_id, payload_json, occurred_at
+            ) VALUES (?1, 'evaluation.planned', 1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "#,
+        )
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(user_id)
+        .bind(&reservation.object_id)
+        .bind(&reservation.job_id)
+        .bind(&reservation.correlation_id)
+        .bind(
+            json!({
+                "runId": reservation.id,
+                "evaluatorType": reservation.evaluator_type,
+                "evaluatorVersion": reservation.evaluator_version,
+                "status": "planned",
+            })
+            .to_string(),
+        )
+        .bind(&reservation.created_at)
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(())
+    }
+
+    pub async fn mark_evaluation_running(
+        &self,
+        run_id: &str,
+        job_id: &str,
+        correlation_id: &str,
+        started_at: &str,
+    ) -> AppResult<()> {
+        let mut tx = self.pool.begin().await?;
+        let run_update = sqlx::query(
+            r#"
+            UPDATE evaluation_runs
+            SET status = 'running'
+            WHERE id = ?1
+              AND request_id = ?2
+              AND correlation_id = ?3
+              AND status = 'planned'
+            "#,
+        )
+        .bind(run_id)
+        .bind(job_id)
+        .bind(correlation_id)
+        .execute(&mut *tx)
+        .await?;
+        let job_update = sqlx::query(
+            r#"
+            UPDATE background_jobs
+            SET status = 'running',
+                attempt_count = 1,
+                locked_at = ?2,
+                locked_by = 'local-evaluation-runner',
+                updated_at = ?2
+            WHERE id = ?1
+              AND job_type = 'evaluation.run'
+              AND status = 'queued'
+            "#,
+        )
+        .bind(job_id)
+        .bind(started_at)
+        .execute(&mut *tx)
+        .await?;
+        if run_update.rows_affected() != 1 || job_update.rows_affected() != 1 {
+            return Err(AppError::Database(
+                "evaluation running transition was rejected".to_string(),
+            ));
+        }
+        tx.commit().await?;
+        Ok(())
+    }
     pub async fn get_evaluation_input(&self, object_id: &str) -> AppResult<EvaluationInput> {
         let row = sqlx::query(
             r#"
@@ -79,7 +291,7 @@ impl EvaluationRepository {
         })
     }
 
-    pub async fn insert_completed_evaluation(
+    pub async fn complete_evaluation(
         &self,
         user_id: &str,
         job_id: &str,
@@ -88,36 +300,31 @@ impl EvaluationRepository {
     ) -> AppResult<()> {
         let mut tx = self.pool.begin().await?;
 
-        sqlx::query(
+        let run_update = sqlx::query(
             r#"
-            INSERT INTO evaluation_runs (
-                id,
-                object_id,
-                evaluator_type,
-                evaluator_version,
-                status,
-                plan_json,
-                input_json,
-                output_json,
-                dimensions_json,
-                evidence_json,
-                limitations_json,
-                next_actions_json,
-                score,
-                verdict,
-                failure_reason,
-                created_at,
-                completed_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
+            UPDATE evaluation_runs
+            SET status = ?4,
+                output_json = ?5,
+                dimensions_json = ?6,
+                evidence_json = ?7,
+                limitations_json = ?8,
+                next_actions_json = ?9,
+                score = ?10,
+                verdict = ?11,
+                failure_reason = ?12,
+                completed_at = ?13
+            WHERE id = ?1
+              AND request_id = ?2
+              AND correlation_id = ?3
+              AND evaluator_type = ?14
+              AND evaluator_version = ?15
+              AND status = 'running'
             "#,
         )
         .bind(&run.id)
-        .bind(&run.object_id)
-        .bind(&run.evaluator_type)
-        .bind(&run.evaluator_version)
+        .bind(&run.request_id)
+        .bind(&run.correlation_id)
         .bind(&run.status)
-        .bind(&run.plan_json)
-        .bind(&run.input_json)
         .bind(&run.output_json)
         .bind(&run.dimensions_json)
         .bind(&run.evidence_json)
@@ -126,10 +333,16 @@ impl EvaluationRepository {
         .bind(run.score)
         .bind(&run.verdict)
         .bind(&run.failure_reason)
-        .bind(&run.created_at)
         .bind(&run.completed_at)
+        .bind(&run.evaluator_type)
+        .bind(&run.evaluator_version)
         .execute(&mut *tx)
         .await?;
+        if run_update.rows_affected() != 1 {
+            return Err(AppError::Database(
+                "evaluation completion transition was rejected".to_string(),
+            ));
+        }
 
         for artifact in artifacts {
             sqlx::query(
@@ -156,35 +369,28 @@ impl EvaluationRepository {
             .await?;
         }
 
-        sqlx::query(
+        let job_update = sqlx::query(
             r#"
-            INSERT INTO background_jobs (
-                id,
-                job_type,
-                status,
-                object_id,
-                payload_json,
-                attempt_count,
-                max_attempts,
-                last_error,
-                created_at,
-                updated_at
-            ) VALUES (?1, 'evaluation.run', 'succeeded', ?2, ?3, 1, 1, NULL, ?4, ?4)
+            UPDATE background_jobs
+            SET status = 'succeeded',
+                last_error = NULL,
+                locked_at = NULL,
+                locked_by = NULL,
+                updated_at = ?2
+            WHERE id = ?1
+              AND job_type = 'evaluation.run'
+              AND status = 'running'
             "#,
         )
         .bind(job_id)
-        .bind(&run.object_id)
-        .bind(
-            json!({
-                "objectId": run.object_id,
-                "runId": run.id,
-                "evaluatorType": run.evaluator_type,
-            })
-            .to_string(),
-        )
         .bind(&run.completed_at)
         .execute(&mut *tx)
         .await?;
+        if job_update.rows_affected() != 1 {
+            return Err(AppError::Database(
+                "evaluation job completion transition was rejected".to_string(),
+            ));
+        }
 
         sqlx::query(
             r#"
@@ -203,26 +409,21 @@ impl EvaluationRepository {
         sqlx::query(
             r#"
             INSERT INTO domain_events (
-                id,
-                event_type,
-                event_version,
-                user_id,
-                object_id,
-                causation_id,
-                payload_json,
-                occurred_at
-            ) VALUES (?1, 'evaluation.completed', 1, ?2, ?3, ?4, ?5, ?6)
+                id, event_type, event_version, user_id, object_id,
+                causation_id, correlation_id, payload_json, occurred_at
+            ) VALUES (?1, 'evaluation.completed', 1, ?2, ?3, ?4, ?5, ?6, ?7)
             "#,
         )
         .bind(uuid::Uuid::new_v4().to_string())
         .bind(user_id)
         .bind(&run.object_id)
         .bind(job_id)
+        .bind(&run.correlation_id)
         .bind(
             json!({
-                "objectId": run.object_id,
                 "runId": run.id,
                 "evaluatorType": run.evaluator_type,
+                "evaluatorVersion": run.evaluator_version,
                 "status": run.status,
                 "verdict": run.verdict,
                 "score": run.score,
@@ -237,14 +438,94 @@ impl EvaluationRepository {
         Ok(())
     }
 
+    pub async fn fail_evaluation(&self, failure: &EvaluationFailureSubmission) -> AppResult<()> {
+        let mut tx = self.pool.begin().await?;
+        let run_update = sqlx::query(
+            r#"
+            UPDATE evaluation_runs
+            SET status = 'failed',
+                verdict = 'unknown',
+                failure_reason = ?4,
+                completed_at = ?5
+            WHERE id = ?1
+              AND request_id = ?2
+              AND correlation_id = ?3
+              AND status IN ('planned', 'running')
+            "#,
+        )
+        .bind(&failure.run_id)
+        .bind(&failure.job_id)
+        .bind(&failure.correlation_id)
+        .bind(&failure.error_code)
+        .bind(&failure.completed_at)
+        .execute(&mut *tx)
+        .await?;
+        let job_update = sqlx::query(
+            r#"
+            UPDATE background_jobs
+            SET status = 'failed',
+                last_error = ?2,
+                locked_at = NULL,
+                locked_by = NULL,
+                updated_at = ?3
+            WHERE id = ?1
+              AND job_type = 'evaluation.run'
+              AND status IN ('queued', 'running')
+            "#,
+        )
+        .bind(&failure.job_id)
+        .bind(&failure.error_code)
+        .bind(&failure.completed_at)
+        .execute(&mut *tx)
+        .await?;
+        if run_update.rows_affected() != 1 || job_update.rows_affected() != 1 {
+            return Err(AppError::Database(
+                "evaluation failure transition was rejected".to_string(),
+            ));
+        }
+
+        sqlx::query(
+            r#"
+            INSERT INTO domain_events (
+                id, event_type, event_version, user_id, object_id,
+                causation_id, correlation_id, payload_json, occurred_at
+            ) VALUES (?1, 'evaluation.failed', 1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "#,
+        )
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(&failure.user_id)
+        .bind(&failure.object_id)
+        .bind(&failure.job_id)
+        .bind(&failure.correlation_id)
+        .bind(
+            json!({
+                "runId": failure.run_id,
+                "evaluatorType": failure.evaluator_type,
+                "status": "failed",
+                "errorCode": failure.error_code,
+            })
+            .to_string(),
+        )
+        .bind(&failure.completed_at)
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(())
+    }
     pub async fn get_evaluation_run(&self, run_id: &str) -> AppResult<EvaluationRun> {
         let row = sqlx::query(
             r#"
             SELECT
                 id,
+                request_id,
+                correlation_id,
                 object_id,
                 evaluator_type,
                 evaluator_version,
+                plan_schema_version,
+                input_schema_version,
+                output_schema_version,
                 status,
                 dimensions_json,
                 evidence_json,
@@ -297,9 +578,14 @@ impl EvaluationRepository {
 fn evaluation_run_from_row(row: SqliteRow, artifacts: Vec<EvaluationArtifact>) -> EvaluationRun {
     EvaluationRun {
         id: row.get("id"),
+        request_id: row.get("request_id"),
+        correlation_id: row.get("correlation_id"),
         object_id: row.get("object_id"),
         evaluator_type: row.get("evaluator_type"),
         evaluator_version: row.get("evaluator_version"),
+        plan_schema_version: row.get("plan_schema_version"),
+        input_schema_version: row.get("input_schema_version"),
+        output_schema_version: row.get("output_schema_version"),
         status: row.get("status"),
         score: row.get("score"),
         verdict: row.get("verdict"),

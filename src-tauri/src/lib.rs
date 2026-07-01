@@ -66,6 +66,7 @@ pub fn run() {
             commands::ai::trigger_ai_enrichment,
             commands::capture::submit_capture,
             commands::evaluation::trigger_evaluation,
+            commands::evaluation::list_evaluator_capabilities,
             commands::evaluation::get_evaluation_run,
             commands::library::get_recent_objects,
             commands::library::get_object_detail,

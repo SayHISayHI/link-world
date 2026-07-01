@@ -97,7 +97,7 @@ Quality gates:
 Migration tests:
 
 - Empty DB -> latest schema。
-- Generated 0001/0002/0003 fixture DB -> latest schema, using production SQLx checksums。
+- Generated 0001/0002/0003 historical fixture DB -> current 0004 schema, using production SQLx checksums。
 - Unknown future migration -> fail closed without rewriting user rows。
 - Restore phase interruption and rollback I/O fault matrix。
 - Pending ordinary startup migration creates a verified restore point before live migration; fresh DB skips backup, interrupted running guard blocks retry, and committed migration converges on next startup。（4 个自动化用例已实现；真实安装升级仍是发布门禁）
@@ -248,7 +248,7 @@ Before release:
 - Failed parse UI works。
 - Model config works。
 - AI trace written。
-- Evaluation writes result。
+- Evaluation UUID request idempotency、planned/running/passed/failed run+job identity、versioned contracts 和 artifact/evidence invariants pass。
 - Search works。
 - Delete and purge works。
 - Diagnostics package is redacted。

@@ -1,8 +1,15 @@
 import { Gauge, ShieldCheck } from "lucide-react";
-import type { EvaluationRun } from "../../types/api";
+import type { EvaluationRun, EvidenceItem } from "../../types/api";
 import type { AppUiError } from "../../lib/errors";
 import { Button } from "../ui/button";
 
+const EVIDENCE_SOURCE_LABELS: Record<string, string> = {
+  original_content: "Saved content",
+  internal_library: "Local library",
+  external_check: "External check",
+  sandbox_run: "Sandbox result",
+  user_feedback: "User feedback",
+};
 interface EvaluationPanelProps {
   latestEvaluation?: EvaluationRun;
   loading: boolean;
@@ -38,9 +45,15 @@ export function EvaluationPanel({
           <>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="font-medium">{formatVerdict(latestEvaluation.verdict)}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium">{formatVerdict(latestEvaluation.verdict)}</p>
+                  <span className="rounded-full border border-border bg-background px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Evaluator inference
+                  </span>
+                </div>
                 <p className="mt-1 text-muted-foreground">
-                  {latestEvaluation.evaluatorType} / {latestEvaluation.status}
+                  {latestEvaluation.evaluatorType} / {latestEvaluation.status} / contract v
+                  {latestEvaluation.outputSchemaVersion}
                 </p>
               </div>
               {latestEvaluation.score !== undefined ? (
@@ -50,6 +63,11 @@ export function EvaluationPanel({
                 </div>
               ) : null}
             </div>
+            {latestEvaluation.failureReason ? (
+              <div role="status" className="rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 text-amber-900">
+                Evaluation stopped with stable code: {latestEvaluation.failureReason}
+              </div>
+            ) : null}
             {dimensions.length > 0 ? (
               <div className="grid grid-cols-2 gap-2">
                 {dimensions.map(([name, value]) => (
@@ -64,9 +82,17 @@ export function EvaluationPanel({
               <div className="border-t border-border pt-3">
                 <p className="font-medium">Evidence</p>
                 <ul className="mt-1 space-y-1 text-muted-foreground">
-                  {latestEvaluation.evidence.slice(0, 3).map((item, index) => (
-                    <li key={index}>{formatEvidenceItem(item)}</li>
-                  ))}
+                  {latestEvaluation.evidence.slice(0, 3).map((item, index) => {
+                    const evidence = formatEvidenceItem(item);
+                    return (
+                      <li key={`${evidence.label}-${item.reference ?? index}`} className="flex gap-2">
+                        <span className="shrink-0 rounded-sm bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-foreground">
+                          {evidence.label}
+                        </span>
+                        <span>{evidence.text}</span>
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             ) : null}
@@ -112,13 +138,8 @@ function formatScore(score: number) {
   return `${Math.round(score * 100)}%`;
 }
 
-function formatEvidenceItem(item: unknown) {
-  if (!item || typeof item !== "object") {
-    return String(item);
-  }
-
-  const text = "text" in item ? String(item.text) : "";
-  const reference = "reference" in item && item.reference ? String(item.reference) : undefined;
-
-  return reference ? `${text} (${reference})` : text;
+function formatEvidenceItem(item: EvidenceItem) {
+  const label = EVIDENCE_SOURCE_LABELS[item.source] ?? "Unclassified";
+  const text = item.reference ? `${item.text} (${item.reference})` : item.text;
+  return { label, text };
 }

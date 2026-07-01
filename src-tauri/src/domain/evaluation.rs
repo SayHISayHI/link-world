@@ -2,10 +2,37 @@ use crate::domain::knowledge::EvidenceItem;
 use serde::Serialize;
 use serde_json::Value;
 
+pub const EVALUATION_CAPABILITY_SCHEMA_VERSION: i64 = 1;
+pub const EVALUATION_PLAN_SCHEMA_VERSION: i64 = 1;
+pub const EVALUATION_INPUT_SCHEMA_VERSION: i64 = 1;
+pub const EVALUATION_OUTPUT_SCHEMA_VERSION: i64 = 1;
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TriggerEvaluationResponse {
     pub run_id: String,
+    pub job_id: String,
+    pub request_id: String,
+    pub correlation_id: String,
+    pub status: String,
+    pub reused: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EvaluatorCapability {
+    pub schema_version: i64,
+    pub evaluator_type: String,
+    pub evaluator_version: String,
+    pub display_name: String,
+    pub supported_object_types: Vec<String>,
+    pub execution_kind: String,
+    pub requires_network: bool,
+    pub requires_model: bool,
+    pub requires_sandbox: bool,
+    pub plan_schema_version: i64,
+    pub input_schema_version: i64,
+    pub output_schema_version: i64,
 }
 
 #[derive(Debug, Clone)]
@@ -26,6 +53,7 @@ pub struct EvaluationInput {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EvaluationPlan {
+    pub schema_version: i64,
     pub evaluator_type: String,
     pub evaluator_version: String,
     pub steps: Vec<String>,
@@ -35,6 +63,7 @@ pub struct EvaluationPlan {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EvaluationOutput {
+    pub schema_version: i64,
     pub score: f64,
     pub verdict: String,
     pub dimensions: Value,
@@ -47,9 +76,14 @@ pub struct EvaluationOutput {
 #[derive(Debug, Clone)]
 pub struct EvaluationRunSubmission {
     pub id: String,
+    pub request_id: String,
+    pub correlation_id: String,
     pub object_id: String,
     pub evaluator_type: String,
     pub evaluator_version: String,
+    pub plan_schema_version: i64,
+    pub input_schema_version: i64,
+    pub output_schema_version: i64,
     pub status: String,
     pub plan_json: String,
     pub input_json: String,
@@ -65,6 +99,47 @@ pub struct EvaluationRunSubmission {
     pub completed_at: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct EvaluationRunReservation {
+    pub id: String,
+    pub request_id: String,
+    pub correlation_id: String,
+    pub job_id: String,
+    pub object_id: String,
+    pub requested_evaluator_type: String,
+    pub evaluator_type: String,
+    pub evaluator_version: String,
+    pub plan_schema_version: i64,
+    pub input_schema_version: i64,
+    pub output_schema_version: i64,
+    pub plan_json: String,
+    pub input_json: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct EvaluationOperation {
+    pub run_id: String,
+    pub request_id: String,
+    pub correlation_id: String,
+    pub job_id: String,
+    pub object_id: String,
+    pub requested_evaluator_type: String,
+    pub evaluator_type: String,
+    pub evaluator_version: String,
+    pub status: String,
+}
+#[derive(Debug, Clone)]
+pub struct EvaluationFailureSubmission {
+    pub user_id: String,
+    pub run_id: String,
+    pub job_id: String,
+    pub correlation_id: String,
+    pub object_id: String,
+    pub evaluator_type: String,
+    pub error_code: String,
+    pub completed_at: String,
+}
 #[derive(Debug, Clone)]
 pub struct EvaluationArtifactSubmission {
     pub id: String,

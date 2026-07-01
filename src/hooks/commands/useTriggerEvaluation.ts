@@ -12,6 +12,7 @@ interface TriggerEvaluationState {
 interface TriggerEvaluationArgs {
   objectId: string;
   evaluatorType: string;
+  requestId?: string;
 }
 
 export function useTriggerEvaluation() {
@@ -21,9 +22,13 @@ export function useTriggerEvaluation() {
     setState({ loading: true });
 
     try {
+      const request = {
+        ...args,
+        requestId: args.requestId ?? globalThis.crypto.randomUUID(),
+      };
       const data = await invokeCommand<TriggerEvaluationArgs, TriggerEvaluationResponse>(
         "trigger_evaluation",
-        args,
+        request,
       );
       setState({ data, loading: false });
       return data;

@@ -219,7 +219,15 @@ async fn upgrades_v1_release_fixture_without_losing_core_or_derived_data() {
             .fetch_all(pool)
             .await
             .expect("migration metadata should query");
-    assert_eq!(applied_versions, vec![1, 2, 3]);
+    assert_eq!(applied_versions, vec![1, 2, 3, 4]);
+    let evaluation_contract: (Option<String>, Option<String>, i64, i64, i64) =
+        sqlx::query_as(
+            "SELECT request_id, correlation_id, plan_schema_version, input_schema_version, output_schema_version FROM evaluation_runs WHERE id = 'evaluation-1'",
+        )
+        .fetch_one(pool)
+        .await
+        .expect("legacy evaluation contract should query");
+    assert_eq!(evaluation_contract, (None, None, 1, 1, 1));
 
     cleanup(data_dir, pool).await;
 }
@@ -276,7 +284,7 @@ async fn upgrades_v2_fixture_preserving_display_hints_and_provider_identity() {
 }
 
 #[tokio::test]
-async fn current_v3_fixture_is_idempotent_and_preserves_non_default_api_family() {
+async fn v3_fixture_adds_evaluation_runtime_contract_and_preserves_api_family() {
     let (data_dir, historical_pool) = historical_database(3).await;
     sqlx::query(
         "INSERT INTO model_provider_configs          (id, provider, api_family, capabilities_json, enabled)          VALUES ('provider-v3', 'anthropic', 'anthropic_messages', '[\"chat\"]', 1)",
@@ -296,7 +304,14 @@ async fn current_v3_fixture_is_idempotent_and_preserves_non_default_api_family()
     .await
     .expect("v3 provider should query");
     assert_eq!(api_family, "anthropic_messages");
-    assert_eq!(table_count(database.pool(), "_sqlx_migrations").await, 3);
+    assert_eq!(table_count(database.pool(), "_sqlx_migrations").await, 4);
+    let evaluation_columns: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM pragma_table_info('evaluation_runs') WHERE name IN ('request_id', 'correlation_id', 'plan_schema_version', 'input_schema_version', 'output_schema_version')",
+    )
+    .fetch_one(database.pool())
+    .await
+    .expect("evaluation runtime columns should query");
+    assert_eq!(evaluation_columns, 5);
 
     cleanup(data_dir, database.pool()).await;
 }

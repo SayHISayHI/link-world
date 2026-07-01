@@ -108,8 +108,20 @@ Local Edition 必须支持：
 
 - 旧 AI analysis 和 evaluation result 不因 schema 升级被覆盖。
 
-当前自动化已覆盖 0001/0002/0003 历史 schema、1000 对象 v1 数据集、外键/FTS/隐私/AI/Evaluation/job/provider/tombstone 不变量、未知未来 migration 的 fail-closed、启动 recovery UI 的受限操作展示，以及便携导出默认排除 secret 与本机 storage URI。真实安装包原地升级和进程级强制终止仍未完成。
+当前自动化已覆盖 0001/0002/0003 历史 schema 到 current 0004、1000 对象 v1 数据集、外键/FTS/隐私/AI/Evaluation/job/provider/tombstone 不变量、未知未来 migration 的 fail-closed、启动 recovery UI 的受限操作展示，以及便携导出默认排除 secret 与本机 storage URI。真实安装包原地升级和进程级强制终止仍未完成。
 
+### 5.1 Evaluation Runtime
+
+当前 Week 6 基线：
+
+- `list_evaluator_capabilities` 返回 schema v1 capability；内置 Prompt/GitHub evaluator 标明 `local_deterministic`，不需要 network/model/sandbox。
+- 客户端生成 UUID requestId；后端以相同 job/correlation identity 先持久化 planned/queued，再推进 running 和 passed/failed。
+- 同 identity 重试返回原 run，不重复写 artifact/event；跨 object 或 requested evaluator 的 UUID 复用 fail closed。
+- plan/input/output schema version 均持久化为 1；0004 前的 legacy run 保留 NULL identity 并按 version 1 读取。
+- artifact/DB 失败会把已占位 run/job 收敛为稳定 `evaluation.*` reason；不允许永久 running 或“失败但无记录”。
+- verdict 的 TSX 实现标记为 evaluator inference，evidence 显示 saved content/local/external/sandbox/user 来源；定向 TypeScript 编译通过，localhost rendered QA 尚未完成；无 evidence 的非 unknown 结论被 output validator 拒绝。
+
+尚未达到 Week 6 完成线：执行 timeout、进程中断 recovery、retry、独立 trace、完整运行详情 UI 和相应 readiness 聚合门禁仍待实现。
 ## 6. Incident Playbooks
 
 ### 6.1 AI provider failure

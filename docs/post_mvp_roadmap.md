@@ -45,11 +45,11 @@
 | Sprint 1B 凭据持久化 | 已实现，待真实机回归 | Windows Credential Manager；数据库只保存引用 |
 | Sprint 1C 导航与列表边界 | 已实现，待 UI 回归 | All/Inbox/Articles/GitHub/Prompts/Failed 后端过滤；30 条分页 |
 | Sprint 1D 文档契约 | 已同步 | API、架构、安全、PRD、UI、数据库与本路线图 |
-| Sprint 2 数据安全 | 执行中 | 备份/两阶段恢复/rollback、0001–0003 fixture、启动迁移保护、启动恢复界面与便携导出已实现；readiness 自动化门禁已建立；真实 Windows 安装包故障矩阵待执行 |
+| Sprint 2 数据安全 | 执行中 | 备份/两阶段恢复/rollback、0001–0003 historical fixture → 0004、启动迁移保护、启动恢复界面与便携导出已实现；readiness 自动化门禁已建立；真实 Windows 安装包故障矩阵待执行 |
 | Sprint 3 采集可靠性 | 执行中 | 启动时 running job 收敛、capture 超时/HTTP/受限页/空正文分类、任务隔离、失败原因脱敏、扩展回退提示、手动 URL 去重和 AI job failureReason 已实现；readiness 自动化已建立，真实网络/进程矩阵待执行 |
 | Sprint 4 搜索质量 | 已完成 | FTS 字段权重、secret snippet 抑制、Library filter 组合搜索、索引一致性检查、可重复大库搜索基准、搜索空态/失败态、重建进度和取消边界已实现；5k/20k benchmark 已实测通过 |
 | Sprint 5 可观测性 | 执行中 | Diagnostics、失败 job 操作、脱敏支持包、插件指纹/audit/domain correlation 摘要、size/SHA-256 已实现；capture submit/fetch、AI enrichment、search rebuild/reindex、startup migration 与 restore 已接入 2 MiB 有界 JSONL 和持久化 correlation UUID，migration/restore UUID 另写入跨启动 control/result；计划内关键流程的代码级日志覆盖已完成，readiness 自动化与 W5-01 至 W5-14 发布候选矩阵已建立，完整前端门禁和真实 Windows/轮转/支持交接证据仍待完成 |
-| Sprint 6-8 Evaluation | 未开始 | 通用框架、GitHub evaluator、Prompt evaluator |
+| Sprint 6-8 Evaluation | 执行中 | Week 6 已建立 capability schema v1、plan/input/output version 1、UUID request idempotency、planned/running/passed/failed run+job 事务、稳定失败记录和 UI inference/evidence 标签（定向 TypeScript 编译通过，rendered QA 待完成）；既有 Prompt/GitHub 本地确定性 evaluator 原型继续受无网络/无模型/无 sandbox capability 限制；timeout、trace、runner recovery 及 Week 7-8 外部验证尚未完成 |
 | Sprint 9-10 Alpha 发布 | 未开始 | 安装升级、安全审计、真实用户反馈闭环 |
 
 ## 4. 周度实施计划
@@ -81,7 +81,7 @@
 - 原子备份：SQLite 一致性快照、对象存储清单、manifest hash。（已实现）
 - 恢复前校验、safety backup、私有候选迁移、重启切换、phase recovery 和失败回滚。（已实现；readiness 自动化门禁已建立；真实 Windows 回归待完成）
 - JSON/Markdown 导出最小闭环；secret 默认不导出，且不导出 credential reference、内部 job 或本机对象存储路径。（已实现）
-- 0001/0002/0003 历史 schema 到 latest 的生成式 migration fixture。（已实现）
+- 0001/0002/0003 历史 schema 到 latest（0004）的生成式 migration fixture。（已实现）
 - 启动迁移失败进入受限 recovery UI，隐藏 create backup，展示 verified backup ID，并只开放 verify/restore/restart。（已实现；真实安装升级待回归）
 - 普通启动检测 pending migration 后先创建并验证 restore point，以 phase guard 阻止不确定 migration 自动重试。（已实现）
 
@@ -148,16 +148,16 @@
 
 交付：
 
-- Evaluator capability、plan、run、artifact 和 evidence 契约。
-- 版本化 evaluator 输入输出。
-- Evaluation job 的幂等、超时、失败和 trace。
-- UI 明确区分原文、模型推断与验证证据。
+- Evaluator capability、plan、run、artifact 和 evidence 契约。（capability/plan/input/output schema v1 与 capability list command 已实现；artifact/evidence contract 已校验）
+- 版本化 evaluator 输入输出。（0004 migration 和 API 已持久化/返回 plan/input/output schema version；legacy run 默认 v1）
+- Evaluation job 的幂等、超时、失败和 trace。（UUID request 幂等、planned→running→passed/failed、稳定失败码和 artifact cleanup 已实现；timeout、trace、重启 recovery/retry 待完成）
+- UI 明确区分原文、模型推断与验证证据。（verdict 标为 Evaluator inference，evidence 按 saved content/local/external/sandbox/user 来源标记；定向 TypeScript 编译已通过，rendered QA 与更完整的运行详情视图待完成）
 
 验收：
 
-- 重复触发不会覆盖历史运行。
-- 无证据结论必须标注限制，不能伪装成已验证事实。
-- evaluator 不能绕过 AI privacy policy。
+- 重复触发不会覆盖历史运行。（同 request identity 返回原 run；新 request 创建新历史；跨 object/evaluator 冲突 fail closed，自动化已覆盖）
+- 无证据结论必须标注限制，不能伪装成已验证事实。（output validator 要求无 evidence 时只能为 unknown 且必须有 limitation；UI 分离 inference/evidence）
+- evaluator 不能绕过 AI privacy policy。（当前 capability 明确 local deterministic、requiresNetwork/Model/Sandbox=false；后续 model-assisted evaluator 仍需独立 policy gate）
 
 ### Week 7：GitHub Repo Evaluator
 

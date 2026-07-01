@@ -646,6 +646,7 @@ Evaluation Engine 是 Link World 和普通 AI 收藏工具的主要差异。它�
 - 给出明确 verdict，而不是模糊摘要。
 - 记录评估证据，避免 AI 空泛判断。
 
+当前实现边界：Prompt 与 GitHub Repo evaluator 以 `local_deterministic` capability 运行，不访问网络、模型或 sandbox。客户端为一次用户动作生成 UUID `requestId`；后端以同一值作为 job id 和 correlation id，在短事务中先写 `evaluation_runs(planned)`、`background_jobs(queued)` 与 `evaluation.planned`，再推进 running，最后原子提交 passed/artifact/object lifecycle/`evaluation.completed`。重复的同 identity 请求返回原 run；跨 object/evaluator 复用同 UUID fail closed。plan/input/output contract 当前均为 schema version 1；失败至少收敛 run/job 和 `evaluation.failed`，timeout 与独立 trace 仍是 Week 6 未完成项。
 ### 7.2 Evaluator routing
 
 ```mermaid
@@ -727,8 +728,14 @@ Tool Evaluator:
 ```ts
 interface EvaluationResult {
   id: string;
+  requestId?: string; // legacy run may omit
+  correlationId?: string;
   objectId: string;
   evaluatorType: string;
+  evaluatorVersion: string;
+  planSchemaVersion: 1;
+  inputSchemaVersion: 1;
+  outputSchemaVersion: 1;
   status: "planned" | "running" | "passed" | "failed" | "skipped" | "blocked";
   score: number;
   verdict: "high_value" | "useful" | "situational" | "low_value" | "unsafe" | "unknown";
@@ -930,11 +937,16 @@ interface ParsedDocument {
 
 ```ts
 interface EvaluatorPlugin {
-  id: string;
-  version: string;
-  supports(object: KnowledgeObject): boolean;
-  plan(object: KnowledgeObject, context: PluginContext): Promise<EvaluationPlan>;
-  run(plan: EvaluationPlan, context: EvaluationContext): Promise<EvaluationResult>;
+  evaluatorType: string;
+  evaluatorVersion: string;
+  capability(): EvaluatorCapability;
+  supports(input: VersionedEvaluationInput, requestedType: string): boolean;
+  plan(input: VersionedEvaluationInput): Promise<VersionedEvaluationPlan>;
+  run(
+    input: VersionedEvaluationInput,
+    plan: VersionedEvaluationPlan,
+    context: EvaluationContext,
+  ): Promise<VersionedEvaluationOutput>;
 }
 ```
 

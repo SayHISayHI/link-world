@@ -1,6 +1,9 @@
 use crate::domain::evaluation::{
-    EvaluationArtifactSubmission, EvaluationInput, EvaluationOutput, EvaluationPlan,
-    EvaluationRunSubmission, TriggerEvaluationResponse,
+    EvaluationArtifactSubmission, EvaluationFailureSubmission, EvaluationInput,
+    EvaluationOperation, EvaluationOutput, EvaluationPlan, EvaluationRunReservation,
+    EvaluationRunSubmission, EvaluatorCapability, TriggerEvaluationResponse,
+    EVALUATION_CAPABILITY_SCHEMA_VERSION, EVALUATION_INPUT_SCHEMA_VERSION,
+    EVALUATION_OUTPUT_SCHEMA_VERSION, EVALUATION_PLAN_SCHEMA_VERSION,
 };
 use crate::domain::knowledge::{EvaluationRun, EvidenceItem};
 use crate::errors::{AppError, AppResult};
@@ -29,6 +32,7 @@ trait EvaluatorPlugin: Send + Sync {
     fn evaluator_version(&self) -> &'static str {
         EVALUATOR_VERSION
     }
+    fn capability(&self) -> EvaluatorCapability;
     fn supports(&self, input: &EvaluationInput, requested_type: &str) -> bool;
     fn plan(&self, input: &EvaluationInput) -> EvaluationPlan;
     fn run(&self, input: &EvaluationInput, plan: &EvaluationPlan) -> EvaluationOutput;
@@ -52,84 +56,234 @@ impl EvaluationService {
         }
     }
 
+    pub fn list_evaluator_capabilities(&self) -> Vec<EvaluatorCapability> {
+        evaluator_plugins()
+            .into_iter()
+            .map(|evaluator| evaluator.capability())
+            .collect()
+    }
+
     pub async fn trigger_evaluation(
         &self,
         object_id: &str,
         evaluator_type: &str,
+        request_id: Option<&str>,
     ) -> AppResult<TriggerEvaluationResponse> {
+        let requested_type = normalize_evaluator_type(evaluator_type)?;
+        let request_id = normalize_request_id(request_id)?;
+        if let Some(operation) = self.repository.find_operation(&request_id).await? {
+            return response_from_existing_operation(operation, object_id, &requested_type);
+        }
+
         let input = self.repository.get_evaluation_input(object_id).await?;
-        let requested_type = normalize_evaluator_type(evaluator_type);
         let evaluator = select_evaluator(&input, &requested_type)?;
+        let capability = evaluator.capability();
         let plan = evaluator.plan(&input);
-        let output = evaluator.run(&input, &plan);
+        let input_snapshot = build_input_snapshot(&input, &requested_type);
         let run_id = Uuid::new_v4().to_string();
-        let artifact_id = Uuid::new_v4().to_string();
-        let job_id = Uuid::new_v4().to_string();
+        let job_id = request_id.clone();
+        let correlation_id = request_id.clone();
         let now = Utc::now().to_rfc3339();
-        let input_json = build_input_snapshot_json(&input, &requested_type)?;
-        let output_json = serialize_json(&output.report)?;
-        let report_bytes = serde_json::to_vec_pretty(&json!({
-            "runId": run_id,
-            "objectId": input.object_id,
-            "plan": plan,
-            "input": input_json,
-            "output": output,
-        }))
-        .map_err(|error| AppError::ModelOutputSchema(error.to_string()))?;
-        let stored_report = self
-            .object_store
-            .write_evaluation_artifact(
-                &input.object_id,
-                &run_id,
-                &artifact_id,
-                "json",
-                report_bytes,
-            )
-            .await?;
-
-        let run = EvaluationRunSubmission {
+        let reservation = EvaluationRunReservation {
             id: run_id.clone(),
+            request_id: request_id.clone(),
+            correlation_id: correlation_id.clone(),
+            job_id: job_id.clone(),
             object_id: input.object_id.clone(),
-            evaluator_type: evaluator.evaluator_type().to_string(),
-            evaluator_version: evaluator.evaluator_version().to_string(),
-            status: "passed".to_string(),
+            requested_evaluator_type: requested_type.clone(),
+            evaluator_type: capability.evaluator_type.clone(),
+            evaluator_version: capability.evaluator_version.clone(),
+            plan_schema_version: capability.plan_schema_version,
+            input_schema_version: capability.input_schema_version,
+            output_schema_version: capability.output_schema_version,
             plan_json: serialize_json(&plan)?,
-            input_json,
-            output_json,
-            dimensions_json: serialize_json(&output.dimensions)?,
-            evidence_json: serialize_json(&output.evidence)?,
-            limitations_json: serialize_json(&output.limitations)?,
-            next_actions_json: serialize_json(&output.next_actions)?,
-            score: Some(output.score),
-            verdict: output.verdict,
-            failure_reason: None,
+            input_json: serialize_json(&input_snapshot)?,
             created_at: now.clone(),
-            completed_at: Some(now.clone()),
         };
-        let artifact = EvaluationArtifactSubmission {
-            id: artifact_id,
-            evaluation_run_id: run_id.clone(),
-            artifact_type: "report".to_string(),
-            storage_uri: stored_report.storage_uri,
-            content_hash: Some(stored_report.content_hash),
-            metadata_json: Some(
-                json!({
-                    "evaluatorType": run.evaluator_type,
-                    "evaluatorVersion": run.evaluator_version,
-                    "contentHash": input.content_hash,
+
+        match self
+            .repository
+            .reserve_evaluation(&input.user_id, &reservation)
+            .await
+        {
+            Ok(()) => {}
+            Err(AppError::DbConstraint) => {
+                let operation = self
+                    .repository
+                    .find_operation(&request_id)
+                    .await?
+                    .ok_or_else(|| {
+                        AppError::Database(
+                            "evaluation idempotency conflict could not be resolved".to_string(),
+                        )
+                    })?;
+                return response_from_existing_operation(operation, object_id, &requested_type);
+            }
+            Err(error) => return Err(error),
+        }
+
+        if let Err(error) = self
+            .repository
+            .mark_evaluation_running(&run_id, &job_id, &correlation_id, &now)
+            .await
+        {
+            let error_code = evaluation_error_code(&error);
+            let completed_at = Utc::now().to_rfc3339();
+            let _ = self
+                .repository
+                .fail_evaluation(&EvaluationFailureSubmission {
+                    user_id: input.user_id.clone(),
+                    run_id: run_id.clone(),
+                    job_id: job_id.clone(),
+                    correlation_id: correlation_id.clone(),
+                    object_id: input.object_id.clone(),
+                    evaluator_type: capability.evaluator_type.clone(),
+                    error_code: error_code.to_string(),
+                    completed_at,
                 })
-                .to_string(),
-            ),
-            created_at: now,
+                .await;
+            return Err(stable_evaluation_error(error_code));
+        }
+
+        let execution: AppResult<(EvaluationRunSubmission, EvaluationArtifactSubmission)> = async {
+            let output = evaluator.run(&input, &plan);
+            validate_evaluation_output(&output)?;
+            let artifact_id = Uuid::new_v4().to_string();
+            let completed_at = Utc::now().to_rfc3339();
+            let report_bytes = serde_json::to_vec_pretty(&json!({
+                "schemaVersion": EVALUATION_OUTPUT_SCHEMA_VERSION,
+                "runId": run_id,
+                "requestId": request_id,
+                "correlationId": correlation_id,
+                "objectId": input.object_id,
+                "capability": capability,
+                "plan": plan,
+                "input": input_snapshot,
+                "output": output,
+            }))
+            .map_err(|_| {
+                AppError::ModelOutputSchema("evaluation report serialization failed".to_string())
+            })?;
+            let stored_report = self
+                .object_store
+                .write_evaluation_artifact(
+                    &input.object_id,
+                    &run_id,
+                    &artifact_id,
+                    "json",
+                    report_bytes,
+                )
+                .await?;
+
+            let run = EvaluationRunSubmission {
+                id: run_id.clone(),
+                request_id: request_id.clone(),
+                correlation_id: correlation_id.clone(),
+                object_id: input.object_id.clone(),
+                evaluator_type: capability.evaluator_type.clone(),
+                evaluator_version: capability.evaluator_version.clone(),
+                plan_schema_version: capability.plan_schema_version,
+                input_schema_version: capability.input_schema_version,
+                output_schema_version: capability.output_schema_version,
+                status: "passed".to_string(),
+                plan_json: serialize_json(&plan)?,
+                input_json: serialize_json(&input_snapshot)?,
+                output_json: serialize_json(&output)?,
+                dimensions_json: serialize_json(&output.dimensions)?,
+                evidence_json: serialize_json(&output.evidence)?,
+                limitations_json: serialize_json(&output.limitations)?,
+                next_actions_json: serialize_json(&output.next_actions)?,
+                score: Some(output.score),
+                verdict: output.verdict,
+                failure_reason: None,
+                created_at: now,
+                completed_at: Some(completed_at.clone()),
+            };
+            let artifact = EvaluationArtifactSubmission {
+                id: artifact_id,
+                evaluation_run_id: run_id.clone(),
+                artifact_type: "report".to_string(),
+                storage_uri: stored_report.storage_uri,
+                content_hash: Some(stored_report.content_hash),
+                metadata_json: Some(
+                    json!({
+                        "schemaVersion": 1,
+                        "evaluatorType": run.evaluator_type,
+                        "evaluatorVersion": run.evaluator_version,
+                        "contentHash": input.content_hash,
+                        "inputSchemaVersion": run.input_schema_version,
+                        "outputSchemaVersion": run.output_schema_version,
+                    })
+                    .to_string(),
+                ),
+                created_at: completed_at,
+            };
+            Ok((run, artifact))
+        }
+        .await;
+
+        let (run, artifact) = match execution {
+            Ok(result) => result,
+            Err(error) => {
+                let error_code = evaluation_error_code(&error);
+                let completed_at = Utc::now().to_rfc3339();
+                let _ = self
+                    .object_store
+                    .remove_evaluation_run_artifacts(&input.object_id, &run_id)
+                    .await;
+                let _ = self
+                    .repository
+                    .fail_evaluation(&EvaluationFailureSubmission {
+                        user_id: input.user_id.clone(),
+                        run_id: run_id.clone(),
+                        job_id: job_id.clone(),
+                        correlation_id: correlation_id.clone(),
+                        object_id: input.object_id.clone(),
+                        evaluator_type: capability.evaluator_type.clone(),
+                        error_code: error_code.to_string(),
+                        completed_at,
+                    })
+                    .await;
+                return Err(stable_evaluation_error(error_code));
+            }
         };
 
-        self.repository
-            .insert_completed_evaluation(&input.user_id, &job_id, &run, &[artifact])
-            .await?;
+        if let Err(error) = self
+            .repository
+            .complete_evaluation(&input.user_id, &job_id, &run, &[artifact])
+            .await
+        {
+            let error_code = evaluation_error_code(&error);
+            let completed_at = Utc::now().to_rfc3339();
+            let _ = self
+                .object_store
+                .remove_evaluation_run_artifacts(&input.object_id, &run_id)
+                .await;
+            let _ = self
+                .repository
+                .fail_evaluation(&EvaluationFailureSubmission {
+                    user_id: input.user_id.clone(),
+                    run_id: run_id.clone(),
+                    job_id: job_id.clone(),
+                    correlation_id: correlation_id.clone(),
+                    object_id: input.object_id.clone(),
+                    evaluator_type: capability.evaluator_type.clone(),
+                    error_code: error_code.to_string(),
+                    completed_at,
+                })
+                .await;
+            return Err(stable_evaluation_error(error_code));
+        }
 
-        Ok(TriggerEvaluationResponse { run_id })
+        Ok(TriggerEvaluationResponse {
+            run_id,
+            job_id,
+            request_id,
+            correlation_id,
+            status: "passed".to_string(),
+            reused: false,
+        })
     }
-
     pub async fn get_evaluation_run(&self, run_id: &str) -> AppResult<EvaluationRun> {
         self.repository.get_evaluation_run(run_id).await
     }
@@ -140,14 +294,31 @@ impl EvaluatorPlugin for PromptEvaluator {
         PROMPT_EVALUATOR_TYPE
     }
 
+    fn capability(&self) -> EvaluatorCapability {
+        EvaluatorCapability {
+            schema_version: EVALUATION_CAPABILITY_SCHEMA_VERSION,
+            evaluator_type: self.evaluator_type().to_string(),
+            evaluator_version: self.evaluator_version().to_string(),
+            display_name: "Prompt quality evaluator".to_string(),
+            supported_object_types: vec!["prompt".to_string()],
+            execution_kind: "local_deterministic".to_string(),
+            requires_network: false,
+            requires_model: false,
+            requires_sandbox: false,
+            plan_schema_version: EVALUATION_PLAN_SCHEMA_VERSION,
+            input_schema_version: EVALUATION_INPUT_SCHEMA_VERSION,
+            output_schema_version: EVALUATION_OUTPUT_SCHEMA_VERSION,
+        }
+    }
+
     fn supports(&self, input: &EvaluationInput, requested_type: &str) -> bool {
-        requested_type == PROMPT_EVALUATOR_TYPE
-            || (requested_type == AUTO_EVALUATOR_TYPE
-                && (input.object_type == "prompt" || looks_like_prompt(&input.text_content)))
+        (requested_type == PROMPT_EVALUATOR_TYPE || requested_type == AUTO_EVALUATOR_TYPE)
+            && (input.object_type == "prompt" || looks_like_prompt(&input.text_content))
     }
 
     fn plan(&self, input: &EvaluationInput) -> EvaluationPlan {
         EvaluationPlan {
+            schema_version: EVALUATION_PLAN_SCHEMA_VERSION,
             evaluator_type: self.evaluator_type().to_string(),
             evaluator_version: self.evaluator_version().to_string(),
             steps: vec![
@@ -252,6 +423,7 @@ impl EvaluatorPlugin for PromptEvaluator {
         });
 
         EvaluationOutput {
+            schema_version: EVALUATION_OUTPUT_SCHEMA_VERSION,
             score,
             verdict,
             dimensions,
@@ -268,13 +440,31 @@ impl EvaluatorPlugin for GitHubRepoEvaluator {
         GITHUB_REPO_EVALUATOR_TYPE
     }
 
+    fn capability(&self) -> EvaluatorCapability {
+        EvaluatorCapability {
+            schema_version: EVALUATION_CAPABILITY_SCHEMA_VERSION,
+            evaluator_type: self.evaluator_type().to_string(),
+            evaluator_version: self.evaluator_version().to_string(),
+            display_name: "GitHub repository evaluator".to_string(),
+            supported_object_types: vec!["github_repo".to_string()],
+            execution_kind: "local_deterministic".to_string(),
+            requires_network: false,
+            requires_model: false,
+            requires_sandbox: false,
+            plan_schema_version: EVALUATION_PLAN_SCHEMA_VERSION,
+            input_schema_version: EVALUATION_INPUT_SCHEMA_VERSION,
+            output_schema_version: EVALUATION_OUTPUT_SCHEMA_VERSION,
+        }
+    }
+
     fn supports(&self, input: &EvaluationInput, requested_type: &str) -> bool {
-        requested_type == GITHUB_REPO_EVALUATOR_TYPE
-            || (requested_type == AUTO_EVALUATOR_TYPE && is_github_repo(input))
+        (requested_type == GITHUB_REPO_EVALUATOR_TYPE || requested_type == AUTO_EVALUATOR_TYPE)
+            && is_github_repo(input)
     }
 
     fn plan(&self, input: &EvaluationInput) -> EvaluationPlan {
         EvaluationPlan {
+            schema_version: EVALUATION_PLAN_SCHEMA_VERSION,
             evaluator_type: self.evaluator_type().to_string(),
             evaluator_version: self.evaluator_version().to_string(),
             steps: vec![
@@ -368,6 +558,7 @@ impl EvaluatorPlugin for GitHubRepoEvaluator {
         });
 
         EvaluationOutput {
+            schema_version: EVALUATION_OUTPUT_SCHEMA_VERSION,
             score,
             verdict,
             dimensions,
@@ -379,35 +570,76 @@ impl EvaluatorPlugin for GitHubRepoEvaluator {
     }
 }
 
+fn evaluator_plugins() -> Vec<Box<dyn EvaluatorPlugin + Send + Sync>> {
+    vec![Box::new(GitHubRepoEvaluator), Box::new(PromptEvaluator)]
+}
+
 fn select_evaluator(
     input: &EvaluationInput,
     requested_type: &str,
 ) -> AppResult<Box<dyn EvaluatorPlugin + Send + Sync>> {
-    let evaluators: Vec<Box<dyn EvaluatorPlugin + Send + Sync>> =
-        vec![Box::new(GitHubRepoEvaluator), Box::new(PromptEvaluator)];
-
-    evaluators
+    evaluator_plugins()
         .into_iter()
         .find(|evaluator| evaluator.supports(input, requested_type))
         .ok_or_else(|| {
-            AppError::PolicyDenied(format!(
-                "no evaluator supports object type '{}' with requested evaluator '{}'",
-                input.object_type, requested_type
-            ))
+            AppError::PolicyDenied("evaluation.unsupported_evaluator_for_object".to_string())
         })
 }
 
-fn normalize_evaluator_type(evaluator_type: &str) -> String {
-    let trimmed = evaluator_type.trim();
-    if trimmed.is_empty() {
+fn normalize_evaluator_type(evaluator_type: &str) -> AppResult<String> {
+    let normalized = if evaluator_type.trim().is_empty() {
         AUTO_EVALUATOR_TYPE.to_string()
     } else {
-        trimmed.to_ascii_lowercase()
+        evaluator_type.trim().to_ascii_lowercase()
+    };
+    if normalized.len() > 64
+        || !normalized
+            .chars()
+            .all(|character| character.is_ascii_lowercase() || matches!(character, '_' | '-'))
+    {
+        return Err(AppError::PolicyDenied(
+            "evaluation.invalid_evaluator_type".to_string(),
+        ));
+    }
+    Ok(normalized)
+}
+
+fn normalize_request_id(request_id: Option<&str>) -> AppResult<String> {
+    match request_id.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(value) => Uuid::parse_str(value)
+            .map(|uuid| uuid.to_string())
+            .map_err(|_| AppError::PolicyDenied("evaluation.invalid_request_id".to_string())),
+        None => Ok(Uuid::new_v4().to_string()),
     }
 }
 
-fn build_input_snapshot_json(input: &EvaluationInput, requested_type: &str) -> AppResult<String> {
-    serialize_json(&json!({
+fn response_from_existing_operation(
+    operation: EvaluationOperation,
+    object_id: &str,
+    requested_evaluator_type: &str,
+) -> AppResult<TriggerEvaluationResponse> {
+    if operation.object_id != object_id
+        || operation.requested_evaluator_type != requested_evaluator_type
+        || operation.request_id != operation.job_id
+        || operation.correlation_id != operation.request_id
+    {
+        return Err(AppError::PolicyDenied(
+            "evaluation.request_id_conflict".to_string(),
+        ));
+    }
+    Ok(TriggerEvaluationResponse {
+        run_id: operation.run_id,
+        job_id: operation.job_id,
+        request_id: operation.request_id,
+        correlation_id: operation.correlation_id,
+        status: operation.status,
+        reused: true,
+    })
+}
+
+fn build_input_snapshot(input: &EvaluationInput, requested_type: &str) -> Value {
+    json!({
+        "schemaVersion": EVALUATION_INPUT_SCHEMA_VERSION,
         "objectId": input.object_id,
         "objectType": input.object_type,
         "title": input.title,
@@ -418,9 +650,52 @@ fn build_input_snapshot_json(input: &EvaluationInput, requested_type: &str) -> A
         "wordCount": input.word_count,
         "latestAISummaryPresent": input.latest_ai_summary.is_some(),
         "requestedEvaluatorType": requested_type,
-    }))
+    })
 }
 
+fn validate_evaluation_output(output: &EvaluationOutput) -> AppResult<()> {
+    if output.schema_version != EVALUATION_OUTPUT_SCHEMA_VERSION
+        || !output.score.is_finite()
+        || !(0.0..=1.0).contains(&output.score)
+        || !matches!(
+            output.verdict.as_str(),
+            "high_value" | "useful" | "situational" | "low_value" | "unsafe" | "unknown"
+        )
+        || (output.evidence.is_empty()
+            && (output.verdict != "unknown" || output.limitations.is_empty()))
+        || output.evidence.iter().any(|evidence| {
+            evidence.text.trim().is_empty()
+                || evidence.text.chars().count() > 512
+                || !matches!(
+                    evidence.source.as_str(),
+                    "original_content"
+                        | "internal_library"
+                        | "external_check"
+                        | "sandbox_run"
+                        | "user_feedback"
+                )
+        })
+    {
+        return Err(AppError::ModelOutputSchema(
+            "evaluation output contract validation failed".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn evaluation_error_code(error: &AppError) -> &'static str {
+    match error {
+        AppError::Filesystem(_) => "evaluation.artifact_write_failed",
+        AppError::ModelOutputSchema(_) => "evaluation.output_invalid",
+        AppError::PolicyDenied(_) => "evaluation.policy_denied",
+        AppError::Database(_) | AppError::DbConstraint => "evaluation.persistence_failed",
+        _ => "evaluation.failed",
+    }
+}
+
+fn stable_evaluation_error(error_code: &str) -> AppError {
+    AppError::Unknown(error_code.to_string())
+}
 fn build_prompt_next_actions(
     has_role: bool,
     has_constraints: bool,
@@ -630,11 +905,34 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::EvaluationService;
+    use super::{validate_evaluation_output, EvaluationService};
+    use crate::domain::evaluation::{EvaluationOutput, EVALUATION_OUTPUT_SCHEMA_VERSION};
     use crate::errors::AppError;
     use crate::storage::database::Database;
     use crate::storage::object_store::ObjectStore;
 
+    #[test]
+    fn evidence_less_conclusion_requires_unknown_verdict_and_limitation() {
+        let invalid = EvaluationOutput {
+            schema_version: EVALUATION_OUTPUT_SCHEMA_VERSION,
+            score: 0.8,
+            verdict: "useful".to_string(),
+            dimensions: serde_json::json!({"utility": 0.8}),
+            evidence: Vec::new(),
+            limitations: Vec::new(),
+            next_actions: Vec::new(),
+            report: serde_json::json!({}),
+        };
+        assert!(validate_evaluation_output(&invalid).is_err());
+
+        let valid = EvaluationOutput {
+            verdict: "unknown".to_string(),
+            limitations: vec!["No source-linked evidence was available.".to_string()],
+            ..invalid
+        };
+        validate_evaluation_output(&valid)
+            .expect("unknown verdict with an explicit limitation should be valid");
+    }
     #[tokio::test]
     async fn prompt_evaluator_writes_run_artifact_job_event_and_lifecycle() {
         let database = Database::initialize_in_memory()
@@ -652,7 +950,7 @@ mod tests {
         let service = EvaluationService::new(database.pool().clone(), object_store);
 
         let response = service
-            .trigger_evaluation("obj-prompt", "prompt_evaluator")
+            .trigger_evaluation("obj-prompt", "prompt_evaluator", None)
             .await
             .expect("evaluation should run");
         let run = service
@@ -660,8 +958,24 @@ mod tests {
             .await
             .expect("run should be readable");
 
+        assert!(!response.reused);
+        assert_eq!(response.status, "passed");
+        assert_eq!(response.job_id, response.request_id);
+        assert_eq!(response.correlation_id, response.request_id);
+        uuid::Uuid::parse_str(&response.request_id).expect("request id should be a UUID");
         assert_eq!(run.status, "passed");
+        assert_eq!(
+            run.request_id.as_deref(),
+            Some(response.request_id.as_str())
+        );
+        assert_eq!(
+            run.correlation_id.as_deref(),
+            Some(response.correlation_id.as_str())
+        );
         assert_eq!(run.evaluator_type, "prompt_evaluator");
+        assert_eq!(run.plan_schema_version, 1);
+        assert_eq!(run.input_schema_version, 1);
+        assert_eq!(run.output_schema_version, 1);
         assert!(run.score.unwrap_or_default() > 0.5);
         assert_eq!(run.artifacts.len(), 1);
 
@@ -671,25 +985,186 @@ mod tests {
                 .fetch_one(database.pool())
                 .await
                 .expect("status should be readable");
-        let job_type: String =
-            sqlx::query_scalar("SELECT job_type FROM background_jobs WHERE object_id = ?1")
-                .bind("obj-prompt")
-                .fetch_one(database.pool())
-                .await
-                .expect("job should be readable");
-        let event_count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM domain_events WHERE object_id = ?1 AND event_type = 'evaluation.completed'",
+        let job: (String, String, String, Option<String>) = sqlx::query_as(
+            "SELECT job_type, status, payload_json, last_error FROM background_jobs WHERE id = ?1",
         )
-        .bind("obj-prompt")
+        .bind(&response.job_id)
         .fetch_one(database.pool())
         .await
-        .expect("event count should be readable");
+        .expect("job should be readable");
+        let events: Vec<(String, Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT event_type, causation_id, correlation_id FROM domain_events WHERE object_id = ?1 AND event_type LIKE 'evaluation.%' ORDER BY rowid",
+        )
+        .bind("obj-prompt")
+        .fetch_all(database.pool())
+        .await
+        .expect("events should be readable");
+        let versions: (i64, i64, i64, String, String, String) = sqlx::query_as(
+            "SELECT plan_schema_version, input_schema_version, output_schema_version, plan_json, input_json, output_json FROM evaluation_runs WHERE id = ?1",
+        )
+        .bind(&response.run_id)
+        .fetch_one(database.pool())
+        .await
+        .expect("versioned run payload should be readable");
 
         assert_eq!(lifecycle_status, "evaluated");
-        assert_eq!(job_type, "evaluation.run");
-        assert_eq!(event_count, 1);
+        assert_eq!(job.0, "evaluation.run");
+        assert_eq!(job.1, "succeeded");
+        assert_eq!(job.3, None);
+        let job_payload: serde_json::Value =
+            serde_json::from_str(&job.2).expect("job payload should be JSON");
+        assert_eq!(job_payload["requestId"], response.request_id);
+        assert_eq!(job_payload["correlationId"], response.correlation_id);
+        assert_eq!(job_payload["runId"], response.run_id);
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].0, "evaluation.planned");
+        assert_eq!(events[1].0, "evaluation.completed");
+        assert!(events.iter().all(|event| {
+            event.1.as_deref() == Some(response.job_id.as_str())
+                && event.2.as_deref() == Some(response.correlation_id.as_str())
+        }));
+        assert_eq!((versions.0, versions.1, versions.2), (1, 1, 1));
+        for raw in [&versions.3, &versions.4, &versions.5] {
+            let value: serde_json::Value =
+                serde_json::from_str(raw).expect("versioned payload should be JSON");
+            assert_eq!(value["schemaVersion"], 1);
+        }
+        let capabilities = service.list_evaluator_capabilities();
+        assert_eq!(capabilities.len(), 2);
+        assert!(capabilities.iter().all(|capability| {
+            capability.schema_version == 1
+                && capability.plan_schema_version == 1
+                && capability.input_schema_version == 1
+                && capability.output_schema_version == 1
+                && capability.execution_kind == "local_deterministic"
+                && !capability.requires_network
+                && !capability.requires_model
+                && !capability.requires_sandbox
+        }));
     }
 
+    #[tokio::test]
+    async fn repeated_request_id_reuses_one_run_job_and_artifact() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        let object_store = test_object_store();
+        seed_parsed_object(
+            database.pool(),
+            "obj-idempotent",
+            "prompt",
+            Some("Idempotent Prompt"),
+            Some("You are a reviewer. Task: assess {{input}}. Output format: JSON."),
+        )
+        .await;
+        let service = EvaluationService::new(database.pool().clone(), object_store);
+        let request_id = uuid::Uuid::new_v4().to_string();
+
+        let first = service
+            .trigger_evaluation("obj-idempotent", "prompt_evaluator", Some(&request_id))
+            .await
+            .expect("first evaluation should run");
+        let repeated = service
+            .trigger_evaluation("obj-idempotent", "prompt_evaluator", Some(&request_id))
+            .await
+            .expect("repeated evaluation should resolve idempotently");
+
+        assert!(!first.reused);
+        assert!(repeated.reused);
+        assert_eq!(repeated.run_id, first.run_id);
+        assert_eq!(repeated.job_id, first.job_id);
+        assert_eq!(repeated.correlation_id, first.correlation_id);
+        assert_eq!(repeated.status, "passed");
+        let counts: (i64, i64, i64, i64) = sqlx::query_as(
+            "SELECT (SELECT COUNT(*) FROM evaluation_runs), (SELECT COUNT(*) FROM background_jobs WHERE job_type = 'evaluation.run'), (SELECT COUNT(*) FROM evaluation_artifacts), (SELECT COUNT(*) FROM domain_events WHERE event_type LIKE 'evaluation.%')",
+        )
+        .fetch_one(database.pool())
+        .await
+        .expect("evaluation counts should query");
+        assert_eq!(counts, (1, 1, 1, 2));
+
+        seed_parsed_object(
+            database.pool(),
+            "obj-conflict",
+            "prompt",
+            Some("Other Prompt"),
+            Some("You are a reviewer. Task: assess another input."),
+        )
+        .await;
+        let conflict = service
+            .trigger_evaluation("obj-conflict", "prompt_evaluator", Some(&request_id))
+            .await
+            .expect_err("request id reuse across objects must be rejected");
+        assert!(matches!(conflict, AppError::PolicyDenied(_)));
+        let run_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM evaluation_runs")
+            .fetch_one(database.pool())
+            .await
+            .expect("run count should query");
+        assert_eq!(run_count, 1);
+    }
+
+    #[tokio::test]
+    async fn artifact_failure_converges_reserved_run_and_job_to_failed() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        let object_store = test_object_store();
+        let object_root = object_store.root().to_path_buf();
+        std::fs::remove_dir_all(&object_root).expect("object root should remove");
+        std::fs::write(&object_root, b"block artifact directory")
+            .expect("blocking file should write");
+        seed_parsed_object(
+            database.pool(),
+            "obj-failure",
+            "prompt",
+            Some("Failure Prompt"),
+            Some("You are a reviewer. Task: assess {{input}}. Output format: JSON."),
+        )
+        .await;
+        let service = EvaluationService::new(database.pool().clone(), object_store);
+        let request_id = uuid::Uuid::new_v4().to_string();
+
+        let error = service
+            .trigger_evaluation("obj-failure", "prompt_evaluator", Some(&request_id))
+            .await
+            .expect_err("artifact write should fail");
+        assert_eq!(
+            error.to_string(),
+            "unknown error: evaluation.artifact_write_failed"
+        );
+
+        let run: (String, String, Option<String>) = sqlx::query_as(
+            "SELECT status, verdict, failure_reason FROM evaluation_runs WHERE request_id = ?1",
+        )
+        .bind(&request_id)
+        .fetch_one(database.pool())
+        .await
+        .expect("failed run should persist");
+        let job: (String, Option<String>) =
+            sqlx::query_as("SELECT status, last_error FROM background_jobs WHERE id = ?1")
+                .bind(&request_id)
+                .fetch_one(database.pool())
+                .await
+                .expect("failed job should persist");
+        let events: Vec<(String, Option<String>)> = sqlx::query_as(
+            "SELECT event_type, correlation_id FROM domain_events WHERE object_id = 'obj-failure' ORDER BY rowid",
+        )
+        .fetch_all(database.pool())
+        .await
+        .expect("failure events should query");
+        assert_eq!(run.0, "failed");
+        assert_eq!(run.1, "unknown");
+        assert_eq!(run.2.as_deref(), Some("evaluation.artifact_write_failed"));
+        assert_eq!(job.0, "failed");
+        assert_eq!(job.1.as_deref(), Some("evaluation.artifact_write_failed"));
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].0, "evaluation.planned");
+        assert_eq!(events[1].0, "evaluation.failed");
+        assert!(events
+            .iter()
+            .all(|event| event.1.as_deref() == Some(request_id.as_str())));
+        let _ = std::fs::remove_file(object_root);
+    }
     #[tokio::test]
     async fn unsupported_evaluator_is_policy_denied() {
         let database = Database::initialize_in_memory()
@@ -707,7 +1182,7 @@ mod tests {
         let service = EvaluationService::new(database.pool().clone(), object_store);
 
         let error = service
-            .trigger_evaluation("obj-article", "unknown_evaluator")
+            .trigger_evaluation("obj-article", "unknown_evaluator", None)
             .await
             .expect_err("unsupported evaluator should fail");
 
