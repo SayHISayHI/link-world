@@ -145,6 +145,26 @@ pub struct EvaluationArtifact {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct EvaluationTrace {
+    pub id: String,
+    pub schema_version: i64,
+    pub request_id: String,
+    pub correlation_id: String,
+    pub evaluator_type: String,
+    pub evaluator_version: String,
+    pub execution_kind: String,
+    pub input_hash: String,
+    pub output_hash: Option<String>,
+    pub timeout_ms: i64,
+    pub latency_ms: Option<i64>,
+    pub status: String,
+    pub error_code: Option<String>,
+    pub started_at: Option<String>,
+    pub completed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct EvaluationRun {
     pub id: String,
     pub request_id: Option<String>,
@@ -161,6 +181,7 @@ pub struct EvaluationRun {
     pub dimensions: Value,
     pub evidence: Vec<EvidenceItem>,
     pub artifacts: Vec<EvaluationArtifact>,
+    pub trace: Option<EvaluationTrace>,
     pub limitations: Vec<String>,
     pub next_actions: Vec<Value>,
     pub failure_reason: Option<String>,

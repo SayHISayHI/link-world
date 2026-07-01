@@ -178,7 +178,37 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_evaluation_runs_request_id
 CREATE INDEX IF NOT EXISTS idx_evaluation_runs_status_created
     ON evaluation_runs(status, created_at);
 
--- 7. 评估产物表
+-- 7. 评估执行追踪表（只存身份、指纹、时序和稳定错误码，不存正文/URL）
+CREATE TABLE IF NOT EXISTS evaluation_traces (
+    id TEXT PRIMARY KEY,
+    schema_version INTEGER NOT NULL DEFAULT 1,
+    evaluation_run_id TEXT NOT NULL UNIQUE,
+    request_id TEXT NOT NULL,
+    correlation_id TEXT NOT NULL,
+    object_id TEXT NOT NULL,
+    evaluator_type TEXT NOT NULL,
+    evaluator_version TEXT NOT NULL,
+    execution_kind TEXT NOT NULL,
+    input_hash TEXT NOT NULL,
+    output_hash TEXT,
+    timeout_ms INTEGER NOT NULL CHECK (timeout_ms > 0),
+    latency_ms INTEGER,
+    status TEXT NOT NULL CHECK (status IN ('planned', 'running', 'passed', 'failed')),
+    error_code TEXT,
+    started_at DATETIME,
+    completed_at DATETIME,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (evaluation_run_id) REFERENCES evaluation_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY (object_id) REFERENCES knowledge_objects(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_evaluation_traces_correlation
+    ON evaluation_traces(correlation_id);
+
+CREATE INDEX IF NOT EXISTS idx_evaluation_traces_status_created
+    ON evaluation_traces(status, created_at);
+
+-- 8. 评估产物表
 CREATE TABLE IF NOT EXISTS evaluation_artifacts (
     id TEXT PRIMARY KEY,
     evaluation_run_id TEXT NOT NULL,
@@ -190,7 +220,7 @@ CREATE TABLE IF NOT EXISTS evaluation_artifacts (
     FOREIGN KEY (evaluation_run_id) REFERENCES evaluation_runs(id) ON DELETE CASCADE
 );
 
--- 8. 标签与集合表
+-- 9. 标签与集合表
 CREATE TABLE IF NOT EXISTS tags (
     id TEXT PRIMARY KEY,
     name TEXT UNIQUE NOT NULL,

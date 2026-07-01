@@ -1,6 +1,7 @@
 use crate::domain::knowledge::{
     AIAnalysis, AITrace, DeleteObjectMode, DeleteObjectResponse, EvaluationArtifact, EvaluationRun,
-    KnowledgeObject, KnowledgeObjectDetail, NewKnowledgeObject, ParsedDocument, SourceSnapshot,
+    EvaluationTrace, KnowledgeObject, KnowledgeObjectDetail, NewKnowledgeObject, ParsedDocument,
+    SourceSnapshot,
 };
 use crate::errors::{AppError, AppResult};
 use crate::repositories::search::SearchRepository;
@@ -490,30 +491,46 @@ impl KnowledgeObjectRepository {
     async fn list_evaluation_runs(&self, object_id: &str) -> AppResult<Vec<EvaluationRun>> {
         let rows = sqlx::query(
             r#"
+
             SELECT
-                id,
-                request_id,
-                correlation_id,
-                object_id,
-                evaluator_type,
-                evaluator_version,
-                plan_schema_version,
-                input_schema_version,
-                output_schema_version,
-                status,
-                dimensions_json,
-                evidence_json,
-                limitations_json,
-                next_actions_json,
-                score,
-                verdict,
-                failure_reason,
-                created_at,
-                completed_at
-            FROM evaluation_runs
-            WHERE object_id = ?1
-            ORDER BY created_at DESC
-            "#,
+                runs.id,
+                runs.request_id,
+                runs.correlation_id,
+                runs.object_id,
+                runs.evaluator_type,
+                runs.evaluator_version,
+                runs.plan_schema_version,
+                runs.input_schema_version,
+                runs.output_schema_version,
+                runs.status,
+                runs.dimensions_json,
+                runs.evidence_json,
+                runs.limitations_json,
+                runs.next_actions_json,
+                runs.score,
+                runs.verdict,
+                runs.failure_reason,
+                runs.created_at,
+                runs.completed_at,
+                traces.id AS trace_id,
+                traces.schema_version AS trace_schema_version,
+                traces.request_id AS trace_request_id,
+                traces.correlation_id AS trace_correlation_id,
+                traces.evaluator_type AS trace_evaluator_type,
+                traces.evaluator_version AS trace_evaluator_version,
+                traces.execution_kind AS trace_execution_kind,
+                traces.input_hash AS trace_input_hash,
+                traces.output_hash AS trace_output_hash,
+                traces.timeout_ms AS trace_timeout_ms,
+                traces.latency_ms AS trace_latency_ms,
+                traces.status AS trace_status,
+                traces.error_code AS trace_error_code,
+                traces.started_at AS trace_started_at,
+                traces.completed_at AS trace_completed_at
+            FROM evaluation_runs AS runs
+            LEFT JOIN evaluation_traces AS traces ON traces.evaluation_run_id = runs.id
+            WHERE runs.object_id = ?1
+            ORDER BY runs.created_at DESC            "#,
         )
         .bind(object_id)
         .fetch_all(&self.pool)
@@ -657,6 +674,28 @@ fn ai_analysis_from_row(row: SqliteRow) -> AIAnalysis {
 }
 
 fn evaluation_run_from_row(row: SqliteRow, artifacts: Vec<EvaluationArtifact>) -> EvaluationRun {
+    let trace = row
+        .try_get::<Option<String>, _>("trace_id")
+        .ok()
+        .flatten()
+        .map(|id| EvaluationTrace {
+            id,
+            schema_version: row.get("trace_schema_version"),
+            request_id: row.get("trace_request_id"),
+            correlation_id: row.get("trace_correlation_id"),
+            evaluator_type: row.get("trace_evaluator_type"),
+            evaluator_version: row.get("trace_evaluator_version"),
+            execution_kind: row.get("trace_execution_kind"),
+            input_hash: row.get("trace_input_hash"),
+            output_hash: row.get("trace_output_hash"),
+            timeout_ms: row.get("trace_timeout_ms"),
+            latency_ms: row.get("trace_latency_ms"),
+            status: row.get("trace_status"),
+            error_code: row.get("trace_error_code"),
+            started_at: row.get("trace_started_at"),
+            completed_at: row.get("trace_completed_at"),
+        });
+
     EvaluationRun {
         id: row.get("id"),
         request_id: row.get("request_id"),
@@ -674,6 +713,7 @@ fn evaluation_run_from_row(row: SqliteRow, artifacts: Vec<EvaluationArtifact>) -
             .unwrap_or_else(|| Value::Object(Default::default())),
         evidence: parse_json_array(row.get("evidence_json")),
         artifacts,
+        trace,
         limitations: parse_json_array(row.get("limitations_json")),
         next_actions: parse_json_array(row.get("next_actions_json")),
         failure_reason: row.get("failure_reason"),

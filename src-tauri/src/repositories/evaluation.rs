@@ -1,8 +1,9 @@
 use crate::domain::evaluation::{
     EvaluationArtifactSubmission, EvaluationFailureSubmission, EvaluationInput,
     EvaluationOperation, EvaluationRunReservation, EvaluationRunSubmission,
+    EvaluationTraceCompletion, EVALUATION_TRACE_SCHEMA_VERSION,
 };
-use crate::domain::knowledge::{EvaluationArtifact, EvaluationRun};
+use crate::domain::knowledge::{EvaluationArtifact, EvaluationRun, EvaluationTrace};
 use crate::errors::{AppError, AppResult};
 use serde_json::{json, Value};
 use sqlx::sqlite::SqliteRow;
@@ -122,6 +123,30 @@ impl EvaluationRepository {
         .execute(&mut *tx)
         .await?;
 
+        sqlx::query(
+            r#"
+            INSERT INTO evaluation_traces (
+                id, schema_version, evaluation_run_id, request_id, correlation_id, object_id,
+                evaluator_type, evaluator_version, execution_kind, input_hash, timeout_ms,
+                status, created_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 'planned', ?12)
+            "#,
+        )
+        .bind(&reservation.trace_id)
+        .bind(EVALUATION_TRACE_SCHEMA_VERSION)
+        .bind(&reservation.id)
+        .bind(&reservation.request_id)
+        .bind(&reservation.correlation_id)
+        .bind(&reservation.object_id)
+        .bind(&reservation.evaluator_type)
+        .bind(&reservation.evaluator_version)
+        .bind(&reservation.execution_kind)
+        .bind(&reservation.input_hash)
+        .bind(reservation.timeout_ms)
+        .bind(&reservation.created_at)
+        .execute(&mut *tx)
+        .await?;
+
         let job_payload = json!({
             "schemaVersion": 1,
             "requestId": reservation.request_id,
@@ -221,7 +246,27 @@ impl EvaluationRepository {
         .bind(started_at)
         .execute(&mut *tx)
         .await?;
-        if run_update.rows_affected() != 1 || job_update.rows_affected() != 1 {
+        let trace_update = sqlx::query(
+            r#"
+            UPDATE evaluation_traces
+            SET status = 'running',
+                started_at = ?4
+            WHERE evaluation_run_id = ?1
+              AND request_id = ?2
+              AND correlation_id = ?3
+              AND status = 'planned'
+            "#,
+        )
+        .bind(run_id)
+        .bind(job_id)
+        .bind(correlation_id)
+        .bind(started_at)
+        .execute(&mut *tx)
+        .await?;
+        if run_update.rows_affected() != 1
+            || job_update.rows_affected() != 1
+            || trace_update.rows_affected() != 1
+        {
             return Err(AppError::Database(
                 "evaluation running transition was rejected".to_string(),
             ));
@@ -297,6 +342,7 @@ impl EvaluationRepository {
         job_id: &str,
         run: &EvaluationRunSubmission,
         artifacts: &[EvaluationArtifactSubmission],
+        trace: &EvaluationTraceCompletion,
     ) -> AppResult<()> {
         let mut tx = self.pool.begin().await?;
 
@@ -392,6 +438,34 @@ impl EvaluationRepository {
             ));
         }
 
+        let trace_update = sqlx::query(
+            r#"
+            UPDATE evaluation_traces
+            SET status = 'passed',
+                output_hash = ?4,
+                latency_ms = ?5,
+                error_code = NULL,
+                completed_at = ?6
+            WHERE evaluation_run_id = ?1
+              AND request_id = ?2
+              AND correlation_id = ?3
+              AND status = 'running'
+            "#,
+        )
+        .bind(&run.id)
+        .bind(&run.request_id)
+        .bind(&run.correlation_id)
+        .bind(&trace.output_hash)
+        .bind(trace.latency_ms)
+        .bind(&trace.completed_at)
+        .execute(&mut *tx)
+        .await?;
+        if trace_update.rows_affected() != 1 {
+            return Err(AppError::Database(
+                "evaluation trace completion transition was rejected".to_string(),
+            ));
+        }
+
         sqlx::query(
             r#"
             UPDATE knowledge_objects
@@ -478,7 +552,31 @@ impl EvaluationRepository {
         .bind(&failure.completed_at)
         .execute(&mut *tx)
         .await?;
-        if run_update.rows_affected() != 1 || job_update.rows_affected() != 1 {
+        let trace_update = sqlx::query(
+            r#"
+            UPDATE evaluation_traces
+            SET status = 'failed',
+                latency_ms = ?4,
+                error_code = ?5,
+                completed_at = ?6
+            WHERE evaluation_run_id = ?1
+              AND request_id = ?2
+              AND correlation_id = ?3
+              AND status IN ('planned', 'running')
+            "#,
+        )
+        .bind(&failure.run_id)
+        .bind(&failure.job_id)
+        .bind(&failure.correlation_id)
+        .bind(failure.latency_ms)
+        .bind(&failure.error_code)
+        .bind(&failure.completed_at)
+        .execute(&mut *tx)
+        .await?;
+        if run_update.rows_affected() != 1
+            || job_update.rows_affected() != 1
+            || trace_update.rows_affected() != 1
+        {
             return Err(AppError::Database(
                 "evaluation failure transition was rejected".to_string(),
             ));
@@ -516,29 +614,45 @@ impl EvaluationRepository {
     pub async fn get_evaluation_run(&self, run_id: &str) -> AppResult<EvaluationRun> {
         let row = sqlx::query(
             r#"
+
             SELECT
-                id,
-                request_id,
-                correlation_id,
-                object_id,
-                evaluator_type,
-                evaluator_version,
-                plan_schema_version,
-                input_schema_version,
-                output_schema_version,
-                status,
-                dimensions_json,
-                evidence_json,
-                limitations_json,
-                next_actions_json,
-                score,
-                verdict,
-                failure_reason,
-                created_at,
-                completed_at
-            FROM evaluation_runs
-            WHERE id = ?1
-            "#,
+                runs.id,
+                runs.request_id,
+                runs.correlation_id,
+                runs.object_id,
+                runs.evaluator_type,
+                runs.evaluator_version,
+                runs.plan_schema_version,
+                runs.input_schema_version,
+                runs.output_schema_version,
+                runs.status,
+                runs.dimensions_json,
+                runs.evidence_json,
+                runs.limitations_json,
+                runs.next_actions_json,
+                runs.score,
+                runs.verdict,
+                runs.failure_reason,
+                runs.created_at,
+                runs.completed_at,
+                traces.id AS trace_id,
+                traces.schema_version AS trace_schema_version,
+                traces.request_id AS trace_request_id,
+                traces.correlation_id AS trace_correlation_id,
+                traces.evaluator_type AS trace_evaluator_type,
+                traces.evaluator_version AS trace_evaluator_version,
+                traces.execution_kind AS trace_execution_kind,
+                traces.input_hash AS trace_input_hash,
+                traces.output_hash AS trace_output_hash,
+                traces.timeout_ms AS trace_timeout_ms,
+                traces.latency_ms AS trace_latency_ms,
+                traces.status AS trace_status,
+                traces.error_code AS trace_error_code,
+                traces.started_at AS trace_started_at,
+                traces.completed_at AS trace_completed_at
+            FROM evaluation_runs AS runs
+            LEFT JOIN evaluation_traces AS traces ON traces.evaluation_run_id = runs.id
+            WHERE runs.id = ?1            "#,
         )
         .bind(run_id)
         .fetch_optional(&self.pool)
@@ -576,6 +690,28 @@ impl EvaluationRepository {
 }
 
 fn evaluation_run_from_row(row: SqliteRow, artifacts: Vec<EvaluationArtifact>) -> EvaluationRun {
+    let trace = row
+        .try_get::<Option<String>, _>("trace_id")
+        .ok()
+        .flatten()
+        .map(|id| EvaluationTrace {
+            id,
+            schema_version: row.get("trace_schema_version"),
+            request_id: row.get("trace_request_id"),
+            correlation_id: row.get("trace_correlation_id"),
+            evaluator_type: row.get("trace_evaluator_type"),
+            evaluator_version: row.get("trace_evaluator_version"),
+            execution_kind: row.get("trace_execution_kind"),
+            input_hash: row.get("trace_input_hash"),
+            output_hash: row.get("trace_output_hash"),
+            timeout_ms: row.get("trace_timeout_ms"),
+            latency_ms: row.get("trace_latency_ms"),
+            status: row.get("trace_status"),
+            error_code: row.get("trace_error_code"),
+            started_at: row.get("trace_started_at"),
+            completed_at: row.get("trace_completed_at"),
+        });
+
     EvaluationRun {
         id: row.get("id"),
         request_id: row.get("request_id"),
@@ -593,6 +729,7 @@ fn evaluation_run_from_row(row: SqliteRow, artifacts: Vec<EvaluationArtifact>) -
             .unwrap_or_else(|| Value::Object(Default::default())),
         evidence: parse_json_array(row.get("evidence_json")),
         artifacts,
+        trace,
         limitations: parse_json_array(row.get("limitations_json")),
         next_actions: parse_json_array(row.get("next_actions_json")),
         failure_reason: row.get("failure_reason"),

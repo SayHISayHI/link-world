@@ -64,7 +64,7 @@ MVP 主支持：
 - error_code
 - message
 
-当前实现边界：capture submit/fetch 与 AI enrichment submitted/started/succeeded/failed 已写入 `logs/link-world.jsonl`，单文件 2 MiB、保留一份轮转；写入与支持包读取均复验字段和敏感 marker。AI job payload、`analysis.requested/created/failed` domain event、IPC result 和日志共享同一 UUID，event payload 只含 analysis id 或稳定 `ai.*` code。search rebuild 使用持久化 job UUID、reindex 使用生成的 operation/job UUID 作为 correlation，完成/取消/失败日志不含 query、索引内容或 raw SQLite error；失败 job 只保存 `search.rebuild_failed` 恢复文案，query/rebuild/reindex/health 的底层数据库错误在 IPC 前统一映射为稳定 `search.*` 文案。startup migration 在 AppState 初始化 storage 前复用同一 logger，UUID 持久化到 guard/last-result 并关联 started/prepared/running/succeeded/failed；running guard 阻断、损坏 guard 和 plan 读取失败只暴露稳定 `migration.*` code；新 guard 的 backup ID、绝对路径或 raw error 不进入日志，legacy guard 的 UUID backup id 只允许作为 `correlationId` 复用。restore 复用 marker `transactionId` 作为 correlation，写入 prepare result 与 last-result，跨 prepare、重启安装、validation、success/rollback 延续；candidate 篡改、marker 损坏和 interrupted switch 只写稳定 `restore.*` code，target/safety backup ID、候选内容、路径与 raw error 不进入日志。计划内关键流程的确定性代码级覆盖已完成，Week 5 仍需真实矩阵验收。
+当前实现边界：capture submit/fetch 与 AI enrichment submitted/started/succeeded/failed 已写入 `logs/link-world.jsonl`，单文件 2 MiB、保留一份轮转；写入与支持包读取均复验字段和敏感 marker。AI job payload、`analysis.requested/created/failed` domain event、IPC result 和日志共享同一 UUID，event payload 只含 analysis id 或稳定 `ai.*` code。search rebuild 使用持久化 job UUID、reindex 使用生成的 operation/job UUID 作为 correlation，完成/取消/失败日志不含 query、索引内容或 raw SQLite error；失败 job 只保存 `search.rebuild_failed` 恢复文案，query/rebuild/reindex/health 的底层数据库错误在 IPC 前统一映射为稳定 `search.*` 文案。startup migration 在 AppState 初始化 storage 前复用同一 logger，UUID 持久化到 guard/last-result 并关联 started/prepared/running/succeeded/failed；running guard 阻断、损坏 guard 和 plan 读取失败只暴露稳定 `migration.*` code；新 guard 的 backup ID、绝对路径或 raw error 不进入日志，legacy guard 的 UUID backup id 只允许作为 `correlationId` 复用。restore 复用 marker `transactionId` 作为 correlation，写入 prepare result 与 last-result，跨 prepare、重启安装、validation、success/rollback 延续；candidate 篡改、marker 损坏和 interrupted switch 只写稳定 `restore.*` code，target/safety backup ID、候选内容、路径与 raw error 不进入日志。Evaluation submitted/started/succeeded/failed/reused 与 startup recovered 也复用 request UUID 作为 correlation，日志只含 object/job identity 和稳定 `evaluation.*` code；独立 trace 仅保存 fingerprint/timing/identity，自动化以正文和 URL 诱饵验证不进入日志。计划内关键流程的确定性代码级覆盖已完成，Week 5 仍需真实矩阵验收。
 
 日志不得包含：
 
@@ -108,7 +108,7 @@ Local Edition 必须支持：
 
 - 旧 AI analysis 和 evaluation result 不因 schema 升级被覆盖。
 
-当前自动化已覆盖 0001/0002/0003 历史 schema 到 current 0004、1000 对象 v1 数据集、外键/FTS/隐私/AI/Evaluation/job/provider/tombstone 不变量、未知未来 migration 的 fail-closed、启动 recovery UI 的受限操作展示，以及便携导出默认排除 secret 与本机 storage URI。真实安装包原地升级和进程级强制终止仍未完成。
+当前自动化已覆盖 0001/0002/0003 历史 schema 到 current 0005、1000 对象 v1 数据集、外键/FTS/隐私/AI/Evaluation/job/provider/tombstone 不变量、未知未来 migration 的 fail-closed、启动 recovery UI 的受限操作展示，以及便携导出默认排除 secret 与本机 storage URI。真实安装包原地升级和进程级强制终止仍未完成。
 
 ### 5.1 Evaluation Runtime
 
@@ -117,11 +117,14 @@ Local Edition 必须支持：
 - `list_evaluator_capabilities` 返回 schema v1 capability；内置 Prompt/GitHub evaluator 标明 `local_deterministic`，不需要 network/model/sandbox。
 - 客户端生成 UUID requestId；后端以相同 job/correlation identity 先持久化 planned/queued，再推进 running 和 passed/failed。
 - 同 identity 重试返回原 run，不重复写 artifact/event；跨 object 或 requested evaluator 的 UUID 复用 fail closed。
-- plan/input/output schema version 均持久化为 1；0004 前的 legacy run 保留 NULL identity 并按 version 1 读取。
-- artifact/DB 失败会把已占位 run/job 收敛为稳定 `evaluation.*` reason；不允许永久 running 或“失败但无记录”。
-- verdict 的 TSX 实现标记为 evaluator inference，evidence 显示 saved content/local/external/sandbox/user 来源；定向 TypeScript 编译通过，localhost rendered QA 尚未完成；无 evidence 的非 unknown 结论被 output validator 拒绝。
+- plan/input/output schema version 均持久化为 1；0004 前的 legacy run 保留 NULL identity 并按 version 1 读取；0005 不为 legacy run 伪造 trace。
+- artifact/DB 失败会把已占位 run/job/trace 收敛为稳定 `evaluation.*` reason；不允许永久 running 或“失败但无记录”。
+- 本地 evaluator 在独立阻塞任务中执行，默认上限 2 秒；timeout 持久化为 `evaluation.timeout`，迟到的纯计算结果不具有外部副作用且不会反写。
+- 启动恢复会处理当前 running job，也兼容旧版本“job 已 failed、run 仍 running”的不一致；run/job/trace 统一写 `evaluation.interrupted`，记录 terminal event、清理 artifact 目录并写同 correlation 的脱敏日志。
+- `evaluation_traces` 只保存 request/correlation/evaluator identity、input/output hash、execution kind、timeout/latency、status、稳定 error code 与时间戳；不保存标题、URL、正文、plan/output 或 raw error。
+- verdict 的 TSX 实现标记为 evaluator inference，evidence 显示 saved content/local/external/sandbox/user 来源；折叠 trace 详情显示 executor、status、latency/timeout、correlation 与截断 fingerprint；定向 TypeScript 编译通过，localhost rendered QA 尚未完成；无 evidence 的非 unknown 结论被 output validator 拒绝。
 
-尚未达到 Week 6 完成线：执行 timeout、进程中断 recovery、retry、独立 trace、完整运行详情 UI 和相应 readiness 聚合门禁仍待实现。
+尚未达到 Week 6 完成线：`failed -> planned` retry、相应 readiness 聚合门禁与 localhost rendered QA 仍待实现；真实进程强制终止仍需发布候选矩阵留证。
 ## 6. Incident Playbooks
 
 ### 6.1 AI provider failure

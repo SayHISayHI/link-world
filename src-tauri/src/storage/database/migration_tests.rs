@@ -185,6 +185,8 @@ async fn upgrades_v1_release_fixture_without_losing_core_or_derived_data() {
         assert_eq!(table_count(pool, table).await, 1, "{table} row was lost");
     }
 
+    assert_eq!(table_count(pool, "evaluation_traces").await, 0);
+
     let privacy_levels: Vec<String> = sqlx::query_scalar(
         "SELECT privacy_level FROM knowledge_objects          WHERE id IN ('object-0000', 'object-0001') ORDER BY id",
     )
@@ -219,7 +221,7 @@ async fn upgrades_v1_release_fixture_without_losing_core_or_derived_data() {
             .fetch_all(pool)
             .await
             .expect("migration metadata should query");
-    assert_eq!(applied_versions, vec![1, 2, 3, 4]);
+    assert_eq!(applied_versions, vec![1, 2, 3, 4, 5]);
     let evaluation_contract: (Option<String>, Option<String>, i64, i64, i64) =
         sqlx::query_as(
             "SELECT request_id, correlation_id, plan_schema_version, input_schema_version, output_schema_version FROM evaluation_runs WHERE id = 'evaluation-1'",
@@ -304,7 +306,8 @@ async fn v3_fixture_adds_evaluation_runtime_contract_and_preserves_api_family() 
     .await
     .expect("v3 provider should query");
     assert_eq!(api_family, "anthropic_messages");
-    assert_eq!(table_count(database.pool(), "_sqlx_migrations").await, 4);
+    assert_eq!(table_count(database.pool(), "_sqlx_migrations").await, 5);
+    assert_eq!(table_count(database.pool(), "evaluation_traces").await, 0);
     let evaluation_columns: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM pragma_table_info('evaluation_runs') WHERE name IN ('request_id', 'correlation_id', 'plan_schema_version', 'input_schema_version', 'output_schema_version')",
     )

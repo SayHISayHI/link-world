@@ -646,7 +646,7 @@ Evaluation Engine 是 Link World 和普通 AI 收藏工具的主要差异。它�
 - 给出明确 verdict，而不是模糊摘要。
 - 记录评估证据，避免 AI 空泛判断。
 
-当前实现边界：Prompt 与 GitHub Repo evaluator 以 `local_deterministic` capability 运行，不访问网络、模型或 sandbox。客户端为一次用户动作生成 UUID `requestId`；后端以同一值作为 job id 和 correlation id，在短事务中先写 `evaluation_runs(planned)`、`background_jobs(queued)` 与 `evaluation.planned`，再推进 running，最后原子提交 passed/artifact/object lifecycle/`evaluation.completed`。重复的同 identity 请求返回原 run；跨 object/evaluator 复用同 UUID fail closed。plan/input/output contract 当前均为 schema version 1；失败至少收敛 run/job 和 `evaluation.failed`，timeout 与独立 trace 仍是 Week 6 未完成项。
+当前实现边界：Prompt 与 GitHub Repo evaluator 以 `local_deterministic` capability 运行，不访问网络、模型或 sandbox。客户端为一次用户动作生成 UUID `requestId`；后端以同一值作为 job id 和 correlation id，在短事务中先写 `evaluation_runs(planned)`、`background_jobs(queued)`、`evaluation_traces(planned)` 与 `evaluation.planned`，再推进 running，最后原子提交 passed/trace/artifact/object lifecycle/`evaluation.completed`。重复的同 identity 请求返回原 run；跨 object/evaluator 复用同 UUID fail closed。plan/input/output contract 当前均为 schema version 1；本地 evaluator 在 2 秒上限内由独立阻塞任务执行，超时收敛为 `evaluation.timeout`。每个新 run 同事务创建 privacy-bounded `evaluation_traces` 行，成功或失败时与 run/job 一起终结；应用启动会把残留 running run（包括旧版本已先标记 failed 的 job）收敛为 `evaluation.interrupted`、清理孤立 artifact，并延续 correlation 日志。
 ### 7.2 Evaluator routing
 
 ```mermaid

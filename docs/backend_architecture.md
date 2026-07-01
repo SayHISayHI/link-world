@@ -200,12 +200,12 @@ Recommended repositories:
 - 写入 `source_snapshots` + 更新 lifecycle。
 - 写入 `parsed_documents` + 更新 lifecycle + FTS enqueue event。
 - 写入 `ai_analysis`（包括可选 `display_hints_json`）+ `ai_traces` + 更新 lifecycle。
-- Evaluation reservation：`evaluation_runs(planned)` + `background_jobs(queued)` + `evaluation.planned`，以唯一 request UUID 占位。
-- Evaluation completion/failure：校验 run/job/correlation identity 后，原子更新 run/job、artifact、object lifecycle 与 terminal domain event。
+- Evaluation reservation：`evaluation_runs(planned)` + `background_jobs(queued)` + `evaluation_traces(planned)` + `evaluation.planned`，以唯一 request UUID 占位。
+- Evaluation completion/failure：校验 run/job/trace/correlation identity 后，原子更新 run/job/trace、artifact、object lifecycle 与 terminal domain event。
 - 删除对象 + tombstone + cleanup job。
 - 插件权限变更 + audit log。
 
-`EvaluationService` 当前先查询 request UUID；已存在且 object/requested evaluator identity 一致时直接返回原 run，不重复生成 artifact。新请求在执行 evaluator 前持久化 planned/queued 状态，再进入 running；artifact I/O 位于数据库 transaction 外，成功结果以短事务发布，失败只保存稳定 `evaluation.*` code。0004 migration 为 legacy run 保留 nullable identity，并把 plan/input/output schema version 默认到 1。timeout、独立 trace 和异步 runner recovery 仍是后续 Week 6 工作。
+`EvaluationService` 先查询 request UUID；已存在且 object/requested evaluator identity 一致时直接返回原 run，不重复生成 artifact。新请求在执行 evaluator 前原子持久化 planned run/queued job/planned trace，再进入 running；本地纯计算 evaluator 运行在独立阻塞任务并受 2 秒上限约束，超时为 `evaluation.timeout`。artifact I/O 位于数据库 transaction 外，成功结果以短事务发布 run/job/trace/artifact/event，失败只保存稳定 `evaluation.*` code。0004 为 legacy run 保留 nullable identity 并把 plan/input/output version 默认到 1；0005 新增不含正文、URL、plan/output 或 raw error 的独立 trace。启动恢复将残留 running run（包括旧版本已先置 failed 的 job）收敛为 `evaluation.interrupted`，并清理该 run 的 artifact 目录。
 禁止一个 transaction 内：
 
 - 发 HTTP 请求。
@@ -525,7 +525,7 @@ Backend minimum test matrix:
 
 - State machine: all lifecycle transitions including `failed`。
 - Error mapping: every `AppError` maps to `IpcErrorCode`。
-- Migration: empty DB；production migrator 生成的 0001/0002/0003 historical fixtures → current 0004；1000-object invariants；unknown future version fail-closed；existing-schema restore point；guard interruption convergence。
+- Migration: empty DB；production migrator 生成的 0001/0002/0003 historical fixtures → current 0005；1000-object invariants；unknown future version fail-closed；existing-schema restore point；guard interruption convergence。
 - Portable export: non-secret object markdown/metadata export, secret skip count, and storage URI / credential-reference omission.
 - Support bundle: explicit confirmation, atomic local publication, valid schema/hash, bounded validated runtime logs, and adversarial omission of object bodies, job/domain-event payloads, audit metadata, plugin manifest secrets, URL query values, credential references and local absolute paths.
 - Structured logging: JSONL round-trip, redaction rejection, size bounds and capture submit/start/success/failure correlation continuity.

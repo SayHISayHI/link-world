@@ -1,4 +1,6 @@
-use crate::domain::jobs::{BackgroundJob, RetriedBackgroundJob, StartupJobRecoverySummary};
+use crate::domain::jobs::{
+    BackgroundJob, RecoveredEvaluationOperation, RetriedBackgroundJob, StartupJobRecoverySummary,
+};
 use crate::errors::{AppError, AppResult};
 use chrono::Utc;
 use sqlx::sqlite::SqliteRow;
@@ -84,7 +86,122 @@ impl JobsRepository {
     ) -> AppResult<StartupJobRecoverySummary> {
         let now = Utc::now().to_rfc3339();
         let mut tx = self.pool.begin().await?;
+        let interrupted_evaluations = sqlx::query(
+            r#"
+            SELECT
+                runs.id AS run_id,
+                jobs.id AS job_id,
+                runs.correlation_id,
+                runs.object_id,
+                objects.user_id,
+                runs.evaluator_type
+            FROM evaluation_runs AS runs
+            INNER JOIN background_jobs AS jobs
+                ON jobs.id = runs.request_id
+               AND jobs.job_type = 'evaluation.run'
+            INNER JOIN knowledge_objects AS objects ON objects.id = runs.object_id
+            WHERE runs.status = 'running'
+            "#,
+        )
+        .fetch_all(&mut *tx)
+        .await?;
+        let mut recovered_evaluations = Vec::with_capacity(interrupted_evaluations.len());
 
+        for row in interrupted_evaluations {
+            let run_id: String = row.get("run_id");
+            let job_id: String = row.get("job_id");
+            let correlation_id: String = row.get("correlation_id");
+            let object_id: String = row.get("object_id");
+            let user_id: String = row.get("user_id");
+            let evaluator_type: String = row.get("evaluator_type");
+
+            let run_update = sqlx::query(
+                r#"
+                UPDATE evaluation_runs
+                SET status = 'failed',
+                    verdict = 'unknown',
+                    failure_reason = 'evaluation.interrupted',
+                    completed_at = ?2
+                WHERE id = ?1
+                  AND status = 'running'
+                "#,
+            )
+            .bind(&run_id)
+            .bind(&now)
+            .execute(&mut *tx)
+            .await?;
+            let job_update = sqlx::query(
+                r#"
+                UPDATE background_jobs
+                SET status = 'failed',
+                    locked_at = NULL,
+                    locked_by = NULL,
+                    last_error = 'evaluation.interrupted',
+                    updated_at = ?2
+                WHERE id = ?1
+                  AND job_type = 'evaluation.run'
+                "#,
+            )
+            .bind(&job_id)
+            .bind(&now)
+            .execute(&mut *tx)
+            .await?;
+            if run_update.rows_affected() != 1 || job_update.rows_affected() != 1 {
+                return Err(AppError::Database(
+                    "interrupted evaluation recovery transition was rejected".to_string(),
+                ));
+            }
+
+            sqlx::query(
+                r#"
+                UPDATE evaluation_traces
+                SET status = 'failed',
+                    error_code = 'evaluation.interrupted',
+                    completed_at = ?2
+                WHERE evaluation_run_id = ?1
+                  AND status IN ('planned', 'running')
+                "#,
+            )
+            .bind(&run_id)
+            .bind(&now)
+            .execute(&mut *tx)
+            .await?;
+
+            sqlx::query(
+                r#"
+                INSERT INTO domain_events (
+                    id, event_type, event_version, user_id, object_id,
+                    causation_id, correlation_id, payload_json, occurred_at
+                ) VALUES (?1, 'evaluation.failed', 1, ?2, ?3, ?4, ?5, ?6, ?7)
+                "#,
+            )
+            .bind(Uuid::new_v4().to_string())
+            .bind(user_id)
+            .bind(&object_id)
+            .bind(&job_id)
+            .bind(&correlation_id)
+            .bind(
+                serde_json::json!({
+                    "runId": run_id,
+                    "evaluatorType": evaluator_type,
+                    "status": "failed",
+                    "errorCode": "evaluation.interrupted",
+                })
+                .to_string(),
+            )
+            .bind(&now)
+            .execute(&mut *tx)
+            .await?;
+
+            recovered_evaluations.push(RecoveredEvaluationOperation {
+                run_id,
+                job_id,
+                correlation_id,
+                object_id,
+            });
+        }
+
+        let evaluation_failed_count = recovered_evaluations.len() as u64;
         let requeued = sqlx::query(
             r#"
             UPDATE background_jobs
@@ -134,7 +251,7 @@ impl JobsRepository {
         .await?
         .rows_affected();
 
-        let failed = sqlx::query(
+        let other_failed = sqlx::query(
             r#"
             UPDATE background_jobs
             SET
@@ -148,6 +265,7 @@ impl JobsRepository {
                 END,
                 updated_at = ?3
             WHERE status = 'running'
+              AND job_type != 'evaluation.run'
             "#,
         )
         .bind(format!(
@@ -165,8 +283,10 @@ impl JobsRepository {
 
         Ok(StartupJobRecoverySummary {
             requeued_count: requeued,
-            failed_count: failed,
+            failed_count: other_failed + evaluation_failed_count,
             object_failed_count: object_failed,
+            evaluation_failed_count,
+            recovered_evaluations,
         })
     }
     pub async fn retry_background_job(&self, job_id: &str) -> AppResult<RetriedBackgroundJob> {
@@ -443,6 +563,125 @@ mod tests {
         assert_eq!(capture_status, "failed");
         assert_eq!(ai_status, "parsed");
     }
+    #[tokio::test]
+    async fn startup_converges_interrupted_evaluation_run_job_trace_and_event() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        sqlx::query(
+            r#"
+            INSERT INTO knowledge_objects (
+                id, user_id, object_type, title, privacy_level, lifecycle_status, captured_at, updated_at
+            ) VALUES (
+                'obj-interrupted-evaluation', 'local', 'prompt', 'Interrupted Evaluation', 'personal', 'parsed', '2026-06-17T00:00:00Z', '2026-06-17T00:00:00Z'
+            )
+            "#,
+        )
+        .execute(database.pool())
+        .await
+        .expect("object insert should succeed");
+        sqlx::query(
+            r#"
+            INSERT INTO evaluation_runs (
+                id, request_id, correlation_id, object_id, evaluator_type, evaluator_version,
+                status, verdict, created_at
+            ) VALUES (
+                'run-interrupted-evaluation', 'job-interrupted-evaluation', 'correlation-interrupted-evaluation',
+                'obj-interrupted-evaluation', 'prompt_evaluator', '0.1.0', 'running', 'unknown',
+                '2026-06-17T00:00:00Z'
+            )
+            "#,
+        )
+        .execute(database.pool())
+        .await
+        .expect("run insert should succeed");
+        sqlx::query(
+            r#"
+            INSERT INTO evaluation_traces (
+                id, evaluation_run_id, request_id, correlation_id, object_id, evaluator_type,
+                evaluator_version, execution_kind, input_hash, timeout_ms, status, started_at, created_at
+            ) VALUES (
+                'trace-interrupted-evaluation', 'run-interrupted-evaluation', 'job-interrupted-evaluation',
+                'correlation-interrupted-evaluation', 'obj-interrupted-evaluation', 'prompt_evaluator',
+                '0.1.0', 'local_deterministic', 'input-hash', 2000, 'running',
+                '2026-06-17T00:01:00Z', '2026-06-17T00:00:00Z'
+            )
+            "#,
+        )
+        .execute(database.pool())
+        .await
+        .expect("trace insert should succeed");
+        sqlx::query(
+            r#"
+            INSERT INTO background_jobs (
+                id, job_type, status, object_id, payload_json, attempt_count, max_attempts,
+                locked_at, locked_by, created_at, updated_at
+            ) VALUES (
+                'job-interrupted-evaluation', 'evaluation.run', 'failed',
+                'obj-interrupted-evaluation', '{}', 1, 1, NULL,
+                NULL, '2026-06-17T00:00:00Z', '2026-06-17T00:01:00Z'
+            )
+            "#,
+        )
+        .execute(database.pool())
+        .await
+        .expect("job insert should succeed");
+
+        let repository = JobsRepository::new(database.pool().clone());
+        let summary = repository
+            .recover_interrupted_jobs_on_startup()
+            .await
+            .expect("startup recovery should succeed");
+        let state: (
+            String,
+            Option<String>,
+            String,
+            Option<String>,
+            String,
+            Option<String>,
+        ) = sqlx::query_as(
+            r#"
+                SELECT runs.status, runs.failure_reason, jobs.status, jobs.last_error,
+                       traces.status, traces.error_code
+                FROM evaluation_runs AS runs
+                INNER JOIN background_jobs AS jobs ON jobs.id = runs.request_id
+                INNER JOIN evaluation_traces AS traces ON traces.evaluation_run_id = runs.id
+                WHERE runs.id = 'run-interrupted-evaluation'
+                "#,
+        )
+        .fetch_one(database.pool())
+        .await
+        .expect("recovered state should query");
+        let event: (String, Option<String>, Option<String>, String) = sqlx::query_as(
+            r#"
+            SELECT event_type, causation_id, correlation_id, payload_json
+            FROM domain_events
+            WHERE object_id = 'obj-interrupted-evaluation'
+            "#,
+        )
+        .fetch_one(database.pool())
+        .await
+        .expect("recovery event should query");
+
+        assert_eq!(summary.failed_count, 1);
+        assert_eq!(summary.evaluation_failed_count, 1);
+        assert_eq!(summary.recovered_evaluations.len(), 1);
+        assert_eq!(state.0, "failed");
+        assert_eq!(state.1.as_deref(), Some("evaluation.interrupted"));
+        assert_eq!(state.2, "failed");
+        assert_eq!(state.3.as_deref(), Some("evaluation.interrupted"));
+        assert_eq!(state.4, "failed");
+        assert_eq!(state.5.as_deref(), Some("evaluation.interrupted"));
+        assert_eq!(event.0, "evaluation.failed");
+        assert_eq!(event.1.as_deref(), Some("job-interrupted-evaluation"));
+        assert_eq!(
+            event.2.as_deref(),
+            Some("correlation-interrupted-evaluation")
+        );
+        assert!(event.3.contains("evaluation.interrupted"));
+        assert!(!event.3.contains("Interrupted Evaluation"));
+    }
+
     #[tokio::test]
     async fn retry_background_job_resets_failed_capture_job_and_object() {
         let database = Database::initialize_in_memory()

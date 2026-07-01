@@ -6,6 +6,8 @@ pub const EVALUATION_CAPABILITY_SCHEMA_VERSION: i64 = 1;
 pub const EVALUATION_PLAN_SCHEMA_VERSION: i64 = 1;
 pub const EVALUATION_INPUT_SCHEMA_VERSION: i64 = 1;
 pub const EVALUATION_OUTPUT_SCHEMA_VERSION: i64 = 1;
+pub const EVALUATION_TRACE_SCHEMA_VERSION: i64 = 1;
+pub const DEFAULT_EVALUATION_TIMEOUT_MS: i64 = 2_000;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -112,6 +114,10 @@ pub struct EvaluationRunReservation {
     pub plan_schema_version: i64,
     pub input_schema_version: i64,
     pub output_schema_version: i64,
+    pub trace_id: String,
+    pub execution_kind: String,
+    pub input_hash: String,
+    pub timeout_ms: i64,
     pub plan_json: String,
     pub input_json: String,
     pub created_at: String,
@@ -138,6 +144,14 @@ pub struct EvaluationFailureSubmission {
     pub object_id: String,
     pub evaluator_type: String,
     pub error_code: String,
+    pub latency_ms: i64,
+    pub completed_at: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct EvaluationTraceCompletion {
+    pub output_hash: String,
+    pub latency_ms: i64,
     pub completed_at: String,
 }
 #[derive(Debug, Clone)]

@@ -6,7 +6,7 @@ use crate::services::migration::MigrationService;
 use crate::services::restore::begin_pending_restore_with_logger;
 use crate::storage::database::Database;
 use crate::storage::object_store::ObjectStore;
-use crate::telemetry::StructuredLogger;
+use crate::telemetry::{StructuredLogEvent, StructuredLogger};
 use std::collections::HashMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -354,9 +354,42 @@ impl AppState {
             (Ok(storage), None) => storage,
             (Err(error), None) => return Err(error),
         };
-        JobsRepository::new(database.pool().clone())
+        let recovery = JobsRepository::new(database.pool().clone())
             .recover_interrupted_jobs_on_startup()
             .await?;
+        for operation in recovery.recovered_evaluations {
+            let cleanup = object_store
+                .remove_evaluation_run_artifacts(&operation.object_id, &operation.run_id)
+                .await;
+            let _ = structured_logger
+                .record(
+                    StructuredLogEvent::error(
+                        "evaluation",
+                        "evaluation.recovered",
+                        "Interrupted evaluation recovered during startup.",
+                    )
+                    .with_correlation_id(&operation.correlation_id)
+                    .with_object_id(&operation.object_id)
+                    .with_job_id(&operation.job_id)
+                    .with_error_code("evaluation.interrupted"),
+                )
+                .await;
+            if cleanup.is_err() {
+                let _ = structured_logger
+                    .record(
+                        StructuredLogEvent::error(
+                            "evaluation",
+                            "evaluation.recovery_cleanup_failed",
+                            "Interrupted evaluation artifact cleanup failed.",
+                        )
+                        .with_correlation_id(&operation.correlation_id)
+                        .with_object_id(&operation.object_id)
+                        .with_job_id(&operation.job_id)
+                        .with_error_code("evaluation.artifact_cleanup_failed"),
+                    )
+                    .await;
+            }
+        }
         let model_registry = ModelProviderRegistry::new()?;
         let secrets = SecretStore::system()?;
 
@@ -430,9 +463,12 @@ impl AppState {
 
 #[cfg(test)]
 mod tests {
-    use super::{SecretStore, StartupState};
+    use super::{AppState, SecretStore, StartupState};
     use crate::domain::startup::{StartupMode, StartupRecoveryKind};
     use crate::errors::AppError;
+    use crate::storage::database::Database;
+    use crate::storage::object_store::ObjectStore;
+    use crate::telemetry::StructuredLogger;
     use std::path::PathBuf;
     use uuid::Uuid;
 
@@ -462,6 +498,133 @@ mod tests {
                 .expect("missing secret should resolve"),
             None
         );
+    }
+
+    #[tokio::test]
+    async fn app_startup_recovers_interrupted_evaluation_and_cleans_artifacts() {
+        let data_dir =
+            std::env::temp_dir().join(format!("link-world-startup-evaluation-{}", Uuid::new_v4()));
+        let database = Database::initialize(data_dir.clone())
+            .await
+            .expect("database should initialize");
+        let object_store =
+            ObjectStore::initialize(data_dir.clone()).expect("object store should initialize");
+        sqlx::query(
+            r#"
+            INSERT INTO knowledge_objects (
+                id, user_id, object_type, privacy_level, lifecycle_status
+            ) VALUES ('startup-evaluation-object', 'local', 'prompt', 'personal', 'parsed')
+            "#,
+        )
+        .execute(database.pool())
+        .await
+        .expect("object should insert");
+        sqlx::query(
+            r#"
+            INSERT INTO evaluation_runs (
+                id, request_id, correlation_id, object_id, evaluator_type, evaluator_version, status, verdict
+            ) VALUES (
+                'startup-evaluation-run', 'startup-evaluation-job', 'startup-evaluation-correlation',
+                'startup-evaluation-object', 'prompt_evaluator', '0.1.0', 'running', 'unknown'
+            )
+            "#,
+        )
+        .execute(database.pool())
+        .await
+        .expect("run should insert");
+        sqlx::query(
+            r#"
+            INSERT INTO evaluation_traces (
+                id, evaluation_run_id, request_id, correlation_id, object_id, evaluator_type,
+                evaluator_version, execution_kind, input_hash, timeout_ms, status
+            ) VALUES (
+                'startup-evaluation-trace', 'startup-evaluation-run', 'startup-evaluation-job',
+                'startup-evaluation-correlation', 'startup-evaluation-object', 'prompt_evaluator',
+                '0.1.0', 'local_deterministic', 'input-hash', 2000, 'running'
+            )
+            "#,
+        )
+        .execute(database.pool())
+        .await
+        .expect("trace should insert");
+        sqlx::query(
+            r#"
+            INSERT INTO background_jobs (
+                id, job_type, status, object_id, payload_json, attempt_count, max_attempts
+            ) VALUES (
+                'startup-evaluation-job', 'evaluation.run', 'running',
+                'startup-evaluation-object', '{}', 1, 1
+            )
+            "#,
+        )
+        .execute(database.pool())
+        .await
+        .expect("job should insert");
+        object_store
+            .write_evaluation_artifact(
+                "startup-evaluation-object",
+                "startup-evaluation-run",
+                "orphaned-artifact",
+                "json",
+                b"orphaned report".to_vec(),
+            )
+            .await
+            .expect("orphaned artifact should write");
+        let artifact_dir = object_store
+            .root()
+            .join("startup-evaluation-object")
+            .join("evaluations")
+            .join("startup-evaluation-run");
+        assert!(artifact_dir.exists());
+        database.pool().close().await;
+
+        let state = AppState::initialize_from_data_dir(data_dir.clone())
+            .await
+            .expect("app startup should recover");
+        let recovered: (String, Option<String>, String, Option<String>) = sqlx::query_as(
+            r#"
+            SELECT runs.status, runs.failure_reason, traces.status, traces.error_code
+            FROM evaluation_runs AS runs
+            INNER JOIN evaluation_traces AS traces ON traces.evaluation_run_id = runs.id
+            WHERE runs.id = 'startup-evaluation-run'
+            "#,
+        )
+        .fetch_one(
+            state
+                .database()
+                .expect("database should be available")
+                .pool(),
+        )
+        .await
+        .expect("recovered evaluation should query");
+        assert_eq!(recovered.0, "failed");
+        assert_eq!(recovered.1.as_deref(), Some("evaluation.interrupted"));
+        assert_eq!(recovered.2, "failed");
+        assert_eq!(recovered.3.as_deref(), Some("evaluation.interrupted"));
+        assert!(!artifact_dir.exists());
+
+        let logs = StructuredLogger::read_recent(&data_dir, Some(20))
+            .await
+            .expect("startup logs should read");
+        let recovery_log = logs
+            .iter()
+            .find(|entry| entry.event == "evaluation.recovered")
+            .expect("evaluation recovery should be logged");
+        assert_eq!(
+            recovery_log.correlation_id.as_deref(),
+            Some("startup-evaluation-correlation")
+        );
+        assert_eq!(
+            recovery_log.error_code.as_deref(),
+            Some("evaluation.interrupted")
+        );
+        state
+            .database()
+            .expect("database should be available")
+            .pool()
+            .close()
+            .await;
+        let _ = std::fs::remove_dir_all(data_dir);
     }
 
     #[test]

@@ -23,8 +23,18 @@ pub struct RetriedBackgroundJob {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecoveredEvaluationOperation {
+    pub run_id: String,
+    pub job_id: String,
+    pub correlation_id: String,
+    pub object_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StartupJobRecoverySummary {
     pub requeued_count: u64,
     pub failed_count: u64,
     pub object_failed_count: u64,
+    pub evaluation_failed_count: u64,
+    pub recovered_evaluations: Vec<RecoveredEvaluationOperation>,
 }

@@ -194,6 +194,24 @@ export interface EvaluatorCapability {
   inputSchemaVersion: 1;
   outputSchemaVersion: 1;
 }
+export interface EvaluationTrace {
+  id: string;
+  schemaVersion: 1;
+  requestId: string;
+  correlationId: string;
+  evaluatorType: string;
+  evaluatorVersion: string;
+  executionKind: 'local_deterministic' | 'model_assisted' | 'sandboxed' | string;
+  inputHash: string;
+  outputHash?: string;
+  timeoutMs: number;
+  latencyMs?: number;
+  status: 'planned' | 'running' | 'passed' | 'failed';
+  errorCode?: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+
 export interface EvaluationRun {
   id: string;
   requestId?: string;
@@ -210,6 +228,7 @@ export interface EvaluationRun {
   dimensions: Record<string, number>;
   evidence: EvidenceItem[];
   artifacts: EvaluationArtifact[];
+  trace?: EvaluationTrace;
   limitations: string[];
   nextActions: unknown[];
   failureReason?: string;
