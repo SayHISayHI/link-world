@@ -50,7 +50,7 @@
 | Sprint 4 搜索质量 | 已完成 | FTS 字段权重、secret snippet 抑制、Library filter 组合搜索、索引一致性检查、可重复大库搜索基准、搜索空态/失败态、重建进度和取消边界已实现；5k/20k benchmark 已实测通过 |
 | Sprint 5 可观测性 | 执行中 | Diagnostics、失败 job 操作、脱敏支持包、插件指纹/audit/domain correlation 摘要、size/SHA-256 已实现；capture submit/fetch、AI enrichment、search rebuild/reindex、startup migration 与 restore 已接入 2 MiB 有界 JSONL 和持久化 correlation UUID，migration/restore UUID 另写入跨启动 control/result；计划内关键流程的代码级日志覆盖已完成，readiness 自动化与 W5-01 至 W5-14 发布候选矩阵已建立，完整前端门禁和真实 Windows/轮转/支持交接证据仍待完成 |
 | Sprint 6-8 Evaluation | 执行中 | Week 6 已建立 capability/plan/input/output/trace v1、UUID request idempotency、planned/running/passed/failed run+job+trace 事务、2 秒执行 timeout、跨版本启动中断 recovery、artifact cleanup、稳定失败码、结构化 correlation 日志，以及 UI inference/evidence/trace 详情（定向 TypeScript 编译通过，rendered QA 待完成）；Prompt evaluator 保持无模型/无 sandbox 的本地确定性执行，GitHub evaluator 已升级为可降级的 `network_optional` 执行；不可变历史 retry 已通过 0006 lineage 实现；Week 7 已加入无 token 公共 GitHub metadata/README/release adapter、隐私与限流降级、六维评分和 stars 非决定性测试，真实 GitHub API/Windows 矩阵尚未完成；Week 8 Prompt 的纯评分抽取、rubric、diff、synthetic tests、注入和 secret 边界已完成 |
-| Sprint 9-10 Alpha 发布 | 未开始 | 安装升级、安全审计、真实用户反馈闭环 |
+| Sprint 9-10 Alpha 发布 | 执行中 | Week 9 Windows Alpha 发布矩阵、`readiness:alpha` 聚合门禁、发布候选工件/安全审计/真实机证据模板已建立；Week 10 邀请、反馈、P0/P1 响应、核心漏斗和下一阶段决策 playbook 已建立；真实 Windows 安装升级卸载、签名、依赖审计处置和 5-15 名用户观察仍待执行 |
 
 ## 4. 周度实施计划
 
@@ -193,31 +193,32 @@
 
 交付：
 
-- 签名、安装、卸载、升级与数据目录保留策略。
-- Windows 10/11 真实机矩阵。
-- Credential Manager、代理、防火墙、长路径和非 ASCII 用户目录回归。
-- 安全审计与第三方依赖清单。
+- 签名、安装、卸载、升级与数据目录保留策略。（矩阵与证据模板已建立：`docs/windows_alpha_release_matrix.md`）
+- Windows 10/11 真实机矩阵。（W9-01 至 W9-14 已定义；真实执行待完成）
+- Credential Manager、代理、防火墙、长路径和非 ASCII 用户目录回归。（真实执行待完成）
+- 安全审计与第三方依赖清单。（`npm run readiness:alpha` 生成本地依赖 inventory；网络审计可用 `scripts/alpha-readiness.ps1 -IncludeNetworkAudits`，处置记录待完成）
+- Alpha 聚合门禁：`npm run readiness:alpha` 已建立，可选串联 Sprint 2/3/5、Tauri package build 和网络安全审计。
 
 验收：
 
-- 从上一 Alpha 升级保持数据和 credential 可用。
-- 卸载是否保留数据由用户明确选择。
-- 安装包来源和版本可验证。
+- 从上一 Alpha 升级保持数据和 credential 可用。（真实安装包证据待完成）
+- 卸载是否保留数据由用户明确选择。（真实安装包证据待完成）
+- 安装包来源和版本可验证。（release manifest/checksum 流程已定义；真实 artifact 证据待完成）
 
 ### Week 10：邀请制 Alpha 与反馈闭环
 
 交付：
 
-- 5-15 名目标用户的邀请、反馈模板和数据处理说明。
-- P0/P1 缺陷响应和发布停止条件。
-- 核心漏斗：成功启动、首次保存、首次搜索、首次 AI 分析、首次 Evaluation。
-- 下一阶段决策记录。
+- 5-15 名目标用户的邀请、反馈模板和数据处理说明。（`docs/alpha_feedback_playbook.md` 已建立；真实邀请待执行）
+- P0/P1 缺陷响应和发布停止条件。（已定义）
+- 核心漏斗：成功启动、首次保存、首次搜索、首次 AI 分析、首次 Evaluation。（观察模板已定义；真实观察待完成）
+- 下一阶段决策记录。（模板已定义；需真实证据后填写）
 
 验收：
 
-- P0 为零，P1 有明确 owner 与 workaround。
-- 至少完成一次安装到真实任务的完整观察。
-- 根据证据决定优先扩展 Evaluation、采集覆盖或数据安全，而不是同时扩范围。
+- P0 为零，P1 有明确 owner 与 workaround。（待真实 Alpha 反馈证明）
+- 至少完成一次安装到真实任务的完整观察。（待完成）
+- 根据证据决定优先扩展 Evaluation、采集覆盖或数据安全，而不是同时扩范围。（待真实漏斗证据）
 
 ## 5. 质量门禁
 
@@ -225,6 +226,7 @@
 
 - Rust format、check、unit/integration tests。
 - TypeScript typecheck、Vitest 和 production build。
+- Week 9/10 发布候选需运行 `npm run readiness:alpha`，并在发布候选时附加 Sprint 2/3/5 readiness JSON、安装包 manifest/checksum、安全审计处置和 Alpha 反馈记录。
 - Settings、Library、无模型、错误模型、离线和删除的浏览器回归。
 - migration fixture 与数据完整性检查。
 - secret/log 扫描。

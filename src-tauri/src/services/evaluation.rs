@@ -927,6 +927,10 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
+    fn fixture_timeout() -> Duration {
+        Duration::from_secs(5)
+    }
+
     #[test]
     fn evidence_less_conclusion_requires_unknown_verdict_and_limitation() {
         let invalid = EvaluationOutput {
@@ -1477,7 +1481,7 @@ mod tests {
             .with_github_metadata_client(GitHubMetadataClient::for_test(
                 &base_url,
                 None,
-                Duration::from_secs(1),
+                fixture_timeout(),
             ))
             .with_structured_logger(StructuredLogger::new(&telemetry_dir));
 

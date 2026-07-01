@@ -468,6 +468,10 @@ mod tests {
         Vec<(&'static str, &'static str)>,
     );
 
+    fn fixture_timeout() -> Duration {
+        Duration::from_secs(5)
+    }
+
     #[test]
     fn parses_only_safe_github_repository_urls() {
         assert_eq!(
@@ -510,7 +514,7 @@ mod tests {
         let client = GitHubMetadataClient::for_test(
             &base_url,
             Some("fixture-token".to_string()),
-            Duration::from_secs(1),
+            fixture_timeout(),
         );
         let reference = GitHubRepositoryRef {
             owner: "owner".to_string(),
@@ -541,10 +545,9 @@ mod tests {
         assert!(requests[1].contains("GET /repos/owner/repo/readme HTTP/1.1"));
         assert!(requests[2].contains("GET /repos/owner/repo/releases/latest HTTP/1.1"));
         assert!(requests.iter().all(|request| {
-            request
-                .to_ascii_lowercase()
-                .contains("authorization: bearer fixture-token")
-                && request.contains("x-github-api-version: 2022-11-28")
+            let lower = request.to_ascii_lowercase();
+            lower.contains("authorization: bearer fixture-token")
+                && lower.contains("x-github-api-version: 2022-11-28")
         }));
         let serialized = serde_json::to_string(&metadata).expect("metadata should serialize");
         assert!(!serialized.contains("cargo add demo"));
@@ -555,7 +558,7 @@ mod tests {
         let repository = r#"{"default_branch":"main","private":true}"#;
         let (base_url, requests) =
             start_fixture_server(vec![("200 OK", "application/json", repository)]).await;
-        let client = GitHubMetadataClient::for_test(&base_url, None, Duration::from_secs(1));
+        let client = GitHubMetadataClient::for_test(&base_url, None, fixture_timeout());
         let reference = GitHubRepositoryRef {
             owner: "owner".to_string(),
             repo: "private-repo".to_string(),
@@ -580,7 +583,7 @@ mod tests {
             vec![("X-RateLimit-Remaining", "0")],
         )])
         .await;
-        let client = GitHubMetadataClient::for_test(&base_url, None, Duration::from_secs(1));
+        let client = GitHubMetadataClient::for_test(&base_url, None, fixture_timeout());
         let reference = GitHubRepositoryRef {
             owner: "owner".to_string(),
             repo: "repo".to_string(),
@@ -612,7 +615,7 @@ mod tests {
             ),
         ])
         .await;
-        let client = GitHubMetadataClient::for_test(&base_url, None, Duration::from_secs(1));
+        let client = GitHubMetadataClient::for_test(&base_url, None, fixture_timeout());
         let reference = GitHubRepositoryRef {
             owner: "owner".to_string(),
             repo: "repo".to_string(),

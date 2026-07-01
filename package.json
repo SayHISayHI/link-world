@@ -12,6 +12,7 @@
     "readiness:sprint2": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/sprint2-readiness.ps1",
     "readiness:sprint3": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/sprint3-readiness.ps1",
     "readiness:sprint5": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/sprint5-readiness.ps1",
+    "readiness:alpha": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/alpha-readiness.ps1",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",

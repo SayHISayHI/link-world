@@ -114,6 +114,7 @@ Test DB strategy:
 - Sprint 2 readiness automation: `npm run readiness:sprint2` runs the focused backup/migration/restore/export/redaction gate and writes a JSON report to the system temp directory unless `-OutputPath` is supplied. This is the default local pre-release gate for data safety, but it does not replace the real Windows installer fault matrix in `docs/sprint2_windows_fault_matrix.md`.
 - Sprint 3 readiness automation: `npm run readiness:sprint3` runs capture parsing/failure/redaction, job convergence/isolation and AI failure mapping gates. It does not replace real offline/DNS, external HTTP, forced-process-termination or concurrent capture checks in `docs/sprint3_capture_fault_matrix.md`.
 - Sprint 5 readiness automation: `npm run readiness:sprint5` runs local diagnostics/redaction, bounded logger/rotation, support-bundle privacy/atomicity, capture/AI correlation boundaries, search rebuild/reindex correlation/cancellation/atomic failure cleanup/stable error redaction, startup migration correlation/fail-closed redaction, and restore restart/rollback correlation/redaction gates. It does not replace user-confirmation, installed Windows path/permission, live rotation, 100-failed-job UI or support-handoff checks in `docs/sprint5_observability_readiness.md`.
+- Week 9/10 Alpha readiness automation: `npm run readiness:alpha` runs the local pre-release aggregate gate for frontend typecheck/tests/build, Rust fmt/check/test/clippy, release metadata and dependency inventory. `scripts/alpha-readiness.ps1 -IncludeSprintGates -IncludeTauriBuild -IncludeNetworkAudits` additionally runs Sprint 2/3/5 gates, Tauri packaging and network-backed audit commands where available. It does not replace the Windows installer matrix in `docs/windows_alpha_release_matrix.md` or the invited-user feedback evidence in `docs/alpha_feedback_playbook.md`.
 - Focused commands: `cargo test storage::database::migration_tests` and `cargo test services::restore`。
 - Function-level phase simulation belongs in normal CI; real-process kill tests belong in the Windows packaging matrix。
 - Focused command: `cargo test repositories::jobs` for retry and startup-running-job convergence.
@@ -241,6 +242,9 @@ Versioning:
 Before release:
 
 - CI green。
+- `npm run readiness:alpha` green on the release candidate commit, with JSON report retained.
+- Sprint 2/3/5 readiness JSON reports retained for the same release candidate or a documented equivalent commit.
+- Windows Alpha package manifest records product version, schema version, commit SHA, package type, build time, signing status and SHA-256 checksum.
 - Migration tests green。
 - Manual smoke test on clean Windows machine。
 - No secret in logs。
@@ -252,6 +256,8 @@ Before release:
 - Search works。
 - Delete and purge works。
 - Diagnostics package is redacted。
+- Week 9 Windows Alpha matrix records install, upgrade, uninstall/data retention, Credential Manager, proxy/firewall/offline, non-ASCII profile and security/dependency review results.
+- Week 10 Alpha playbook records invitations, feedback, P0/P1 state, core funnel observations and next-stage decision.
 - Release notes include migration risk。
 
 ## 10. Rollback Strategy

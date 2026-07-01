@@ -330,6 +330,9 @@ Before release:
 - Sprint 3 real offline/DNS/process/concurrency matrix is recorded for the release candidate.
 - Sprint 5 observability/support readiness gate passes and its JSON report is retained.
 - Sprint 5 W5-01 through W5-14 Windows/support matrix is recorded for the release candidate.
+- Week 9/10 Alpha readiness gate passes through `npm run readiness:alpha` and its JSON report is retained.
+- Week 9 Windows Alpha install/upgrade/uninstall/security matrix is recorded according to `docs/windows_alpha_release_matrix.md`.
+- Week 10 invited-user feedback, P0/P1 triage, core funnel and next-stage decision are recorded according to `docs/alpha_feedback_playbook.md`.
 - E2E smoke pass.
 - direct URL and browser extension captures pass against the same synthetic structured article.
 - Markdown safety regression checks pass.
