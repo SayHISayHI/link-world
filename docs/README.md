@@ -48,19 +48,21 @@
    - Week 9 Windows Alpha 打包、安装、升级、卸载、签名、依赖审计和真实机发布候选矩阵。
 22. [dependency_security_audit.md](./dependency_security_audit.md)
    - Windows Alpha 的 npm/RustSec 审计、漏洞处置、RSA waiver 失效条件和依赖面缩减记录。
-23. [alpha_feedback_playbook.md](./alpha_feedback_playbook.md)
+23. [release_evidence/alpha_0.1.0_98c9b0f.md](./release_evidence/alpha_0.1.0_98c9b0f.md)
+   - Alpha 0.1.0 RC 的干净 commit 门禁、MSI/NSIS、hash、签名状态和未执行真实机边界。
+24. [alpha_feedback_playbook.md](./alpha_feedback_playbook.md)
    - Week 10 邀请制 Alpha 用户邀请、反馈、P0/P1 响应、核心漏斗和下一阶段决策模板。
-24. [plugins/plugin_development_guide.md](./plugins/plugin_development_guide.md)
+25. [plugins/plugin_development_guide.md](./plugins/plugin_development_guide.md)
    - Connector、Parser、Evaluator、Prompt 资源和 Registry 规范。
-25. [github_repo_evaluator.md](./github_repo_evaluator.md)
+26. [github_repo_evaluator.md](./github_repo_evaluator.md)
    - GitHub 公共 metadata adapter、限流/私有边界、隐私策略、评分上限和 Week 7 验收证据。
-26. [prompt_evaluator.md](./prompt_evaluator.md)
+27. [prompt_evaluator.md](./prompt_evaluator.md)
    - Prompt 抽取、rubric、结构化 diff、synthetic tests、注入与 secret 边界和 Week 8 验收证据。
-27. [post_mvp_roadmap.md](./post_mvp_roadmap.md)
+28. [post_mvp_roadmap.md](./post_mvp_roadmap.md)
    - MVP 后 10 周执行范围、周度交付、验收门槛、当前状态和明确排除项。
-27. [../tests/docs/testing_strategy.md](../tests/docs/testing_strategy.md)
+29. [../tests/docs/testing_strategy.md](../tests/docs/testing_strategy.md)
    - 测试分层、fixtures、AI evals、回归测试和发布测试清单。
-28. [adr/README.md](./adr/README.md)
+30. [adr/README.md](./adr/README.md)
    - 架构决策记录，解释关键技术和产品架构取舍，包括 Markdown/AST 渲染与 AI 展示提示边界。
 
 ## Source of Truth

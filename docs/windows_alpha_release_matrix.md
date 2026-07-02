@@ -1,6 +1,6 @@
 # Week 9 Windows Alpha 发布工程化矩阵
 
-状态: Draft，自动化门禁与证据模板已建立；真实 Windows 10/11 安装、升级、卸载、签名和安全审计证据仍需在发布候选包上执行。
+状态: Draft；commit `98c9b0f` 的完整自动化门禁、MSI/NSIS、manifest/checksum 和依赖审计已留证，真实 Windows 10/11 安装、升级、卸载与签名仍需执行。
 适用范围: Week 9 Windows Local Alpha 的打包、签名、安装、升级、卸载、数据保留、环境矩阵、凭据回归和依赖安全审计。
 
 ## 1. 目标与边界
