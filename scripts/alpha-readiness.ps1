@@ -217,7 +217,7 @@ if ($IncludeNetworkAudits) {
   $steps += @{
     Name = 'npm audit production dependencies'
     WorkingDirectory = $repo
-    Command = @('npm', 'audit', '--omit=dev', '--audit-level=high')
+    Command = @('npm', 'audit', '--omit=dev', '--audit-level=high', '--registry=https://registry.npmjs.org')
   }
   $steps += @{
     Name = 'cargo audit runtime dependencies'
