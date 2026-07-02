@@ -32,12 +32,14 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/alpha-readiness.ps1 -Inclu
 
 该脚本负责聚合:
 
+- Node.js 运行时版本预检，并在报告中记录 Node/npm 版本。
 - frontend typecheck、Vitest 和 production build。
 - Rust format、check、test 和 clippy warnings gate。
 - 本地 dependency inventory。
 - 可选 Sprint 2/3/5 readiness JSON 报告。
 - 可选 Tauri Windows package build。
 - 可选 `npm audit` / `cargo audit` 网络审计。
+- RustSec waiver 必须通过独立活跃依赖图检查；当前处置与失效条件记录在 `docs/dependency_security_audit.md`。
 - release metadata: app version、commit SHA、branch、schema version、构建时间。
 
 自动化报告只能证明代码级和构建级门槛。它不能替代 Windows 安装包真实安装、进程强制终止、Credential Manager、代理/防火墙、非 ASCII 用户目录、卸载器行为或人工安全复核。
@@ -55,6 +57,14 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/alpha-readiness.ps1 -Inclu
 | dependency inventory | npm runtime dependency list、Cargo dependency tree、许可证/安全审计摘要 |
 | release notes | migration 风险、已知问题、回滚方式、支持包说明 |
 | rollback note | 如何保留数据、如何使用 restore point、何时停止升级 |
+
+自动组装命令：
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/package-alpha-release.ps1 -ReadinessReport <alpha-readiness.json>
+```
+
+该命令只接受通过且 commit 与当前 HEAD 相同的 readiness report，并默认拒绝脏工作区。输出包含规范化 MSI/NSIS、`release-manifest.json`、Authenticode 状态和 `SHA256SUMS.txt`；它不能替代真实安装矩阵。
 
 签名边界:
 

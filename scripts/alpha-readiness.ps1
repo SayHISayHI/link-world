@@ -121,6 +121,15 @@ $isDirty = -not [string]::IsNullOrWhiteSpace(($dirtyStatus -join "`n"))
 
 $steps = @(
   @{
+    Name = 'Node.js runtime compatibility'
+    WorkingDirectory = $repo
+    Command = @(
+      'node',
+      '-e',
+      "const major = Number(process.versions.node.split('.')[0]); if (major < 18 || major === 19 || major === 21) { console.error('Node.js 18, 20, or >=22 is required; found ' + process.version); process.exit(1); }"
+    )
+  },
+  @{
     Name = 'frontend typecheck'
     WorkingDirectory = $repo
     Command = @('npm', 'run', 'typecheck')
@@ -215,14 +224,19 @@ if ($IncludeTauriBuild) {
 
 if ($IncludeNetworkAudits) {
   $steps += @{
+    Name = 'RustSec waiver validation'
+    WorkingDirectory = $repo
+    Command = @('pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'scripts/rustsec-waiver-check.ps1')
+  }
+  $steps += @{
     Name = 'npm audit production dependencies'
     WorkingDirectory = $repo
     Command = @('npm', 'audit', '--omit=dev', '--audit-level=high', '--registry=https://registry.npmjs.org')
   }
   $steps += @{
     Name = 'cargo audit runtime dependencies'
-    WorkingDirectory = $repo
-    Command = @('cargo', 'audit')
+    WorkingDirectory = (Join-Path $repo 'src-tauri')
+    Command = @('cargo', 'audit', '--ignore', 'RUSTSEC-2023-0071')
     Optional = $true
   }
 }
@@ -269,6 +283,10 @@ $report = [pscustomobject]@{
     branch = ($branch -join '').Trim()
     commitSha = ($commitSha -join '').Trim()
     dirtyWorktree = $isDirty
+  }
+  toolchain = [pscustomobject]@{
+    nodeVersion = ((& node --version 2>$null) -join '').Trim()
+    npmVersion = ((& npm --version 2>$null) -join '').Trim()
   }
   options = [pscustomobject]@{
     sprintGatesIncluded = [bool]$IncludeSprintGates

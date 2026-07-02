@@ -15,6 +15,12 @@
 - 发布 artifact 可签名、可回滚。
 - 诊断信息可帮助定位问题且不泄漏隐私。
 
+工具链基线：
+
+- 前端构建支持 Node.js 18、20 或 22 及以上版本；CI 和发布候选推荐使用 Node.js 20 LTS。
+- `package.json` 的 `engines.node` 是安装期契约，`readiness:alpha` 会在运行前执行同等版本检查并把 Node/npm 版本写入报告。
+- 不得把开发机 PATH 中的旧 Node 运行结果作为代码失败；发布证据必须记录实际工具链版本并在受支持运行时重新执行。
+
 ## 2. CI Pipeline Overview
 
 Recommended stages:
@@ -114,7 +120,9 @@ Test DB strategy:
 - Sprint 2 readiness automation: `npm run readiness:sprint2` runs the focused backup/migration/restore/export/redaction gate and writes a JSON report to the system temp directory unless `-OutputPath` is supplied. This is the default local pre-release gate for data safety, but it does not replace the real Windows installer fault matrix in `docs/sprint2_windows_fault_matrix.md`.
 - Sprint 3 readiness automation: `npm run readiness:sprint3` runs capture parsing/failure/redaction, job convergence/isolation and AI failure mapping gates. It does not replace real offline/DNS, external HTTP, forced-process-termination or concurrent capture checks in `docs/sprint3_capture_fault_matrix.md`.
 - Sprint 5 readiness automation: `npm run readiness:sprint5` runs local diagnostics/redaction, bounded logger/rotation, support-bundle privacy/atomicity, capture/AI correlation boundaries, search rebuild/reindex correlation/cancellation/atomic failure cleanup/stable error redaction, startup migration correlation/fail-closed redaction, and restore restart/rollback correlation/redaction gates. It does not replace user-confirmation, installed Windows path/permission, live rotation, 100-failed-job UI or support-handoff checks in `docs/sprint5_observability_readiness.md`.
-- Week 9/10 Alpha readiness automation: `npm run readiness:alpha` runs the local pre-release aggregate gate for frontend typecheck/tests/build, Rust fmt/check/test/clippy, release metadata and dependency inventory. `scripts/alpha-readiness.ps1 -IncludeSprintGates -IncludeTauriBuild -IncludeNetworkAudits` additionally runs Sprint 2/3/5 gates, Tauri packaging and network-backed audit commands where available. It does not replace the Windows installer matrix in `docs/windows_alpha_release_matrix.md` or the invited-user feedback evidence in `docs/alpha_feedback_playbook.md`.
+- Week 9/10 Alpha readiness automation: `npm run readiness:alpha` first enforces the supported Node.js range, then runs the local pre-release aggregate gate for frontend typecheck/tests/build, Rust fmt/check/test/clippy, release metadata and dependency inventory. The JSON report records the Node/npm versions used. `scripts/alpha-readiness.ps1 -IncludeSprintGates -IncludeTauriBuild -IncludeNetworkAudits` additionally runs Sprint 2/3/5 gates, Tauri packaging and network-backed audit commands where available. It does not replace the Windows installer matrix in `docs/windows_alpha_release_matrix.md` or the invited-user feedback evidence in `docs/alpha_feedback_playbook.md`.
+- RustSec 审计必须从 `src-tauri` 执行，以 `src-tauri/Cargo.lock` 作为发布候选的实际锁定依赖图；在仓库根目录找不到 lockfile 不能被记录为“无漏洞”。
+- 完整门禁通过后运行 `scripts/package-alpha-release.ps1 -ReadinessReport <report>`；脚本拒绝脏工作区、失败报告、报告 commit 与 HEAD 不一致，以及缺失 MSI/NSIS 工件，并生成规范化文件名、release manifest、Authenticode 状态和 `SHA256SUMS.txt`。
 - Focused commands: `cargo test storage::database::migration_tests` and `cargo test services::restore`。
 - Function-level phase simulation belongs in normal CI; real-process kill tests belong in the Windows packaging matrix。
 - Focused command: `cargo test repositories::jobs` for retry and startup-running-job convergence.

@@ -2,6 +2,9 @@
   "name": "link-world",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "^18.0.0 || ^20.0.0 || >=22.0.0"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 1420",
@@ -13,6 +16,7 @@
     "readiness:sprint3": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/sprint3-readiness.ps1",
     "readiness:sprint5": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/sprint5-readiness.ps1",
     "readiness:alpha": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/alpha-readiness.ps1",
+    "package:alpha": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/package-alpha-release.ps1",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
