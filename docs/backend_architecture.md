@@ -92,7 +92,11 @@ Startup has a separate `StartupState`:
 - `StartupState::Recovery` is managed when initialization fails before normal use. The window stays open, but normal `AppState` is absent and capture/AI background services are not started.
 - `get_startup_status` exposes only ready/recovery mode, backend version, redacted message, error code, verified backup id and migration guard metadata.
 - Commands that require normal library access must continue to depend on `AppState`; backup catalog and restore-preparation commands have explicit recovery-mode branches.
-## 4. Command Boundary
+## 4. Interface Boundaries
+
+Tauri commands 和计划中的 CLI 都是 application adapter。它们共享 service、policy、repository、job、event 和 telemetry，不互相调用，也不各自实现业务用例。
+
+### 4.1 Tauri Command Boundary
 
 Tauri command 是 IPC 边界，不是业务逻辑层。
 
@@ -127,6 +131,20 @@ pub async fn submit_capture(
     }.await)
 }
 ```
+
+### 4.2 CLI Boundary (Proposed)
+
+CLI 采用独立 console binary，详细计划见 [cli_development_plan.md](./cli_development_plan.md)，架构决策见 [ADR-0008](./adr/0008-shared-core-for-desktop-and-cli.md)。
+
+CLI adapter responsibilities:
+
+1. 解析和校验命令行参数。
+2. 初始化共享 application state，并遵守跨进程 runtime lock。
+3. 调用与桌面端相同的 service use case。
+4. 映射稳定 text/json 输出、stderr 和 process exit code。
+5. 为异步 use case 返回或有界等待持久化 job/run 状态。
+
+CLI 同样禁止直接写 SQL、对象存储或 lifecycle state，禁止直接调用模型/provider，禁止从普通参数读取 API Key。Tauri DTO 可以与 application DTO 共享字段，但 Tauri command 本身不是 CLI 可复用 API。
 
 ## 5. Service Layer
 

@@ -213,12 +213,15 @@ flowchart TB
   Policy --> Audit
 ```
 
+该图描述长期逻辑架构，不代表每个客户端均已实现。当前 Windows Local Alpha 只有 Desktop App 和 Browser Extension 路径；CLI 仍为 Proposed，落地范围与门禁见 [cli_development_plan.md](./cli_development_plan.md)。CLI 不会直接接入 SQLite 或复制桌面业务逻辑，而是与 Tauri adapter 共享 application services。
+
 ### 3.2 Deployment modes
 
 ```mermaid
 flowchart TB
   subgraph Local["Local Edition"]
     LocalApp["Desktop App"]
+    LocalCLI["CLI (Proposed)"]
     LocalCore["Embedded Core Services"]
     LocalDB["SQLite / FTS5"]
     LocalVector["Local Vector Index"]
@@ -245,6 +248,7 @@ flowchart TB
   end
 
   LocalApp --> LocalCore
+  LocalCLI --> LocalCore
   LocalCore --> LocalDB
   LocalCore --> LocalVector
   LocalCore --> LocalObject

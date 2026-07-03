@@ -36,6 +36,7 @@
 - 自动跨供应商 failover、成本路由或健康评分。
 - 动态第三方插件安装与不受信代码执行。
 - 默认把 public 或 personal 内容发送到第三方 AI；自动处理默认关闭。
+- 正式 CLI binary、机器输出契约和 Agent/MCP 接口；这些属于 Alpha 稳定后的 Proposed 计划，见 `cli_development_plan.md`。
 
 ## 3. 当前执行状态
 
