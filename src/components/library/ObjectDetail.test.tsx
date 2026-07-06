@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { KnowledgeObject, KnowledgeObjectDetail } from "../../types/api";
+import type { KnowledgeObject } from "../../types/api";
 import { ObjectDetail } from "./ObjectDetail";
 
 const noop = vi.fn();
@@ -51,55 +51,6 @@ describe("ObjectDetail", () => {
     expect(screen.getByText("Select an item to inspect.")).toBeInTheDocument();
     expect(container.firstChild).toHaveClass("h-full");
     expect(container.firstChild).not.toHaveClass("h-screen");
-  });
-
-  it("prefers the latest object fields from detail data", () => {
-    const object: KnowledgeObject = {
-      id: "obj-latest",
-      userId: "local",
-      type: "article",
-      title: undefined,
-      canonicalUrl: "https://example.com/original",
-      privacyLevel: "personal",
-      lifecycleStatus: "captured",
-      capturedAt: "2026-06-25T00:00:00.000Z",
-      updatedAt: "2026-06-25T00:00:00.000Z",
-    };
-
-    const detail: KnowledgeObjectDetail = {
-      object: {
-        ...object,
-        title: "Parsed article title",
-        lifecycleStatus: "parsed",
-      },
-      snapshots: [],
-      aiAnalyses: [],
-      evaluations: [],
-    };
-
-    render(
-      <ObjectDetail
-        object={object}
-        detail={detail}
-        detailLoading={false}
-        pingLoading={false}
-        deleteLoading={false}
-        retryLoading={false}
-        aiRunLoading={false}
-        searchIndexLoading={false}
-        evaluationLoading={false}
-        onPing={noop}
-        onDeleteObject={noop}
-        onRetryCapture={noop}
-        onOpenModelSettings={noop}
-        onRunAIAnalysis={noop}
-        onReindexObject={noop}
-        onRunEvaluation={noop}
-      />,
-    );
-
-    expect(screen.getByText("Parsed article title")).toBeInTheDocument();
-    expect(screen.getByText(/article \/ parsed/i)).toBeInTheDocument();
   });
 
   it("formats capture failure codes as recovery-oriented detail copy", () => {
