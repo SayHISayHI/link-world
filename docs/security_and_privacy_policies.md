@@ -170,6 +170,8 @@ Failures must be visible in diagnostics and retryable.
 
 ## 10. Security Review Checklist
 
+Tauri frontend capabilities follow least privilege. The main window receives only `core:event:allow-listen` and `core:event:allow-unlisten` for backend domain updates; frontend event emission remains disabled until a reviewed use case requires it.
+
 Before shipping a feature:
 
 - Does it read sensitive or secret data?

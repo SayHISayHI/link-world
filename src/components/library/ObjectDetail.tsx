@@ -77,7 +77,10 @@ export function ObjectDetail({
   onReindexObject,
   onRunEvaluation,
 }: ObjectDetailProps) {
-  if (!object) {
+  const currentDetail = detail && (!object || detail.object.id === object.id) ? detail : undefined;
+  const currentObject = currentDetail?.object ?? object;
+
+  if (!currentObject) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
         Select an item to inspect.
@@ -85,17 +88,17 @@ export function ObjectDetail({
     );
   }
 
-  const title = object.title ?? object.canonicalUrl ?? object.id;
-  const captureFailure = object.failureReason
-    ? formatCaptureFailureReason(object.failureReason)
+  const title = currentObject.title ?? currentObject.canonicalUrl ?? currentObject.id;
+  const captureFailure = currentObject.failureReason
+    ? formatCaptureFailureReason(currentObject.failureReason)
     : undefined;
-  const parsedDocument = detail?.parsedDocument;
-  const latestAnalysis = detail?.aiAnalyses[0];
+  const parsedDocument = currentDetail?.parsedDocument;
+  const latestAnalysis = currentDetail?.aiAnalyses[0];
   const displayHints = parsedDocument
-    ? selectCurrentDisplayHints(parsedDocument.id, detail?.aiAnalyses ?? [])
+    ? selectCurrentDisplayHints(parsedDocument.id, currentDetail?.aiAnalyses ?? [])
     : undefined;
-  const latestEvaluation = detail?.evaluations[0];
-  const statusText = formatRelativeStatus(object.lifecycleStatus);
+  const latestEvaluation = currentDetail?.evaluations[0];
+  const statusText = formatRelativeStatus(currentObject.lifecycleStatus);
 
   return (
     <div className="flex h-full min-w-0 flex-col">
@@ -103,7 +106,7 @@ export function ObjectDetail({
         <div className="min-w-0">
           <h2 className="truncate text-sm font-semibold">{title}</h2>
           <p className="text-xs text-muted-foreground">
-            {object.type} / {statusText}
+            {currentObject.type} / {statusText}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -181,7 +184,7 @@ export function ObjectDetail({
                       documentId={parsedDocument.id}
                       markdown={parsedDocument.markdown}
                       text={parsedDocument.text}
-                      sourceUrl={object.canonicalUrl}
+                      sourceUrl={currentObject.canonicalUrl}
                       displayHints={displayHints}
                     />
                   </Suspense>
@@ -202,7 +205,7 @@ export function ObjectDetail({
               <span className="rounded-sm bg-muted px-2 py-1 text-[11px] text-muted-foreground">{statusText}</span>
             </div>
             <div className="mt-2 text-muted-foreground">
-              <p>Snapshots {detail?.snapshots.length ?? 0}</p>
+              <p>Snapshots {currentDetail?.snapshots.length ?? 0}</p>
               <p>Parsed document {parsedDocument ? "available" : "pending"}</p>
             </div>
             <div className="mt-3">

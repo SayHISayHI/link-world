@@ -20,6 +20,10 @@ import { useSubmitCapture } from "../hooks/commands/useSubmitCapture";
 import { useTriggerAIEnrichment } from "../hooks/commands/useTriggerAIEnrichment";
 import { useTriggerEvaluation } from "../hooks/commands/useTriggerEvaluation";
 import { formatAIFailureReason } from "../lib/aiFailures";
+import {
+  subscribeToLibraryEvents,
+  type CaptureJobCompletedPayload,
+} from "../lib/libraryEvents";
 import type { AppUiError } from "../lib/errors";
 import { useLibraryStore } from "../store/libraryStore";
 import { useSearchStore } from "../store/searchStore";
@@ -32,35 +36,6 @@ import type {
 } from "../types/api";
 
 const LIBRARY_PAGE_SIZE = 30;
-
-interface CaptureJobCompletedPayload {
-  jobId?: string;
-  status: "succeeded" | "failed" | "skipped" | string;
-  objectId?: string;
-  lifecycleStatus?: string;
-  parsedDocumentId?: string;
-  failureReason?: string;
-}
-
-interface AIEnrichmentCompletedPayload {
-  jobId?: string;
-  status: "succeeded" | "failed" | string;
-  objectId?: string;
-  analysisId?: string;
-  failureReason?: string;
-}
-
-interface EvaluationCompletedPayload {
-  objectId?: string;
-  runId?: string;
-}
-
-interface SearchIndexUpdatedPayload {
-  jobId?: string;
-  objectId?: string;
-  indexed?: boolean;
-  indexedObjects?: number;
-}
 
 export function LibraryShellContainer() {
   const { route, setRoute } = useUiStore();
@@ -180,6 +155,18 @@ export function LibraryShellContainer() {
 
     return searchHybrid({ query, filterType: libraryFilter, limit: 25 });
   }, [libraryFilter, resetSearch, searchHybrid, searchQuery]);
+  const eventActionsRef = useRef({
+    loadObjectDetail,
+    loadObjectJobs,
+    refreshRecentObjects,
+    refreshSearchResults,
+  });
+  eventActionsRef.current = {
+    loadObjectDetail,
+    loadObjectJobs,
+    refreshRecentObjects,
+    refreshSearchResults,
+  };
 
   useEffect(() => {
     void refreshRecentObjects();
@@ -232,126 +219,61 @@ export function LibraryShellContainer() {
   }, []);
 
   useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    let unlistenCapture: (() => void) | undefined;
-    let unlistenAI: (() => void) | undefined;
-    let unlistenEvaluation: (() => void) | undefined;
-    let unlistenSearchRebuilt: (() => void) | undefined;
-    let unlistenObjectReindexed: (() => void) | undefined;
     let disposed = false;
+    let unsubscribe: (() => void) | undefined;
 
-    void import("@tauri-apps/api/event")
-      .then(async ({ listen }) => {
-        const unsubscribeLibrary = await listen("library://objects-updated", () => {
-          void refreshRecentObjects();
-          void refreshSearchResults();
-        });
-        const unsubscribeCapture = await listen<CaptureJobCompletedPayload>("capture://job-completed", (event) => {
-          setLastCaptureJob(event.payload);
-          void refreshRecentObjects();
-          void refreshSearchResults();
+    const refreshLibrary = () => {
+      const actions = eventActionsRef.current;
+      void actions.refreshRecentObjects();
+      void actions.refreshSearchResults();
+    };
+    const refreshSelectedObject = (objectId?: string) => {
+      if (!objectId || objectId !== useLibraryStore.getState().selectedObjectId) {
+        return;
+      }
 
-          const objectId = event.payload.objectId;
-          if (objectId && objectId === selectedObjectId) {
-            void loadObjectDetail(objectId);
-            void loadObjectJobs({ objectId, limit: 10 });
-          }
-        });
-        const unsubscribeAI = await listen<AIEnrichmentCompletedPayload>(
-          "ai://enrichment-completed",
-          (event) => {
-            void refreshRecentObjects();
-            void refreshSearchResults();
+      const actions = eventActionsRef.current;
+      void actions.loadObjectDetail(objectId);
+      void actions.loadObjectJobs({ objectId, limit: 10 });
+    };
 
-            const objectId = event.payload.objectId;
-            if (objectId && objectId === selectedObjectId) {
-              void loadObjectDetail(objectId);
-              void loadObjectJobs({ objectId, limit: 10 });
-            }
-          },
-        );
-        const unsubscribeEvaluation = await listen<EvaluationCompletedPayload>("evaluation://completed", (event) => {
-          void refreshRecentObjects();
-          void refreshSearchResults();
-
-          const objectId = event.payload.objectId;
-          if (objectId && objectId === selectedObjectId) {
-            void loadObjectDetail(objectId);
-            void loadObjectJobs({ objectId, limit: 10 });
-          }
-        });
-        const unsubscribeSearchRebuilt = await listen<SearchIndexUpdatedPayload>("search://index-rebuilt", () => {
-          void refreshRecentObjects();
-          void refreshSearchResults();
-        });
-        const unsubscribeObjectReindexed = await listen<SearchIndexUpdatedPayload>(
-          "search://object-reindexed",
-          (event) => {
-            void refreshSearchResults();
-
-            const objectId = event.payload.objectId;
-            if (objectId && objectId === selectedObjectId) {
-              void loadObjectDetail(objectId);
-              void loadObjectJobs({ objectId, limit: 10 });
-            }
-          },
-        );
-
-        return {
-          unsubscribeAI,
-          unsubscribeCapture,
-          unsubscribeEvaluation,
-          unsubscribeLibrary,
-          unsubscribeObjectReindexed,
-          unsubscribeSearchRebuilt,
-        };
+    void subscribeToLibraryEvents({
+      onObjectsUpdated: refreshLibrary,
+      onCaptureJobCompleted: (payload) => {
+        setLastCaptureJob(payload);
+        refreshLibrary();
+        refreshSelectedObject(payload.objectId);
+      },
+      onAIEnrichmentCompleted: (payload) => {
+        refreshLibrary();
+        refreshSelectedObject(payload.objectId);
+      },
+      onEvaluationCompleted: (payload) => {
+        refreshLibrary();
+        refreshSelectedObject(payload.objectId);
+      },
+      onSearchIndexRebuilt: refreshLibrary,
+      onObjectReindexed: (payload) => {
+        void eventActionsRef.current.refreshSearchResults();
+        refreshSelectedObject(payload.objectId);
+      },
+    })
+      .then((nextUnsubscribe) => {
+        if (disposed) {
+          nextUnsubscribe();
+          return;
+        }
+        unsubscribe = nextUnsubscribe;
       })
-      .then(
-        ({
-          unsubscribeAI,
-          unsubscribeCapture,
-          unsubscribeEvaluation,
-          unsubscribeLibrary,
-          unsubscribeObjectReindexed,
-          unsubscribeSearchRebuilt,
-        }) => {
-          if (disposed) {
-            unsubscribeLibrary();
-            unsubscribeCapture();
-            unsubscribeAI();
-            unsubscribeEvaluation();
-            unsubscribeSearchRebuilt();
-            unsubscribeObjectReindexed();
-            return;
-          }
-
-          unlisten = unsubscribeLibrary;
-          unlistenCapture = unsubscribeCapture;
-          unlistenAI = unsubscribeAI;
-          unlistenEvaluation = unsubscribeEvaluation;
-          unlistenSearchRebuilt = unsubscribeSearchRebuilt;
-          unlistenObjectReindexed = unsubscribeObjectReindexed;
-        },
-      )
-      .catch(() => {
-        unlisten = undefined;
-        unlistenCapture = undefined;
-        unlistenAI = undefined;
-        unlistenEvaluation = undefined;
-        unlistenSearchRebuilt = undefined;
-        unlistenObjectReindexed = undefined;
+      .catch((error) => {
+        console.error("Failed to subscribe to backend library events.", error);
       });
 
     return () => {
       disposed = true;
-      unlisten?.();
-      unlistenCapture?.();
-      unlistenAI?.();
-      unlistenEvaluation?.();
-      unlistenSearchRebuilt?.();
-      unlistenObjectReindexed?.();
+      unsubscribe?.();
     };
-  }, [loadObjectDetail, loadObjectJobs, refreshRecentObjects, refreshSearchResults, selectedObjectId]);
+  }, []);
 
   useEffect(() => {
     setObjects(recentObjects);
@@ -414,8 +336,7 @@ export function LibraryShellContainer() {
       });
     }
     selectObject(response.objectId);
-    await refreshRecentObjects();
-  }, [captureUrl, refreshRecentObjects, selectObject, submitCapture]);
+  }, [captureUrl, selectObject, submitCapture]);
 
   const handleDeleteObject = useCallback(async () => {
     if (!selectedObjectId) {

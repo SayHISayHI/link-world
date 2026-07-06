@@ -3,6 +3,7 @@ use crate::errors::{map_ipc_result, AppError, IpcResponse};
 use crate::services::ai::{spawn_ai_enrichment_runner, AIEnrichmentService};
 use crate::services::capture::{spawn_fetch_job_runner, CaptureService};
 use crate::state::AppState;
+use tauri::Emitter;
 
 #[tauri::command]
 pub async fn submit_capture(
@@ -16,6 +17,7 @@ pub async fn submit_capture(
         let response = service.submit(item).await?;
 
         if response.deduplicated {
+            let _ = app_handle.emit("library://objects-updated", ());
             return Ok::<SubmitCaptureResponse, AppError>(response);
         }
 
@@ -24,11 +26,12 @@ pub async fn submit_capture(
             .clone()
             .filter(|_| response.parsed_document_id.is_none())
         {
-            spawn_fetch_job_runner(app_handle, service, ai_service, job_id);
+            spawn_fetch_job_runner(app_handle.clone(), service, ai_service, job_id);
         } else if response.parsed_document_id.is_some() {
-            spawn_ai_enrichment_runner(app_handle, ai_service, response.object_id.clone());
+            spawn_ai_enrichment_runner(app_handle.clone(), ai_service, response.object_id.clone());
         }
 
+        let _ = app_handle.emit("library://objects-updated", ());
         Ok::<SubmitCaptureResponse, AppError>(response)
     }
     .await;

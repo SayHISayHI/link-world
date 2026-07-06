@@ -374,6 +374,10 @@ Rules:
 - Event payload 保持小，只传 id/status。
 - 前端收到事件后重新拉取 detail 或局部更新。
 - 不通过 event 传完整正文、API key、AI raw output。
+- 主窗口必须通过最小 Tauri capability 显式获得 `core:event:allow-listen` 和 `core:event:allow-unlisten`；不得因自定义 command 可调用而假设 event API 同样可用。
+- Library event listener 在 shell 生命周期内只注册一次，通过最新 handler/state 引用处理事件；选中对象、筛选和搜索变化不得拆除并重建 listener。
+- 持久化 mutation 在 transaction 完成后由后端 emit 更新事件。前端不得以 command 完成后的额外 list pull 代替该推送链路。
+- Event listener 注册失败必须可观察，禁止静默吞掉；已成功注册的部分 listener 必须清理。
 - Event listener 必须在组件 unmount 时清理。
 
 ## 11. Forms and Validation
