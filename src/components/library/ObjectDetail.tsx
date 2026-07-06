@@ -77,7 +77,9 @@ export function ObjectDetail({
   onReindexObject,
   onRunEvaluation,
 }: ObjectDetailProps) {
-  if (!object) {
+  const currentObject = detail?.object ?? object;
+
+  if (!currentObject) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
         Select an item to inspect.
@@ -85,9 +87,9 @@ export function ObjectDetail({
     );
   }
 
-  const title = object.title ?? object.canonicalUrl ?? object.id;
-  const captureFailure = object.failureReason
-    ? formatCaptureFailureReason(object.failureReason)
+  const title = currentObject.title ?? currentObject.canonicalUrl ?? currentObject.id;
+  const captureFailure = currentObject.failureReason
+    ? formatCaptureFailureReason(currentObject.failureReason)
     : undefined;
   const parsedDocument = detail?.parsedDocument;
   const latestAnalysis = detail?.aiAnalyses[0];
@@ -95,7 +97,7 @@ export function ObjectDetail({
     ? selectCurrentDisplayHints(parsedDocument.id, detail?.aiAnalyses ?? [])
     : undefined;
   const latestEvaluation = detail?.evaluations[0];
-  const statusText = formatRelativeStatus(object.lifecycleStatus);
+  const statusText = formatRelativeStatus(currentObject.lifecycleStatus);
 
   return (
     <div className="flex h-full min-w-0 flex-col">
@@ -103,7 +105,7 @@ export function ObjectDetail({
         <div className="min-w-0">
           <h2 className="truncate text-sm font-semibold">{title}</h2>
           <p className="text-xs text-muted-foreground">
-            {object.type} / {statusText}
+            {currentObject.type} / {statusText}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -181,7 +183,7 @@ export function ObjectDetail({
                       documentId={parsedDocument.id}
                       markdown={parsedDocument.markdown}
                       text={parsedDocument.text}
-                      sourceUrl={object.canonicalUrl}
+                      sourceUrl={currentObject.canonicalUrl}
                       displayHints={displayHints}
                     />
                   </Suspense>

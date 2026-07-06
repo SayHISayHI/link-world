@@ -7,6 +7,7 @@ interface LibraryStore {
   selectedDetail?: KnowledgeObjectDetail;
   selectObject: (objectId: string) => void;
   setObjects: (objects: KnowledgeObject[]) => void;
+  upsertObject: (object: KnowledgeObject) => void;
   setSelectedDetail: (detail?: KnowledgeObjectDetail) => void;
 }
 
@@ -23,5 +24,16 @@ export const useLibraryStore = create<LibraryStore>((set) => ({
           ? state.selectedObjectId
           : objects[0]?.id,
     })),
+  upsertObject: (nextObject) =>
+    set((state) => {
+      const existingIndex = state.objects.findIndex((object) => object.id === nextObject.id);
+      if (existingIndex === -1) {
+        return { objects: [nextObject, ...state.objects] };
+      }
+
+      const objects = [...state.objects];
+      objects[existingIndex] = nextObject;
+      return { objects };
+    }),
   setSelectedDetail: (selectedDetail) => set({ selectedDetail }),
 }));

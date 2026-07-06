@@ -70,7 +70,8 @@ export function LibraryShellContainer() {
   const [searchMaintenanceMode, setSearchMaintenanceMode] = useState<"check" | "rebuild">();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const lastCompletedSearchRebuildJobRef = useRef<string>();
-  const { objects, selectedObjectId, selectedDetail, selectObject, setObjects, setSelectedDetail } = useLibraryStore();
+  const selectedObjectIdRef = useRef<string>();
+  const { objects, selectedObjectId, selectedDetail, selectObject, setObjects, upsertObject, setSelectedDetail } = useLibraryStore();
   const { query: searchQuery, setQuery: setSearchQuery } = useSearchStore();
   const { data, error, loading, ping } = usePing();
   const {
@@ -166,7 +167,9 @@ export function LibraryShellContainer() {
       limit: LIBRARY_PAGE_SIZE,
       offset: 0,
     });
-    setHasMoreObjects(page.length === LIBRARY_PAGE_SIZE);
+    if (page) {
+      setHasMoreObjects(page.length === LIBRARY_PAGE_SIZE);
+    }
     return page;
   }, [libraryFilter, loadRecentObjects]);
 
@@ -180,6 +183,17 @@ export function LibraryShellContainer() {
 
     return searchHybrid({ query, filterType: libraryFilter, limit: 25 });
   }, [libraryFilter, resetSearch, searchHybrid, searchQuery]);
+
+  const refreshRecentObjectsRef = useRef(refreshRecentObjects);
+  const refreshSearchResultsRef = useRef(refreshSearchResults);
+  const loadObjectDetailRef = useRef(loadObjectDetail);
+  const loadObjectJobsRef = useRef(loadObjectJobs);
+
+  refreshRecentObjectsRef.current = refreshRecentObjects;
+  refreshSearchResultsRef.current = refreshSearchResults;
+  loadObjectDetailRef.current = loadObjectDetail;
+  loadObjectJobsRef.current = loadObjectJobs;
+  selectedObjectIdRef.current = selectedObjectId;
 
   useEffect(() => {
     void refreshRecentObjects();
@@ -240,60 +254,48 @@ export function LibraryShellContainer() {
     let unlistenObjectReindexed: (() => void) | undefined;
     let disposed = false;
 
+    const refreshSelectedObjectState = (objectId?: string) => {
+      const currentSelectedObjectId = selectedObjectIdRef.current;
+      if (objectId && objectId === currentSelectedObjectId) {
+        void loadObjectDetailRef.current(objectId);
+        void loadObjectJobsRef.current({ objectId, limit: 10 });
+      }
+    };
+
     void import("@tauri-apps/api/event")
       .then(async ({ listen }) => {
         const unsubscribeLibrary = await listen("library://objects-updated", () => {
-          void refreshRecentObjects();
-          void refreshSearchResults();
+          void refreshRecentObjectsRef.current();
+          void refreshSearchResultsRef.current();
         });
         const unsubscribeCapture = await listen<CaptureJobCompletedPayload>("capture://job-completed", (event) => {
           setLastCaptureJob(event.payload);
-          void refreshRecentObjects();
-          void refreshSearchResults();
-
-          const objectId = event.payload.objectId;
-          if (objectId && objectId === selectedObjectId) {
-            void loadObjectDetail(objectId);
-            void loadObjectJobs({ objectId, limit: 10 });
-          }
+          void refreshRecentObjectsRef.current();
+          void refreshSearchResultsRef.current();
+          refreshSelectedObjectState(event.payload.objectId);
         });
         const unsubscribeAI = await listen<AIEnrichmentCompletedPayload>(
           "ai://enrichment-completed",
           (event) => {
-            void refreshRecentObjects();
-            void refreshSearchResults();
-
-            const objectId = event.payload.objectId;
-            if (objectId && objectId === selectedObjectId) {
-              void loadObjectDetail(objectId);
-              void loadObjectJobs({ objectId, limit: 10 });
-            }
+            void refreshRecentObjectsRef.current();
+            void refreshSearchResultsRef.current();
+            refreshSelectedObjectState(event.payload.objectId);
           },
         );
         const unsubscribeEvaluation = await listen<EvaluationCompletedPayload>("evaluation://completed", (event) => {
-          void refreshRecentObjects();
-          void refreshSearchResults();
-
-          const objectId = event.payload.objectId;
-          if (objectId && objectId === selectedObjectId) {
-            void loadObjectDetail(objectId);
-            void loadObjectJobs({ objectId, limit: 10 });
-          }
+          void refreshRecentObjectsRef.current();
+          void refreshSearchResultsRef.current();
+          refreshSelectedObjectState(event.payload.objectId);
         });
         const unsubscribeSearchRebuilt = await listen<SearchIndexUpdatedPayload>("search://index-rebuilt", () => {
-          void refreshRecentObjects();
-          void refreshSearchResults();
+          void refreshRecentObjectsRef.current();
+          void refreshSearchResultsRef.current();
         });
         const unsubscribeObjectReindexed = await listen<SearchIndexUpdatedPayload>(
           "search://object-reindexed",
           (event) => {
-            void refreshSearchResults();
-
-            const objectId = event.payload.objectId;
-            if (objectId && objectId === selectedObjectId) {
-              void loadObjectDetail(objectId);
-              void loadObjectJobs({ objectId, limit: 10 });
-            }
+            void refreshSearchResultsRef.current();
+            refreshSelectedObjectState(event.payload.objectId);
           },
         );
 
@@ -351,7 +353,7 @@ export function LibraryShellContainer() {
       unlistenSearchRebuilt?.();
       unlistenObjectReindexed?.();
     };
-  }, [loadObjectDetail, loadObjectJobs, refreshRecentObjects, refreshSearchResults, selectedObjectId]);
+  }, []);
 
   useEffect(() => {
     setObjects(recentObjects);
@@ -378,7 +380,15 @@ export function LibraryShellContainer() {
 
   useEffect(() => {
     setSelectedDetail(objectDetail);
-  }, [objectDetail, setSelectedDetail]);
+    if (objectDetail?.object) {
+      upsertObject(objectDetail.object);
+    }
+  }, [objectDetail, setSelectedDetail, upsertObject]);
+
+  const handleSelectObject = useCallback((objectId: string) => {
+    selectedObjectIdRef.current = objectId;
+    selectObject(objectId);
+  }, [selectObject]);
 
   const handleCaptureSubmit = useCallback(async () => {
     const url = captureUrl.trim();
@@ -413,9 +423,9 @@ export function LibraryShellContainer() {
         lifecycleStatus: "already saved",
       });
     }
-    selectObject(response.objectId);
+    handleSelectObject(response.objectId);
     await refreshRecentObjects();
-  }, [captureUrl, refreshRecentObjects, selectObject, submitCapture]);
+  }, [captureUrl, handleSelectObject, refreshRecentObjects, submitCapture]);
 
   const handleDeleteObject = useCallback(async () => {
     if (!selectedObjectId) {
@@ -441,7 +451,9 @@ export function LibraryShellContainer() {
     setSelectedDetail(undefined);
     const nextObjects = await refreshRecentObjects();
     await refreshSearchResults();
-    setObjects(nextObjects);
+    if (nextObjects) {
+      setObjects(nextObjects);
+    }
   }, [
     deleteObject,
     refreshRecentObjects,
@@ -512,7 +524,9 @@ export function LibraryShellContainer() {
       limit: LIBRARY_PAGE_SIZE,
       offset: objects.length,
     });
-    setHasMoreObjects(page.length === LIBRARY_PAGE_SIZE);
+    if (page) {
+      setHasMoreObjects(page.length === LIBRARY_PAGE_SIZE);
+    }
   }, [libraryFilter, loadRecentObjects, objects.length]);
 
   const handleRebuildSearchIndex = useCallback(async () => {
@@ -613,7 +627,7 @@ export function LibraryShellContainer() {
             panel={panel}
             onPanelChange={(nextPanel) => setRoute({ name: "settings", panel: nextPanel })}
             onOpenObject={(objectId) => {
-              selectObject(objectId);
+              handleSelectObject(objectId);
               setRoute({ name: "library", filter: "all" });
             }}
           />
@@ -663,7 +677,7 @@ export function LibraryShellContainer() {
             onLoadMore={() => {
               void handleLoadMoreObjects();
             }}
-            onSelectObject={selectObject}
+            onSelectObject={handleSelectObject}
           />
         }
         detail={
@@ -803,3 +817,4 @@ function findRetryableCaptureJob(jobs: BackgroundJob[], objectId?: string) {
       ["failed", "cancelled", "blocked"].includes(job.status),
   );
 }
+

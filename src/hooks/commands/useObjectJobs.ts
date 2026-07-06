@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { invokeCommand } from "../../lib/tauri";
 import type { AppUiError } from "../../lib/errors";
 import type { BackgroundJob } from "../../types/api";
@@ -15,12 +15,14 @@ interface LoadObjectJobsArgs {
 }
 
 export function useObjectJobs() {
+  const latestRequestIdRef = useRef(0);
   const [state, setState] = useState<ObjectJobsState>({
     data: [],
     loading: false,
   });
 
   const loadObjectJobs = useCallback(async (args: LoadObjectJobsArgs) => {
+    const requestId = ++latestRequestIdRef.current;
     setState((current) => ({ ...current, error: undefined, loading: true }));
 
     try {
@@ -28,15 +30,25 @@ export function useObjectJobs() {
         objectId: args.objectId,
         limit: args.limit ?? 10,
       });
+
+      if (latestRequestIdRef.current !== requestId) {
+        return undefined;
+      }
+
       setState({ data, loading: false });
       return data;
     } catch (error) {
+      if (latestRequestIdRef.current !== requestId) {
+        return undefined;
+      }
+
       setState({ data: [], error: error as AppUiError, loading: false });
       return [];
     }
   }, []);
 
   const resetObjectJobs = useCallback(() => {
+    latestRequestIdRef.current += 1;
     setState({ data: [], loading: false });
   }, []);
 
