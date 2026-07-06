@@ -254,10 +254,49 @@ impl AIEnrichmentService {
         &self,
         object_id: &str,
     ) -> AppResult<AIEnrichmentRunResult> {
-        let correlation_id = Uuid::new_v4().to_string();
+        self.run_enrichment_for_object_with_request_id(object_id, None)
+            .await
+    }
+
+    pub async fn run_enrichment_for_object_with_request_id(
+        &self,
+        object_id: &str,
+        request_id: Option<&str>,
+    ) -> AppResult<AIEnrichmentRunResult> {
+        let request_id = request_id
+            .map(|value| {
+                Uuid::parse_str(value)
+                    .map(|value| value.to_string())
+                    .map_err(|_| AppError::PolicyDenied("ai.request_id_invalid".to_string()))
+            })
+            .transpose()?;
+        if let Some(request_id) = request_id.as_deref() {
+            if let Some(existing) = self
+                .repository
+                .find_enrichment_operation(request_id, object_id)
+                .await?
+            {
+                self.record_log(
+                    StructuredLogEvent::info(
+                        "ai",
+                        "ai.enrichment.reused",
+                        "AI enrichment request reused an existing operation.",
+                    )
+                    .with_correlation_id(request_id)
+                    .with_object_id(object_id)
+                    .with_job_id(request_id),
+                )
+                .await;
+                return Ok(existing);
+            }
+        }
+
+        let correlation_id = request_id
+            .clone()
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
         let job_id = match self
             .repository
-            .create_enrichment_job(object_id, &correlation_id)
+            .create_enrichment_job_with_id(object_id, &correlation_id, request_id.as_deref())
             .await
         {
             Ok(job_id) => job_id,
@@ -1401,5 +1440,56 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(telemetry_dir);
+    }
+
+    #[tokio::test]
+    async fn manual_enrichment_request_id_reuses_terminal_operation_and_rejects_cross_object_use() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        for object_id in ["obj-ai-idempotent", "obj-ai-other"] {
+            sqlx::query(
+                r#"
+                INSERT INTO knowledge_objects (
+                    id, user_id, object_type, title, privacy_level, lifecycle_status,
+                    captured_at, updated_at
+                ) VALUES (?1, 'local', 'article', 'AI idempotency fixture', 'personal', 'parsed',
+                    '2026-07-03T00:00:00Z', '2026-07-03T00:00:00Z')
+                "#,
+            )
+            .bind(object_id)
+            .execute(database.pool())
+            .await
+            .expect("fixture object should insert");
+        }
+        let service = AIEnrichmentService::new(database.pool().clone(), SecretStore::default())
+            .expect("AI service should initialize");
+        let request_id = Uuid::new_v4().to_string();
+
+        let first = service
+            .run_enrichment_for_object_with_request_id("obj-ai-idempotent", Some(&request_id))
+            .await
+            .expect("first request should produce a terminal failed operation");
+        let repeated = service
+            .run_enrichment_for_object_with_request_id("obj-ai-idempotent", Some(&request_id))
+            .await
+            .expect("same request should reuse its terminal operation");
+
+        assert_eq!(first.job_id, request_id);
+        assert_eq!(repeated.job_id, first.job_id);
+        assert_eq!(repeated.status, first.status);
+        let job_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM background_jobs WHERE job_type = 'ai.enrich_object'",
+        )
+        .fetch_one(database.pool())
+        .await
+        .expect("job count should be readable");
+        assert_eq!(job_count, 1);
+
+        let conflict = service
+            .run_enrichment_for_object_with_request_id("obj-ai-other", Some(&request_id))
+            .await
+            .expect_err("request id must remain bound to its object");
+        assert!(matches!(conflict, AppError::PolicyDenied(_)));
     }
 }

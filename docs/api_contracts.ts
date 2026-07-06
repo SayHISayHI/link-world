@@ -565,6 +565,7 @@ export interface IpcResponse<T> {
 export type IpcErrorCode =
   | 'ERR_BACKUP_INVALID'
   | 'ERR_RESTORE_INVALID'
+  | 'ERR_RUNTIME_BUSY'
   | 'ERR_DB_CONSTRAINT'
   | 'ERR_DB_MIGRATION'
   | 'ERR_NETWORK_TIMEOUT'

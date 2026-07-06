@@ -213,7 +213,7 @@ flowchart TB
   Policy --> Audit
 ```
 
-该图描述长期逻辑架构，不代表每个客户端均已实现。当前 Windows Local Alpha 只有 Desktop App 和 Browser Extension 路径；CLI 仍为 Proposed，落地范围与门禁见 [cli_development_plan.md](./cli_development_plan.md)。CLI 不会直接接入 SQLite 或复制桌面业务逻辑，而是与 Tauri adapter 共享 application services。
+该图描述长期逻辑架构，不代表每个客户端均已实现。当前 Windows Local Edition 已提供 Desktop App、Browser Extension 和独立 `link-world-cli.exe`；CLI 范围与门禁见 [cli_development_plan.md](./cli_development_plan.md)。CLI 不直接接入 SQLite 或复制桌面业务逻辑，而是与 Tauri adapter 共享 application services；两者首期通过 OS-backed runtime lock 互斥打开同一数据目录。
 
 ### 3.2 Deployment modes
 
@@ -221,7 +221,7 @@ flowchart TB
 flowchart TB
   subgraph Local["Local Edition"]
     LocalApp["Desktop App"]
-    LocalCLI["CLI (Proposed)"]
+    LocalCLI["CLI"]
     LocalCore["Embedded Core Services"]
     LocalDB["SQLite / FTS5"]
     LocalVector["Local Vector Index"]

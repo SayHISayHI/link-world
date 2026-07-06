@@ -1,6 +1,6 @@
 use crate::domain::ai::{
-    AIAnalysisSubmission, AIEnrichmentInput, AITraceSubmission, ModelApiFamily,
-    ModelProviderConfig, StoredModelProviderConfig,
+    AIAnalysisSubmission, AIEnrichmentInput, AIEnrichmentRunResult, AITraceSubmission,
+    ModelApiFamily, ModelProviderConfig, StoredModelProviderConfig,
 };
 use crate::errors::{AppError, AppResult};
 use crate::repositories::search::SearchRepository;
@@ -302,9 +302,22 @@ impl AIRepository {
         object_id: &str,
         correlation_id: &str,
     ) -> AppResult<String> {
+        self.create_enrichment_job_with_id(object_id, correlation_id, None)
+            .await
+    }
+
+    pub async fn create_enrichment_job_with_id(
+        &self,
+        object_id: &str,
+        correlation_id: &str,
+        job_id: Option<&str>,
+    ) -> AppResult<String> {
         validate_ai_correlation_id(correlation_id)?;
         let now = Utc::now().to_rfc3339();
-        let job_id = Uuid::new_v4().to_string();
+        let job_id = job_id
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
+        validate_ai_correlation_id(&job_id)?;
         let mut tx = self.pool.begin().await?;
 
         sqlx::query(
@@ -349,6 +362,83 @@ impl AIRepository {
         tx.commit().await?;
 
         Ok(job_id)
+    }
+
+    pub async fn find_enrichment_operation(
+        &self,
+        request_id: &str,
+        object_id: &str,
+    ) -> AppResult<Option<AIEnrichmentRunResult>> {
+        validate_ai_correlation_id(request_id)?;
+        let row = sqlx::query(
+            r#"
+            SELECT job_type, status, object_id, payload_json, last_error
+            FROM background_jobs
+            WHERE id = ?1
+            "#,
+        )
+        .bind(request_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+
+        let job_type: String = row.get("job_type");
+        let stored_object_id: Option<String> = row.get("object_id");
+        let payload_json: String = row.get("payload_json");
+        let payload = serde_json::from_str::<serde_json::Value>(&payload_json).ok();
+        let stored_correlation_id = payload
+            .as_ref()
+            .and_then(|value| value.get("correlationId"))
+            .and_then(serde_json::Value::as_str);
+        if job_type != AI_ENRICHMENT_JOB_TYPE
+            || stored_object_id.as_deref() != Some(object_id)
+            || stored_correlation_id != Some(request_id)
+        {
+            return Err(AppError::PolicyDenied(
+                "ai.request_id_identity_conflict".to_string(),
+            ));
+        }
+
+        let status: String = row.get("status");
+        let failure_reason: Option<String> = row.get("last_error");
+        let analysis_id = if status == "succeeded" {
+            let event_payload: Option<String> = sqlx::query_scalar(
+                r#"
+                SELECT payload_json
+                FROM domain_events
+                WHERE correlation_id = ?1
+                  AND object_id = ?2
+                  AND event_type = 'analysis.created'
+                ORDER BY occurred_at DESC, id DESC
+                LIMIT 1
+                "#,
+            )
+            .bind(request_id)
+            .bind(object_id)
+            .fetch_optional(&self.pool)
+            .await?;
+            event_payload
+                .as_deref()
+                .and_then(|value| serde_json::from_str::<serde_json::Value>(value).ok())
+                .and_then(|value| {
+                    value
+                        .get("analysisId")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_string)
+                })
+        } else {
+            None
+        };
+
+        Ok(Some(AIEnrichmentRunResult {
+            job_id: request_id.to_string(),
+            correlation_id: request_id.to_string(),
+            analysis_id,
+            status,
+            failure_reason,
+        }))
     }
 
     pub async fn complete_enrichment_job(

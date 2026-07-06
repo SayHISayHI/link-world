@@ -5,16 +5,23 @@ description = "Local-first personal information asset system"
 authors = ["Link World"]
 edition = "2021"
 rust-version = "1.85"
+default-run = "link-world"
 
 [lib]
 name = "link_world_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "link-world-cli"
+path = "src/bin/link-world-cli.rs"
 
 [build-dependencies]
 tauri-build = { version = "2.4.0", features = [] }
 
 [dependencies]
 chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4.6.1", features = ["derive"] }
+clap_complete = "4.6.5"
 ego-tree = "0.10"
 genai = { version = "0.6.5", default-features = false, features = ["rustls-tls"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json"] }

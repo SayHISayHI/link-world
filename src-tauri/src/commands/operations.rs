@@ -1,8 +1,8 @@
 use crate::domain::jobs::BackgroundJob;
 use crate::errors::{map_ipc_result, AppError, IpcResponse};
-use crate::repositories::jobs::JobsRepository;
 use crate::services::ai::AIEnrichmentService;
 use crate::services::capture::{spawn_fetch_job_runner, CaptureService};
+use crate::services::operations::OperationsService;
 use crate::state::AppState;
 use tauri::Emitter;
 
@@ -12,9 +12,8 @@ pub async fn get_background_job(
     job_id: String,
 ) -> Result<IpcResponse<BackgroundJob>, String> {
     let result = async {
-        let repository = JobsRepository::new(state.database()?.pool().clone());
-
-        repository.get_background_job(&job_id).await
+        let service = OperationsService::from_state(state.inner())?;
+        service.get_background_job(&job_id).await
     }
     .await;
 
@@ -28,9 +27,8 @@ pub async fn get_object_jobs(
     limit: Option<i64>,
 ) -> Result<IpcResponse<Vec<BackgroundJob>>, String> {
     let result = async {
-        let repository = JobsRepository::new(state.database()?.pool().clone());
-
-        repository.list_object_jobs(&object_id, limit).await
+        let service = OperationsService::from_state(state.inner())?;
+        service.list_object_jobs(&object_id, limit).await
     }
     .await;
 
@@ -44,8 +42,8 @@ pub async fn retry_background_job(
     job_id: String,
 ) -> Result<IpcResponse<bool>, String> {
     let result = async {
-        let repository = JobsRepository::new(state.database()?.pool().clone());
-        let retried = repository.retry_background_job(&job_id).await?;
+        let operations = OperationsService::from_state(state.inner())?;
+        let retried = operations.reserve_retry(&job_id).await?;
 
         if retried.job_type == "capture.fetch_url" {
             let service = CaptureService::from_state(state.inner())?;

@@ -2,6 +2,7 @@ use crate::domain::startup::{StartupIssue, StartupMode, StartupRecoveryKind, Sta
 use crate::errors::{AppError, AppResult};
 use crate::repositories::jobs::JobsRepository;
 use crate::runtime::models::ModelProviderRegistry;
+use crate::runtime_lock::RuntimeLock;
 use crate::services::migration::MigrationService;
 use crate::services::restore::begin_pending_restore_with_logger;
 use crate::storage::database::Database;
@@ -25,6 +26,7 @@ pub struct AppState {
     database: Option<Database>,
     object_store: Option<ObjectStore>,
     structured_logger: Option<StructuredLogger>,
+    runtime_lock: Option<RuntimeLock>,
     secrets: SecretStore,
     model_registry: ModelProviderRegistry,
 }
@@ -246,6 +248,7 @@ fn startup_error_code(error: &AppError) -> &'static str {
     match error {
         AppError::BackupInvalid(_) => "ERR_BACKUP_INVALID",
         AppError::RestoreInvalid(_) => "ERR_RESTORE_INVALID",
+        AppError::RuntimeBusy => "ERR_RUNTIME_BUSY",
         AppError::DbConstraint => "ERR_DB_CONSTRAINT",
         AppError::DbMigration(_) => "ERR_DB_MIGRATION",
         AppError::JobNotFound => "ERR_JOB_NOT_FOUND",
@@ -267,6 +270,7 @@ fn startup_issue_title(error: &AppError) -> &'static str {
     match error {
         AppError::DbMigration(_) => "Database migration needs recovery",
         AppError::RestoreInvalid(_) => "Restore did not complete safely",
+        AppError::RuntimeBusy => "Link World is already running",
         AppError::Database(_) => "Database could not be opened",
         AppError::Filesystem(_) => "Storage could not be opened",
         AppError::SecretStorage => "Credential storage is unavailable",
@@ -278,6 +282,7 @@ fn startup_recovery_kind(error: &AppError) -> StartupRecoveryKind {
     match error {
         AppError::DbMigration(_) => StartupRecoveryKind::DatabaseMigration,
         AppError::RestoreInvalid(_) => StartupRecoveryKind::Restore,
+        AppError::RuntimeBusy => StartupRecoveryKind::Unknown,
         AppError::Database(_) => StartupRecoveryKind::Database,
         AppError::Filesystem(_) => StartupRecoveryKind::Storage,
         _ => StartupRecoveryKind::Unknown,
@@ -316,6 +321,7 @@ impl AppState {
             database: None,
             object_store: None,
             structured_logger: None,
+            runtime_lock: None,
             secrets: SecretStore::default(),
             model_registry: ModelProviderRegistry::new()?,
         })
@@ -333,6 +339,7 @@ impl AppState {
     }
 
     pub async fn initialize_from_data_dir(data_dir: PathBuf) -> AppResult<Self> {
+        let runtime_lock = RuntimeLock::acquire(&data_dir)?;
         let structured_logger = StructuredLogger::new(&data_dir);
         let restore_transaction =
             begin_pending_restore_with_logger(&data_dir, &structured_logger).await?;
@@ -398,6 +405,7 @@ impl AppState {
             database: Some(database),
             object_store: Some(object_store),
             structured_logger: Some(structured_logger),
+            runtime_lock: Some(runtime_lock),
             secrets,
             model_registry,
         })
@@ -450,6 +458,10 @@ impl AppState {
 
     pub fn structured_logger(&self) -> Option<&StructuredLogger> {
         self.structured_logger.as_ref()
+    }
+
+    pub fn runtime_lock(&self) -> Option<&RuntimeLock> {
+        self.runtime_lock.as_ref()
     }
 
     pub fn secrets(&self) -> &SecretStore {

@@ -8,6 +8,8 @@ pub enum AppError {
     BackupInvalid(String),
     #[error("restore invalid: {0}")]
     RestoreInvalid(String),
+    #[error("another Link World process is using this data directory")]
+    RuntimeBusy,
     #[error("object not found")]
     ObjectNotFound,
     #[error("database constraint failed")]
@@ -47,6 +49,7 @@ pub enum AppError {
 pub enum IpcErrorCode {
     ErrBackupInvalid,
     ErrRestoreInvalid,
+    ErrRuntimeBusy,
     ErrDbConstraint,
     ErrDbMigration,
     ErrNetworkTimeout,
@@ -101,6 +104,7 @@ impl From<AppError> for IpcError {
         let code = match error {
             AppError::BackupInvalid(_) => IpcErrorCode::ErrBackupInvalid,
             AppError::RestoreInvalid(_) => IpcErrorCode::ErrRestoreInvalid,
+            AppError::RuntimeBusy => IpcErrorCode::ErrRuntimeBusy,
             AppError::ObjectNotFound => IpcErrorCode::ErrObjectNotFound,
             AppError::DbConstraint => IpcErrorCode::ErrDbConstraint,
             AppError::DbMigration(_) => IpcErrorCode::ErrDbMigration,

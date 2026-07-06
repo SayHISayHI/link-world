@@ -75,6 +75,14 @@ MVP 主支持：
 - 完整正文。
 - secret / sensitive 内容。
 
+### 3.3 CLI operations
+
+Windows Local Edition 提供独立 `link-world-cli.exe`。桌面和 CLI 初始化同一 app data 前取得 OS-backed runtime lock；竞争立即以 exit 5 / `ERR_RUNTIME_BUSY` 失败，不等待或抢占。help/version/completion 不打开数据目录。CLI adapter 只调用共享 service，JSON schema v1 保证 stdout 单 document，提示/隐私警告写 stderr，错误只返回稳定 code/message/retryable/correlationId。
+
+CLI 首期没有 daemon，写命令在既有 service timeout 内运行至 durable terminal state。capture、AI、Evaluation 可接受 UUID request ID；重复 identity 复用，跨对象/操作复用 fail closed。默认 object show 仅输出 metadata，正文必须显式 `--include-content`。release 通过独立 artifact 和 `install-link-world-cli.ps1` 分发，PATH 仅在用户显式 `-AddToPath` 时修改 User scope。
+
+自动化入口为 `npm run readiness:cli`，真实 Windows/签名/网络门禁见 `docs/cli_windows_release_matrix.md`。
+
 ## 4. Backup and Recovery
 
 Local Edition 必须支持：

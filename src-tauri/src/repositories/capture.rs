@@ -28,7 +28,81 @@ pub struct ExistingCaptureRecord {
     pub job_id: Option<String>,
 }
 
+pub struct ExistingCaptureRequestRecord {
+    pub capture: ExistingCaptureRecord,
+    pub job_type: String,
+    pub canonical_url: Option<String>,
+    pub privacy_level: String,
+}
+
 impl CaptureRepository {
+    pub async fn find_by_request_id(
+        tx: &mut Transaction<'_, Sqlite>,
+        request_id: &str,
+    ) -> AppResult<Option<ExistingCaptureRequestRecord>> {
+        let row = sqlx::query(
+            r#"
+            SELECT
+                jobs.id AS job_id,
+                jobs.job_type,
+                objects.id AS object_id,
+                objects.canonical_url,
+                objects.privacy_level,
+                (
+                    SELECT snapshots.id
+                    FROM source_snapshots AS snapshots
+                    WHERE snapshots.object_id = objects.id
+                    ORDER BY snapshots.captured_at DESC, snapshots.id DESC
+                    LIMIT 1
+                ) AS snapshot_id,
+                (
+                    SELECT parsed.id
+                    FROM parsed_documents AS parsed
+                    WHERE parsed.object_id = objects.id
+                    ORDER BY parsed.created_at DESC, parsed.id DESC
+                    LIMIT 1
+                ) AS parsed_document_id
+            FROM background_jobs AS jobs
+            LEFT JOIN knowledge_objects AS objects ON objects.id = jobs.object_id
+            WHERE jobs.id = ?1
+            LIMIT 1
+            "#,
+        )
+        .bind(request_id)
+        .fetch_optional(&mut **tx)
+        .await?;
+
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let object_id: Option<String> = row.get("object_id");
+        let Some(object_id) = object_id else {
+            return Ok(Some(ExistingCaptureRequestRecord {
+                capture: ExistingCaptureRecord {
+                    object_id: String::new(),
+                    snapshot_id: None,
+                    parsed_document_id: None,
+                    job_id: Some(request_id.to_string()),
+                },
+                job_type: row.get("job_type"),
+                canonical_url: None,
+                privacy_level: String::new(),
+            }));
+        };
+
+        Ok(Some(ExistingCaptureRequestRecord {
+            capture: ExistingCaptureRecord {
+                object_id,
+                snapshot_id: row.get("snapshot_id"),
+                parsed_document_id: row.get("parsed_document_id"),
+                job_id: Some(row.get("job_id")),
+            },
+            job_type: row.get("job_type"),
+            canonical_url: row.get("canonical_url"),
+            privacy_level: row.get("privacy_level"),
+        }))
+    }
+
     pub async fn find_active_by_canonical_url(
         tx: &mut Transaction<'_, Sqlite>,
         user_id: &str,

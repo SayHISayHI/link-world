@@ -2,9 +2,10 @@ use crate::domain::knowledge::{
     AIAnalysis, EvaluationRun, KnowledgeObject, KnowledgeObjectDetail, ParsedDocument,
     SourceSnapshot,
 };
-use crate::domain::portable_export::PortableExportSummary;
+use crate::domain::portable_export::{PortableExportFormat, PortableExportSummary};
 use crate::errors::{AppError, AppResult};
 use crate::repositories::knowledge_objects::KnowledgeObjectRepository;
+use crate::state::AppState;
 use chrono::Utc;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -14,7 +15,6 @@ use uuid::Uuid;
 
 const EXPORTS_DIR_NAME: &str = "exports";
 const EXPORT_SCHEMA_VERSION: i64 = 1;
-const EXPORT_FORMAT: &str = "markdown_json_directory";
 
 #[derive(Debug, Clone)]
 pub struct PortableExportService {
@@ -43,7 +43,7 @@ struct PortableExportManifestObject {
     object_id: String,
     title: Option<String>,
     privacy_level: String,
-    metadata_path: String,
+    metadata_path: Option<String>,
     markdown_path: Option<String>,
     content_hash: Option<String>,
 }
@@ -115,6 +115,14 @@ struct ExportedEvaluationArtifact<'a> {
 }
 
 impl PortableExportService {
+    pub fn from_state(state: &AppState, data_dir: impl AsRef<Path>) -> AppResult<Self> {
+        Ok(Self::new(
+            KnowledgeObjectRepository::new(state.database()?.pool().clone()),
+            data_dir,
+            state.backend_version().to_string(),
+        ))
+    }
+
     pub fn new(
         repository: KnowledgeObjectRepository,
         data_dir: impl AsRef<Path>,
@@ -128,6 +136,14 @@ impl PortableExportService {
     }
 
     pub async fn export_library(&self) -> AppResult<PortableExportSummary> {
+        self.export_library_with_format(PortableExportFormat::Both)
+            .await
+    }
+
+    pub async fn export_library_with_format(
+        &self,
+        format: PortableExportFormat,
+    ) -> AppResult<PortableExportSummary> {
         fs::create_dir_all(&self.export_root)?;
 
         let created_at = Utc::now().to_rfc3339();
@@ -151,7 +167,7 @@ impl PortableExportService {
         fs::create_dir_all(staging_dir.join("objects"))?;
 
         let result = self
-            .write_export(&staging_dir, &export_id, &created_at)
+            .write_export(&staging_dir, &export_id, &created_at, format)
             .await;
         if result.is_err() {
             let _ = fs::remove_dir_all(&staging_dir);
@@ -168,6 +184,7 @@ impl PortableExportService {
         staging_dir: &Path,
         export_id: &str,
         created_at: &str,
+        format: PortableExportFormat,
     ) -> AppResult<PortableExportSummary> {
         let candidates = self.repository.list_export_candidates().await?;
         let mut manifest_objects = Vec::new();
@@ -187,23 +204,34 @@ impl PortableExportService {
             let object_dir = staging_dir.join("objects").join(&object_dir_name);
             fs::create_dir_all(&object_dir)?;
 
-            let metadata_path = object_dir.join("metadata.json");
-            let relative_metadata_path = format!("objects/{object_dir_name}/metadata.json");
-            let metadata = exported_metadata(&detail, created_at);
-            write_json(&metadata_path, &metadata)?;
-            json_file_count += 1;
-            jsonl_lines.push(serde_json::to_string(&metadata).map_err(|error| {
-                AppError::Unknown(format!(
-                    "failed to serialize portable export metadata: {error}"
-                ))
-            })?);
+            let relative_metadata_path = if format.includes_json() {
+                let metadata_path = object_dir.join("metadata.json");
+                let relative_metadata_path = format!("objects/{object_dir_name}/metadata.json");
+                let metadata = exported_metadata(&detail, created_at);
+                write_json(&metadata_path, &metadata)?;
+                json_file_count += 1;
+                jsonl_lines.push(serde_json::to_string(&metadata).map_err(|error| {
+                    AppError::Unknown(format!(
+                        "failed to serialize portable export metadata: {error}"
+                    ))
+                })?);
+                Some(relative_metadata_path)
+            } else {
+                None
+            };
 
-            let markdown_path = if let Some(parsed_document) = &detail.parsed_document {
-                let markdown = render_markdown(&detail.object, parsed_document, created_at);
-                let path = object_dir.join("document.md");
-                fs::write(&path, markdown)?;
-                markdown_file_count += 1;
-                Some(format!("objects/{object_dir_name}/document.md"))
+            let markdown_path = if format.includes_markdown() {
+                detail
+                    .parsed_document
+                    .as_ref()
+                    .map(|parsed_document| {
+                        let markdown = render_markdown(&detail.object, parsed_document, created_at);
+                        let path = object_dir.join("document.md");
+                        fs::write(&path, markdown).map_err(AppError::from)?;
+                        markdown_file_count += 1;
+                        Ok::<String, AppError>(format!("objects/{object_dir_name}/document.md"))
+                    })
+                    .transpose()?
             } else {
                 None
             };
@@ -227,7 +255,7 @@ impl PortableExportService {
             export_id: export_id.to_string(),
             app_version: self.app_version.clone(),
             created_at: created_at.to_string(),
-            format: EXPORT_FORMAT.to_string(),
+            format: format.as_str().to_string(),
             object_count,
             skipped_secret_count,
             excluded_privacy_levels: vec!["secret"],
@@ -236,14 +264,16 @@ impl PortableExportService {
 
         write_json(&staging_dir.join("manifest.json"), &manifest)?;
         json_file_count += 1;
-        fs::write(staging_dir.join("objects.jsonl"), jsonl_lines.join("\n"))?;
-        json_file_count += 1;
+        if format.includes_json() {
+            fs::write(staging_dir.join("objects.jsonl"), jsonl_lines.join("\n"))?;
+            json_file_count += 1;
+        }
         write_export_checksum(staging_dir)?;
 
         Ok(PortableExportSummary {
             export_id: export_id.to_string(),
             export_root: staging_dir.display().to_string(),
-            format: EXPORT_FORMAT.to_string(),
+            format: format.as_str().to_string(),
             object_count,
             skipped_secret_count,
             markdown_file_count,
@@ -436,6 +466,7 @@ fn sanitize_file_stem(value: &str) -> String {
 mod tests {
     use super::PortableExportService;
     use crate::domain::knowledge::NewKnowledgeObject;
+    use crate::domain::portable_export::PortableExportFormat;
     use crate::repositories::knowledge_objects::KnowledgeObjectRepository;
     use crate::storage::database::Database;
     use std::fs;
@@ -531,6 +562,25 @@ mod tests {
         .expect("markdown should read");
         assert!(markdown.contains("# Export / Candidate"));
         assert!(markdown.contains("# Exported body"));
+
+        let markdown_only = service
+            .export_library_with_format(PortableExportFormat::Markdown)
+            .await
+            .expect("markdown-only library should export");
+        let markdown_only_dir = data_dir.join("exports").join(&markdown_only.export_id);
+        assert_eq!(markdown_only.format, "markdown_directory");
+        assert_eq!(markdown_only.markdown_file_count, 1);
+        assert_eq!(markdown_only.json_file_count, 1);
+        assert!(!markdown_only_dir.join("objects.jsonl").exists());
+
+        let json_only = service
+            .export_library_with_format(PortableExportFormat::Json)
+            .await
+            .expect("JSON-only library should export");
+        let json_only_dir = data_dir.join("exports").join(&json_only.export_id);
+        assert_eq!(json_only.format, "json_directory");
+        assert_eq!(json_only.markdown_file_count, 0);
+        assert!(json_only_dir.join("objects.jsonl").exists());
 
         database.pool().close().await;
         let _ = fs::remove_dir_all(data_dir);

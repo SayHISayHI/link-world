@@ -2,7 +2,7 @@ use crate::domain::knowledge::{
     DeleteObjectMode, DeleteObjectResponse, KnowledgeObject, KnowledgeObjectDetail,
 };
 use crate::errors::{map_ipc_result, IpcResponse};
-use crate::repositories::knowledge_objects::KnowledgeObjectRepository;
+use crate::services::library::LibraryService;
 use crate::state::AppState;
 use tauri::Emitter;
 
@@ -14,10 +14,8 @@ pub async fn get_recent_objects(
     filter_type: Option<String>,
 ) -> Result<IpcResponse<Vec<KnowledgeObject>>, String> {
     let result = async {
-        let pool = state.database()?.pool().clone();
-        let repository = KnowledgeObjectRepository::new(pool);
-
-        repository.list_recent(limit, offset, filter_type).await
+        let service = LibraryService::from_state(state.inner())?;
+        service.list_recent(limit, offset, filter_type).await
     }
     .await;
 
@@ -30,10 +28,8 @@ pub async fn get_object_detail(
     object_id: String,
 ) -> Result<IpcResponse<KnowledgeObjectDetail>, String> {
     let result = async {
-        let pool = state.database()?.pool().clone();
-        let repository = KnowledgeObjectRepository::new(pool);
-
-        repository.get_detail(&object_id).await
+        let service = LibraryService::from_state(state.inner())?;
+        service.get_detail(&object_id).await
     }
     .await;
 
@@ -48,10 +44,8 @@ pub async fn delete_object(
     mode: DeleteObjectMode,
 ) -> Result<IpcResponse<DeleteObjectResponse>, String> {
     let result = async {
-        let pool = state.database()?.pool().clone();
-        let repository = KnowledgeObjectRepository::new(pool);
-
-        repository.delete_object(&object_id, mode).await
+        let service = LibraryService::from_state(state.inner())?;
+        service.delete_object(&object_id, mode).await
     }
     .await;
 

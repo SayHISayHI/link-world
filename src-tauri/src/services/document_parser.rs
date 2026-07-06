@@ -127,7 +127,7 @@ fn select_readable_root<'a>(document: &'a Html) -> Option<ElementRef<'a>> {
             let score = readable_root_score(element, selector_text, &text);
             if best
                 .as_ref()
-                .map_or(true, |(best_score, _)| score > *best_score)
+                .is_none_or(|(best_score, _)| score > *best_score)
             {
                 best = Some((score, element));
             }

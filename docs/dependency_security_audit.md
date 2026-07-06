@@ -40,6 +40,8 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/alpha-readiness.ps1 -Inclu
 
 SQLx 已设置 `default-features = false`，只保留 Tokio runtime、SQLite、chrono、UUID、migration 和 compile-time migration macro。项目不为未来可能性携带 MySQL、Postgres 或 `any` runtime capability。
 
+2026-07-03 CLI 新增 `clap 4.6.x` 与 `clap_complete 4.6.x`，许可证均为 MIT OR Apache-2.0，声明 MSRV 与项目 Rust 1.85 一致。依赖锁定在 `Cargo.lock`，进入 `cargo tree`、RustSec、clippy 和 release binary 审计；CLI 未引入 daemon、HTTP server、shell execution 或额外 secret backend。
+
 ## 5. 剩余边界
 
 - 自动化不能替代安装包签名、Defender、代理/防火墙与真实 Windows 10/11 验证。

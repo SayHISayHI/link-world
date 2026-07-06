@@ -132,9 +132,9 @@ pub async fn submit_capture(
 }
 ```
 
-### 4.2 CLI Boundary (Proposed)
+### 4.2 CLI Boundary
 
-CLI 采用独立 console binary，详细计划见 [cli_development_plan.md](./cli_development_plan.md)，架构决策见 [ADR-0008](./adr/0008-shared-core-for-desktop-and-cli.md)。
+CLI 已采用独立 console binary，详细契约见 [cli_development_plan.md](./cli_development_plan.md)，架构决策见 [ADR-0008](./adr/0008-shared-core-for-desktop-and-cli.md)。`LibraryService`、`OperationsService` 和 `PortableExportService::from_state` 同时供 Tauri/CLI adapter 使用；CLI source 不依赖 repository、sqlx 或 Tauri window API。
 
 CLI adapter responsibilities:
 

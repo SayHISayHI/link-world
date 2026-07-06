@@ -1,5 +1,6 @@
 use tauri::Manager;
 
+pub mod cli;
 pub mod commands;
 pub mod domain;
 pub mod errors;
@@ -7,6 +8,7 @@ pub mod events;
 pub mod jobs;
 pub mod repositories;
 pub mod runtime;
+pub mod runtime_lock;
 pub mod search;
 pub mod security;
 pub mod services;

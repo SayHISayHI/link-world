@@ -27,6 +27,7 @@
 - BYO API 与本地 Ollama。
 - 本地 SQLite、对象存储、FTS、AI trace 和 Evaluation。
 - GitHub Repo 与 Prompt 的第一批结构化评估。
+- 独立 Windows CLI、机器输出契约、共享 service 与显式用户级安装。
 
 本阶段不包含：
 
@@ -36,7 +37,7 @@
 - 自动跨供应商 failover、成本路由或健康评分。
 - 动态第三方插件安装与不受信代码执行。
 - 默认把 public 或 personal 内容发送到第三方 AI；自动处理默认关闭。
-- 正式 CLI binary、机器输出契约和 Agent/MCP 接口；这些属于 Alpha 稳定后的 Proposed 计划，见 `cli_development_plan.md`。
+- Agent/MCP 接口；CLI 机器契约稳定后再单独决策，不在本阶段借 shell 拼接提前开放。
 
 ## 3. 当前执行状态
 
@@ -52,6 +53,7 @@
 | Sprint 5 可观测性 | 执行中 | Diagnostics、失败 job 操作、脱敏支持包、插件指纹/audit/domain correlation 摘要、size/SHA-256 已实现；capture submit/fetch、AI enrichment、search rebuild/reindex、startup migration 与 restore 已接入 2 MiB 有界 JSONL 和持久化 correlation UUID，migration/restore UUID 另写入跨启动 control/result；计划内关键流程的代码级日志覆盖已完成，readiness 自动化与 W5-01 至 W5-14 发布候选矩阵已建立，完整前端门禁和真实 Windows/轮转/支持交接证据仍待完成 |
 | Sprint 6-8 Evaluation | 执行中 | Week 6 已建立 capability/plan/input/output/trace v1、UUID request idempotency、planned/running/passed/failed run+job+trace 事务、2 秒执行 timeout、跨版本启动中断 recovery、artifact cleanup、稳定失败码、结构化 correlation 日志，以及 UI inference/evidence/trace 详情（定向 TypeScript 编译通过，rendered QA 待完成）；Prompt evaluator 保持无模型/无 sandbox 的本地确定性执行，GitHub evaluator 已升级为可降级的 `network_optional` 执行；不可变历史 retry 已通过 0006 lineage 实现；Week 7 已加入无 token 公共 GitHub metadata/README/release adapter、隐私与限流降级、六维评分和 stars 非决定性测试，真实 GitHub API/Windows 矩阵尚未完成；Week 8 Prompt 的纯评分抽取、rubric、diff、synthetic tests、注入和 secret 边界已完成 |
 | Sprint 9-10 Alpha 发布 | 执行中 | commit `98c9b0f` 的 17 项完整 Alpha 门禁、Sprint 2/3/5 聚合、MSI/NSIS、manifest/checksum、npm/RustSec 审计和 RSA waiver 检查已通过并留证；Week 10 playbook 已建立；真实 Windows 安装升级卸载、签名和 5-15 名用户观察仍待执行 |
+| CLI 自动化界面 | 已实现，待最终 RC 矩阵 | 独立 `link-world-cli.exe`、共享 service、OS runtime lock、schema v1 JSON/退出码、capture/AI/Evaluation idempotency、export/backup/search maintenance、completion、用户级安装脚本和 `readiness:cli` 已实现；签名、Defender、代理与用户 PATH 会话仍待发布候选实测 |
 
 ## 4. 周度实施计划
 

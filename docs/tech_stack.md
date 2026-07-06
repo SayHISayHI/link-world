@@ -19,6 +19,8 @@ Link World 采用 **桌面端 Local-first** 的架构。底层由 Rust 驱动 (T
   - 原因: 极轻量级的 SQLite 向量搜索扩展，专为本地优先设计。
   - 注意: sqlite-vec 仍处在 pre-v1 阶段，MVP 必须允许在编译或分发遇阻时回退到纯 FTS5。
 - **多线程 / 异步运行时**: [Tokio](https://tokio.rs/)
+- **CLI 参数与 completion**: `clap 4.6.x` + `clap_complete 4.6.x`
+  - 独立 `link-world-cli.exe` 使用 console subsystem；桌面与 CLI 共享 Rust application services，不共享 adapter。
 - **网络请求 (官方 API、用户提交 URL 拉取、本地模型网关)**: [reqwest](https://docs.rs/reqwest)
   - 注意: 不得用于规避第三方平台限制或云端代登录批量抓取。
 
@@ -64,11 +66,13 @@ link-world/
 ├── src-tauri/                 # Rust 后端与宿主环境
 │   ├── src/
 │   │   ├── main.rs            # Tauri 应用入口
+│   │   ├── bin/link-world-cli.rs # CLI console 入口
+│   │   ├── cli/               # 参数、JSON/text、退出码与 dispatch adapter
 │   │   ├── commands/          # 暴露给前端的 IPC 接口定义
-│   │   ├── db/                # sqlx 相关的数据库模型、迁移文件
-│   │   ├── ai/                # AI 请求代理层
-│   │   ├── core/              # 业务逻辑 (如 Capture Engine, Evaluation Engine)
-│   │   └── plugins/           # 插件系统宿主运行环境
+│   │   ├── services/          # GUI/CLI 共享 application use cases
+│   │   ├── repositories/      # sqlx 数据访问
+│   │   ├── runtime/           # 模型与外部 adapter
+│   │   └── runtime_lock.rs    # 同一数据目录跨进程互斥
 │   ├── migrations/            # SQLite sql 迁移脚本
 │   └── Cargo.toml
 ├── src/                       # React 前端
@@ -88,6 +92,7 @@ link-world/
 ## 4. 规范与边界红线
 - 前端 `src` 不应该包含任何强耦合系统底层的操作。前端对文件系统的读取，应该发送 Command 让 Rust 去读取，然后返回 Uint8Array 或字符串。
 - 绝不要用前端去直连数据库。
+- CLI adapter 同样不得直接依赖 repository/sqlx、Tauri window 或 provider；必须调用共享 service。
 - 后端使用 `sqlx` 时，所有业务数据库迁移脚本放在 `src-tauri/migrations` 目录下，交由 Rust 在启动时自动校验与合并。
 - FTS5 与 sqlite-vec 都是派生索引。解析后正文的唯一可信来源是 `parsed_documents`，不要从 FTS 表反读正文作为业务数据。
 

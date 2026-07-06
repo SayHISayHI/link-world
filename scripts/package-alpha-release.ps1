@@ -44,6 +44,9 @@ if ($isDirty -and -not $AllowDirty) {
 $bundleRoot = Join-Path $repo 'src-tauri/target/release/bundle'
 $msiCandidates = @(Get-ChildItem -LiteralPath (Join-Path $bundleRoot 'msi') -Filter '*.msi' -File -ErrorAction SilentlyContinue)
 $nsisCandidates = @(Get-ChildItem -LiteralPath (Join-Path $bundleRoot 'nsis') -Filter '*-setup.exe' -File -ErrorAction SilentlyContinue)
+$cliCandidate = Join-Path $repo 'src-tauri/target/release/link-world-cli.exe'
+$cliBuildMetadataPath = Join-Path $repo 'src-tauri/target/release/link-world-cli.build.json'
+$cliInstallerScript = Join-Path $repo 'scripts/install-link-world-cli.ps1'
 if ($msiCandidates.Count -ne 1 -or $nsisCandidates.Count -ne 1) {
   throw "Expected exactly one MSI and one NSIS artifact; found $($msiCandidates.Count) MSI and $($nsisCandidates.Count) NSIS files."
 }
@@ -53,14 +56,50 @@ foreach ($candidate in @($msiCandidates[0], $nsisCandidates[0])) {
   }
 }
 $sourceArtifacts = @(
-  @{ packageType = 'msi'; path = $msiCandidates[0].FullName; suffix = '.msi' },
-  @{ packageType = 'nsis'; path = $nsisCandidates[0].FullName; suffix = '-setup.exe' }
+  @{
+    packageType = 'msi'
+    path = $msiCandidates[0].FullName
+    fileName = "link-world-$($tauriConfig.version)-windows-x64-$shortCommit.msi"
+  },
+  @{
+    packageType = 'nsis'
+    path = $nsisCandidates[0].FullName
+    fileName = "link-world-$($tauriConfig.version)-windows-x64-$shortCommit-setup.exe"
+  },
+  @{
+    packageType = 'cli'
+    path = $cliCandidate
+    fileName = 'link-world-cli.exe'
+  },
+  @{
+    packageType = 'cli-installer'
+    path = $cliInstallerScript
+    fileName = 'install-link-world-cli.ps1'
+  }
 )
 
 foreach ($artifact in $sourceArtifacts) {
   if (-not (Test-Path -LiteralPath $artifact.path -PathType Leaf)) {
-    throw "Missing $($artifact.packageType) artifact. Run the Tauri package build first."
+    throw "Missing $($artifact.packageType) artifact. Run the Tauri and CLI release builds first."
   }
+}
+
+if (-not (Test-Path -LiteralPath $cliBuildMetadataPath -PathType Leaf)) {
+  throw 'Missing CLI build metadata. Run npm run build:cli after the Tauri build.'
+}
+$cliBuildMetadata = Read-JsonFile $cliBuildMetadataPath
+$cliHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $cliCandidate).Hash
+if ($cliBuildMetadata.commitSha -ne $commitSha) {
+  throw "CLI build metadata commit does not match HEAD: $($cliBuildMetadata.commitSha) != $commitSha"
+}
+if ($cliBuildMetadata.packageVersion -ne $tauriConfig.version) {
+  throw "CLI build metadata version does not match Tauri version $($tauriConfig.version)."
+}
+if ($cliBuildMetadata.sha256 -ne $cliHash) {
+  throw 'CLI binary no longer matches its build metadata. Run npm run build:cli after the Tauri build.'
+}
+if ([int64]$cliBuildMetadata.bytes -ne (Get-Item -LiteralPath $cliCandidate).Length) {
+  throw 'CLI binary size no longer matches its build metadata.'
 }
 
 if (-not $OutputDirectory) {
@@ -76,7 +115,7 @@ New-Item -ItemType Directory -Path $outputFullPath | Out-Null
 
 $files = @()
 foreach ($artifact in $sourceArtifacts) {
-  $fileName = "link-world-$($tauriConfig.version)-windows-x64-$shortCommit$($artifact.suffix)"
+  $fileName = $artifact.fileName
   $destination = Join-Path $outputFullPath $fileName
   Copy-Item -LiteralPath $artifact.path -Destination $destination
   $hash = Get-FileHash -Algorithm SHA256 -LiteralPath $destination
@@ -128,10 +167,17 @@ $manifest = [pscustomobject]@{
   target = [pscustomobject]@{ os = 'windows'; arch = 'x64' }
   signatureStatus = if ($signatureStatuses.Count -eq 1) { $signatureStatuses[0] } else { 'mixed' }
   files = $files
+  cliBuild = [pscustomobject]@{
+    metadataSchemaVersion = $cliBuildMetadata.schemaVersion
+    sha256 = $cliBuildMetadata.sha256
+    bytes = [int64]$cliBuildMetadata.bytes
+    dirtyWorktree = [bool]$cliBuildMetadata.dirtyWorktree
+  }
   readinessReport = $readiness
   limitations = @(
     'Checksums prove artifact integrity, not publisher identity.',
     'Unsigned Alpha artifacts require an out-of-band trusted checksum.',
+    'The CLI is distributed as a separate executable with an explicit user-level install/PATH script; it is not silently added to PATH by the desktop installer.',
     'This manifest does not replace the Windows installation, upgrade, uninstall, Credential Manager, proxy/firewall, non-ASCII profile, Defender, or user-feedback matrices.'
   )
 }

@@ -212,6 +212,11 @@ if ($IncludeSprintGates) {
     WorkingDirectory = $repo
     Command = @('pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'scripts/sprint5-readiness.ps1', '-IncludeFrontend')
   }
+  $steps += @{
+    Name = 'CLI readiness gate'
+    WorkingDirectory = $repo
+    Command = @('pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'scripts/cli-readiness.ps1')
+  }
 }
 
 if ($IncludeTauriBuild) {
@@ -219,6 +224,11 @@ if ($IncludeTauriBuild) {
     Name = 'Tauri package build'
     WorkingDirectory = $repo
     Command = @('npm', 'run', 'tauri:build')
+  }
+  $steps += @{
+    Name = 'CLI release build'
+    WorkingDirectory = $repo
+    Command = @('npm', 'run', 'build:cli')
   }
 }
 

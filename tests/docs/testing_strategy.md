@@ -194,6 +194,22 @@ MVP smoke tests:
 
 If CI cannot automate an installed browser extension, steps 6-8 must be covered by Loopback contract integration tests and repeated as a manual Chrome smoke test before release.
 
+### 6.1 CLI smoke and parity
+
+`npm run readiness:cli` is the deterministic CLI gate. It must cover:
+
+- help/version/completion without data initialization;
+- schema v1 single-document JSON, stdout/stderr separation and stable exit codes;
+- default metadata-only object show and explicit content disclosure;
+- GUI/CLI shared `LibraryService`、`OperationsService`、Capture/AI/Evaluation/Search/Export/Backup semantics;
+- capture and AI UUID idempotency plus cross-object conflict rejection; Evaluation keeps its existing request/retry identity tests;
+- non-ASCII data directory, recursive local-path redaction and live OS lock contention;
+- local HTTP capture → parse/index → search → show → delete integration;
+- JSON/Markdown/both portable export privacy and backup create/list/verify;
+- user-level CLI install/run/remove without silently changing PATH.
+
+The release candidate additionally follows `docs/cli_windows_release_matrix.md` for installed desktop/CLI contention, forced termination, real proxy/firewall, User PATH session refresh, Authenticode and Defender evidence.
+
 ## 7. Fixtures Policy
 
 Fixtures live under `tests/fixtures`.
@@ -331,6 +347,7 @@ Before release:
 - Sprint 5 observability/support readiness gate passes and its JSON report is retained.
 - Sprint 5 W5-01 through W5-14 Windows/support matrix is recorded for the release candidate.
 - Week 9/10 Alpha readiness gate passes through `npm run readiness:alpha` and its JSON report is retained.
+- CLI readiness gate passes and its JSON report is retained; the CLI Windows release matrix is recorded for the same candidate.
 - Week 9 Windows Alpha install/upgrade/uninstall/security matrix is recorded according to `docs/windows_alpha_release_matrix.md`.
 - Week 10 invited-user feedback, P0/P1 triage, core funnel and next-stage decision are recorded according to `docs/alpha_feedback_playbook.md`.
 - E2E smoke pass.

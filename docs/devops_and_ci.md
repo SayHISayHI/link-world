@@ -97,6 +97,7 @@ Quality gates:
 - Every public command maps errors to `IpcErrorCode`。
 - No secret or正文 in logs。
 - `failed` lifecycle covered。
+- `npm run readiness:cli` passes with JSON report retained whenever CLI/shared-service/runtime-lock code changes。
 
 ### 4.3 Database
 
@@ -121,8 +122,9 @@ Test DB strategy:
 - Sprint 3 readiness automation: `npm run readiness:sprint3` runs capture parsing/failure/redaction, job convergence/isolation and AI failure mapping gates. It does not replace real offline/DNS, external HTTP, forced-process-termination or concurrent capture checks in `docs/sprint3_capture_fault_matrix.md`.
 - Sprint 5 readiness automation: `npm run readiness:sprint5` runs local diagnostics/redaction, bounded logger/rotation, support-bundle privacy/atomicity, capture/AI correlation boundaries, search rebuild/reindex correlation/cancellation/atomic failure cleanup/stable error redaction, startup migration correlation/fail-closed redaction, and restore restart/rollback correlation/redaction gates. It does not replace user-confirmation, installed Windows path/permission, live rotation, 100-failed-job UI or support-handoff checks in `docs/sprint5_observability_readiness.md`.
 - Week 9/10 Alpha readiness automation: `npm run readiness:alpha` first enforces the supported Node.js range, then runs the local pre-release aggregate gate for frontend typecheck/tests/build, Rust fmt/check/test/clippy, release metadata and dependency inventory. The JSON report records the Node/npm versions used. `scripts/alpha-readiness.ps1 -IncludeSprintGates -IncludeTauriBuild -IncludeNetworkAudits` additionally runs Sprint 2/3/5 gates, Tauri packaging and network-backed audit commands where available. It does not replace the Windows installer matrix in `docs/windows_alpha_release_matrix.md` or the invited-user feedback evidence in `docs/alpha_feedback_playbook.md`.
+- CLI readiness automation: `npm run readiness:cli` checks all-target compilation, parser/JSON/exit contracts, shared-service capture flow, request identity, non-ASCII paths, privacy redaction, live runtime lock contention, export/backup and user-level install/remove. It writes an atomic JSON report but does not replace `docs/cli_windows_release_matrix.md`.
 - RustSec 审计必须从 `src-tauri` 执行，以 `src-tauri/Cargo.lock` 作为发布候选的实际锁定依赖图；在仓库根目录找不到 lockfile 不能被记录为“无漏洞”。
-- 完整门禁通过后运行 `scripts/package-alpha-release.ps1 -ReadinessReport <report>`；脚本拒绝脏工作区、失败报告、报告 commit 与 HEAD 不一致，以及缺失 MSI/NSIS 工件，并生成规范化文件名、release manifest、Authenticode 状态和 `SHA256SUMS.txt`。
+- 完整门禁通过后运行 `scripts/package-alpha-release.ps1 -ReadinessReport <report>`；脚本拒绝脏工作区、失败报告、报告 commit 与 HEAD 不一致，以及缺失 MSI/NSIS/CLI/CLI installer 工件，并生成规范化文件名、release manifest、Authenticode 状态和 `SHA256SUMS.txt`。
 - Focused commands: `cargo test storage::database::migration_tests` and `cargo test services::restore`。
 - Function-level phase simulation belongs in normal CI; real-process kill tests belong in the Windows packaging matrix。
 - Focused command: `cargo test repositories::jobs` for retry and startup-running-job convergence.
@@ -191,6 +193,8 @@ Windows:
 - Build `.msi` or `.exe` installer。
 - Ensure uninstall does not delete user data by default。
 - Provide explicit “remove local data” option later。
+- Build `link-world-cli.exe` separately with `npm run build:cli` after the Tauri build. This writes commit/version/bytes/SHA-256 metadata; packaging fails if a later build changes the binary. Include the CLI, `install-link-world-cli.ps1`, Authenticode status and SHA-256 in the release manifest。
+- CLI installation is opt-in. The install script may modify only User PATH after explicit `-AddToPath`; desktop installers must not silently modify PATH。
 
 macOS:
 
@@ -213,6 +217,7 @@ Windows:
 - Store certificate in CI secret manager or dedicated signing service。
 - Never commit certificate or password。
 - Signed installer and signed executable。
+- Sign the standalone CLI and its PowerShell installer before public/commercial distribution。
 
 macOS:
 
@@ -252,6 +257,7 @@ Before release:
 - CI green。
 - `npm run readiness:alpha` green on the release candidate commit, with JSON report retained.
 - Sprint 2/3/5 readiness JSON reports retained for the same release candidate or a documented equivalent commit.
+- CLI readiness JSON report retained; CLI Windows matrix records runtime contention, install/PATH/remove, hash/signature, Defender and proxy results.
 - Windows Alpha package manifest records product version, schema version, commit SHA, package type, build time, signing status and SHA-256 checksum.
 - Migration tests green。
 - Manual smoke test on clean Windows machine。
@@ -266,6 +272,7 @@ Before release:
 - Diagnostics package is redacted。
 - Week 9 Windows Alpha matrix records install, upgrade, uninstall/data retention, Credential Manager, proxy/firewall/offline, non-ASCII profile and security/dependency review results.
 - Week 10 Alpha playbook records invitations, feedback, P0/P1 state, core funnel observations and next-stage decision.
+- Release package contains `link-world-cli.exe` and `install-link-world-cli.ps1`; manifest/checksum entries match the shipped bytes.
 - Release notes include migration risk。
 
 ## 10. Rollback Strategy

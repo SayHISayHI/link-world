@@ -61,10 +61,12 @@
 28. [post_mvp_roadmap.md](./post_mvp_roadmap.md)
    - MVP 后 10 周执行范围、周度交付、验收门槛、当前状态和明确排除项。
 29. [cli_development_plan.md](./cli_development_plan.md)
-   - Alpha 后 CLI 的共享核心、命令范围、机器输出、并发安全、分阶段交付和发布门禁。
-30. [../tests/docs/testing_strategy.md](../tests/docs/testing_strategy.md)
+   - CLI 的共享核心、命令范围、机器输出、并发安全、交付状态和发布门禁。
+30. [cli_windows_release_matrix.md](./cli_windows_release_matrix.md)
+   - CLI 在 Windows 的进程锁、隐私、安装/PATH、签名、网络和发布候选验收矩阵。
+31. [../tests/docs/testing_strategy.md](../tests/docs/testing_strategy.md)
    - 测试分层、fixtures、AI evals、回归测试和发布测试清单。
-31. [adr/README.md](./adr/README.md)
+32. [adr/README.md](./adr/README.md)
    - 架构决策记录，解释关键技术和产品架构取舍，包括 Markdown/AST 渲染与 AI 展示提示边界。
 
 ## Source of Truth
@@ -92,7 +94,8 @@
 - GitHub Repo Evaluator 的外部数据、限流、隐私和评分边界以 `github_repo_evaluator.md` 为准。
 - Prompt Evaluator 的抽取、rubric、diff、测试与注入边界以 `prompt_evaluator.md` 为准。
 - 当前里程碑、周度范围与完成状态以 `post_mvp_roadmap.md` 为准。
-- CLI 的目标范围、命令契约、并发策略和阶段门禁以 `cli_development_plan.md` 为准；在该计划进入实施前，CLI 仍是 Proposed 能力。
+- CLI 的目标范围、命令契约、并发策略和阶段门禁以 `cli_development_plan.md` 为准。
+- CLI 的真实 Windows 进程、安装、PATH、签名与网络发布证据以 `cli_windows_release_matrix.md` 为准。
 - 架构取舍的历史原因以 `adr/` 为准。
 
 ## Documentation Versioning Policy

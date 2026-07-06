@@ -1,8 +1,8 @@
 # Link World CLI 开发计划
 
-状态：Proposed  
+状态：Implemented；自动化门禁已建立，签名与最终真实机发布矩阵仍开放
 创建日期：2026-07-03  
-目标阶段：Windows Local Alpha 稳定后  
+实施日期：2026-07-03
 关联决策：[ADR-0008](./adr/0008-shared-core-for-desktop-and-cli.md)
 
 ## 1. 目的
@@ -82,7 +82,7 @@ Windows 首期二进制名使用 `link-world-cli.exe`。当前桌面宿主已经
 
 ### 3.3 进程与数据目录互斥
 
-首期采用单运行者策略：桌面端和 CLI 初始化同一数据目录前必须取得跨进程 runtime lock。该限制比 SQLite 的单写入者要求更严格，但能同时覆盖数据库、对象存储、migration、restore 和后台任务。
+首期采用单运行者策略：桌面端和 CLI 初始化同一数据目录前必须取得跨进程 runtime lock。该限制比 SQLite 的单写入者要求更严格，但能同时覆盖数据库、对象存储、migration、restore 和后台任务。Windows 实现持有 `FileShare::None` 文件句柄，进程崩溃时由操作系统释放，不依赖删除 marker 判断存活。
 
 - 已有进程持锁时，另一进程立即返回 `ERR_RUNTIME_BUSY`，不得等待后偷取锁。
 - migration、restore、backup 发布、FTS rebuild 和对象写入均在锁保护范围内。
@@ -104,22 +104,25 @@ link-world-cli object show <OBJECT_ID> [--include-content]
 link-world-cli object delete <OBJECT_ID> --yes
 
 link-world-cli search <QUERY> [--type TYPE] [--limit N]
-link-world-cli capture url <URL> [--request-id UUID] [--wait]
+link-world-cli capture url <URL> [--request-id UUID]
 
-link-world-cli analysis run <OBJECT_ID> [--request-id UUID] [--wait]
+link-world-cli analysis run <OBJECT_ID> [--request-id UUID]
 link-world-cli evaluation list
-link-world-cli evaluation run <OBJECT_ID> <EVALUATOR> [--request-id UUID] [--wait]
+link-world-cli evaluation run <OBJECT_ID> <EVALUATOR> [--request-id UUID]
 link-world-cli evaluation show <RUN_ID>
-link-world-cli evaluation retry <RUN_ID> [--request-id UUID] [--wait]
+link-world-cli evaluation retry <RUN_ID> [--request-id UUID]
 
 link-world-cli job show <JOB_ID>
-link-world-cli job retry <JOB_ID> [--wait]
+link-world-cli job retry <JOB_ID>
 
 link-world-cli search-index check
-link-world-cli search-index rebuild [--wait]
+link-world-cli search-index rebuild
+link-world-cli search-index status <JOB_ID>
 link-world-cli search-index cancel <JOB_ID>
+link-world-cli search-index reindex <OBJECT_ID>
 
-link-world-cli export library --format json|markdown --yes
+link-world-cli diagnostics export --yes
+link-world-cli export library --format json|markdown|both --yes
 link-world-cli backup create
 link-world-cli backup list
 link-world-cli backup verify <BACKUP_ID>
@@ -150,18 +153,18 @@ link-world-cli backup verify <BACKUP_ID>
 | 5 | runtime busy 或当前启动模式不允许 |
 | 6 | 可重试的网络/provider 失败 |
 | 7 | 持久化、migration、restore 或完整性失败 |
-| 8 | job 已提交但 `--wait` 超时；结果状态仍可查询 |
 | 10 | 未分类内部错误 |
 
-错误 JSON 只包含稳定 `code`、安全 `message`、可选 `correlationId` 和 `retryable`，不得包含 raw provider/SQLite error、绝对路径、请求正文或 secret。
+错误 JSON 只包含稳定 `code`、安全 `message`、可选 `correlationId`、`retryable` 和仅含内部 job/object/run ID 的可选 `operation`，不得包含 raw provider/SQLite error、绝对路径、请求正文或 secret。业务任务进入 failed 终态时必须返回非零退出码，不能把“结果已持久化”冒充“操作成功”。
 
-### 5.3 异步操作
+### 5.3 独立进程执行语义
 
-- 默认提交后台操作后立即返回 object/job/run/correlation ID。
-- `--wait` 只轮询持久化状态，不在 adapter 中复制任务执行逻辑。
-- 等待必须有有界默认超时，可通过受限参数调整；超时不取消已经提交的任务。
-- 可幂等写操作接受 `--request-id UUID`；缺省时由 CLI 生成并在结果中返回。
-- Ctrl+C 只停止本地等待。除非命令本身具有显式 cancel 语义，不得把终端中断偷偷映射为业务取消。
+首期没有 daemon，CLI 又独占数据目录，因此不能在提交任务后退出并假装后台仍有 worker。capture、AI、Evaluation、retry 和 search rebuild 在既有 service timeout/cancellation 边界内运行到持久化终态后再退出，并返回 object/job/run/correlation ID。
+
+- adapter 不复制任务执行逻辑，只调用与桌面端相同的 service runner。
+- capture、AI 和 Evaluation 的 `--request-id UUID` 真实参与 job/correlation identity；同 identity 重试复用结果，跨对象或跨操作复用 fail closed。
+- Ctrl+C 或进程终止可能留下 durable running job；下一次初始化沿用既有 startup recovery 收敛，不把终端中断偷偷写成业务取消。
+- 将来只有引入 daemon/IPC owner 后才可增加 submit-and-exit/`--wait` 模式；该变化需要另立 ADR。
 
 ## 6. 安全、隐私与可观测性
 
@@ -175,7 +178,7 @@ link-world-cli backup verify <BACKUP_ID>
 
 ## 7. 分阶段实施
 
-### Phase 0：契约与共享核心准备
+### Phase 0：契约与共享核心准备（已实现）
 
 交付：
 
@@ -191,7 +194,7 @@ link-world-cli backup verify <BACKUP_ID>
 - 桌面端和 CLI 共享初始化测试；同一数据目录并发启动稳定返回 `ERR_RUNTIME_BUSY`。
 - CLI crate/binary 不依赖 React 或 Tauri window API。
 
-### Phase 1：只读闭环
+### Phase 1：只读闭环（已实现）
 
 交付：
 
@@ -205,12 +208,12 @@ link-world-cli backup verify <BACKUP_ID>
 - JSON schema snapshot、空库、损坏输入、非 ASCII 目录和大结果分页测试通过。
 - stdout/stderr 分离，JSON 模式可直接被 PowerShell 解析。
 
-### Phase 2：受控写入与后台任务
+### Phase 2：受控写入与后台任务（已实现）
 
 交付：
 
 - capture、AI enrichment、Evaluation、job retry。
-- request UUID 幂等、`--wait`、超时和 Ctrl+C 语义。
+- request UUID 幂等、既有 service timeout 和 Ctrl+C/startup recovery 语义。
 - 对象删除的显式确认与一致的 audit/domain event/log 行为。
 
 验收：
@@ -219,12 +222,12 @@ link-world-cli backup verify <BACKUP_ID>
 - 重复 request ID 不产生重复对象、run 或 artifact；跨 identity 复用 fail closed。
 - 网络失败、模型未配置、policy denied 和进程中断均返回稳定、安全结果。
 
-### Phase 3：维护、导出与发布
+### Phase 3：维护、导出与发布（代码与自动化已实现；签名/最终真实机矩阵开放）
 
 交付：
 
 - 索引检查/重建/取消、便携导出、backup create/list/verify。
-- PowerShell completion、独立签名 artifact、安装器 PATH 选项和升级策略。
+- PowerShell completion、可独立签名的 artifact、安装器 PATH 选项和升级策略；最终签名作为公开发布门禁，不在开发工作树伪造。
 - CLI readiness 脚本与真实 Windows 矩阵。
 
 验收：
@@ -234,7 +237,7 @@ link-world-cli backup verify <BACKUP_ID>
 - 维护操作故障注入不发布半成品索引、导出或 backup。
 - 签名、checksum、依赖审计和隐私扫描进入发布证据。
 
-### Phase 4：Agent/MCP 评估（独立决策）
+### Phase 4：Agent/MCP 评估（明确延期，独立决策）
 
 只有 Phase 1–3 的机器契约稳定后再评估：
 
@@ -256,33 +259,33 @@ MCP 不得通过 shell 字符串拼接绕过 typed validation，也不得因为�
 - capture/search/AI/evaluation/job 的幂等和失败分类测试。
 - secret、正文、URL query、绝对路径和 raw error 诱饵扫描。
 - PowerShell 管道、UTF-8、中文用户目录和重定向测试。
-- signed release artifact 的安装、升级、PATH、卸载和 checksum 验证。
+- release artifact 的安装、升级、PATH、卸载和 checksum 验证；公开发布候选还必须验证真实签名。
 
-建议增加：
+已增加：
 
 ```text
 npm run readiness:cli
 ```
 
-该命令应生成 JSON report，记录版本、命令、退出码、耗时和经过脱敏的有限日志尾部。真实 Windows 进程竞争、安装器 PATH 和签名仍需单独发布矩阵，不能由单进程自动化替代。
+该命令生成原子 JSON report，覆盖 rustfmt/check/clippy、CLI parser、共享 service 流程、request-id 幂等、中文临时目录、JSON/退出码、破坏性操作显式确认、实时进程锁竞争、便携导出、备份以及用户级安装/卸载脚本。真实代理/防火墙、强制终止、用户 PATH 会话刷新、签名和 Defender 仍按 `cli_windows_release_matrix.md` 验收，不能由单进程自动化替代。
 
 ## 9. 完成定义
 
-CLI 首期只有同时满足以下条件才能标记为完成：
+CLI 首期代码实现只有同时满足以下条件才能标记为完成；对外 release-ready 还必须关闭 `cli_windows_release_matrix.md` 中的发布候选项：
 
-- Phase 0–3 的命令、契约、测试和发布矩阵均通过。
+- Phase 0–3 的命令、契约和自动化测试通过，发布矩阵的开放项有明确阻断级别、owner 和留证要求。
 - 没有 CLI 专属业务逻辑、SQL 或 provider 调用。
 - GUI/CLI parity fixture 没有语义漂移。
 - runtime lock、幂等、隐私和 destructive confirmation 经过自动化与真实 Windows 验证。
 - 文档索引、总体架构、后端边界、测试策略、DevOps/CI 和发布证据已同步。
 - 已知限制明确写入 `--help` 和用户文档，尤其是桌面端与 CLI 首期不能同时打开同一数据目录。
 
-## 10. 实施前待确认事项
+## 10. 已定实施决策
 
-以下问题不阻塞本文档进入 Proposed，但必须在 Phase 0 结束前定案：
+1. CLI 以独立 `link-world-cli.exe` artifact 发布；`install-link-world-cli.ps1` 负责显式用户级安装和可选 PATH，不由桌面安装器静默修改 PATH。
+2. 首期命令名固定为 `link-world-cli`，不提供未经冲突验证的短 alias。
+3. 参数解析采用 `clap 4.6.x`，completion 使用 `clap_complete 4.6.x`；两者为 MIT OR Apache-2.0，MSRV 与项目 Rust 1.85 对齐，并进入 Cargo.lock/RustSec 门禁。
+4. Library、Operations 和 Portable Export 已抽为共享 application service；CLI adapter 不依赖 repository、sqlx 或 Tauri window API。
+5. 首期明确不支持桌面端与 CLI 并发打开同一数据目录，竞争稳定返回 `ERR_RUNTIME_BUSY`。daemon/IPC 仅在真实需求成立后另立 ADR。
 
-1. CLI 是随桌面安装器默认安装，还是作为独立可选 artifact 发布。
-2. Windows shell command 最终保留 `link-world-cli`，还是额外提供经过冲突验证的短 alias。
-3. `clap` 是否满足依赖治理要求，或使用更小的参数解析方案。
-4. 哪些 read model 需要抽成与 Tauri DTO 无关的 application DTO。
-5. Alpha 用户是否真的需要桌面端运行时并发调用 CLI；若需要，应另立 daemon/IPC ADR，不扩大首期实现。
+发布构建顺序固定为 Tauri bundle → `npm run build:cli` → package。CLI build 生成 commit/version/bytes/SHA-256 stamp；package 在复制前复验 stamp，防止 Tauri 的后续 Cargo build 悄悄替换已验收 CLI。

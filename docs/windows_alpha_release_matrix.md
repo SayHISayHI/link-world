@@ -64,7 +64,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/alpha-readiness.ps1 -Inclu
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/package-alpha-release.ps1 -ReadinessReport <alpha-readiness.json>
 ```
 
-该命令只接受通过且 commit 与当前 HEAD 相同的 readiness report，并默认拒绝脏工作区。输出包含规范化 MSI/NSIS、`release-manifest.json`、Authenticode 状态和 `SHA256SUMS.txt`；它不能替代真实安装矩阵。
+该命令只接受通过且 commit 与当前 HEAD 相同的 readiness report，并默认拒绝脏工作区。输出包含规范化 MSI/NSIS、独立 `link-world-cli.exe`、CLI 安装脚本、`release-manifest.json`、Authenticode 状态和 `SHA256SUMS.txt`；它不能替代真实安装矩阵。CLI 专项见 `cli_windows_release_matrix.md`。
 
 签名边界:
 

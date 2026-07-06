@@ -1,6 +1,5 @@
 use crate::domain::portable_export::PortableExportSummary;
 use crate::errors::{map_ipc_result, AppError, IpcResponse};
-use crate::repositories::knowledge_objects::KnowledgeObjectRepository;
 use crate::services::portable_export::PortableExportService;
 use crate::state::{AppState, StartupState};
 
@@ -16,13 +15,7 @@ pub async fn export_library(
             ));
         }
 
-        let pool = state.database()?.pool().clone();
-        let repository = KnowledgeObjectRepository::new(pool);
-        let service = PortableExportService::new(
-            repository,
-            startup.data_dir(),
-            state.backend_version().to_string(),
-        );
+        let service = PortableExportService::from_state(state.inner(), startup.data_dir())?;
 
         service.export_library().await
     }

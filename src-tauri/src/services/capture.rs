@@ -63,6 +63,14 @@ impl CaptureService {
     }
 
     pub async fn submit(&self, item: RawCaptureItem) -> AppResult<SubmitCaptureResponse> {
+        self.submit_with_request_id(item, None).await
+    }
+
+    pub async fn submit_with_request_id(
+        &self,
+        item: RawCaptureItem,
+        request_id: Option<&str>,
+    ) -> AppResult<SubmitCaptureResponse> {
         validate_capture_item(&item)?;
 
         let user_id = item
@@ -70,6 +78,21 @@ impl CaptureService {
             .clone()
             .unwrap_or_else(|| LOCAL_USER_ID.to_string());
         let canonical_url = normalized_capture_canonical_url(&item);
+
+        let request_id = normalize_capture_request_id(request_id)?;
+        if let Some(request_id) = request_id.as_deref() {
+            if let Some(existing) = self
+                .find_existing_request(
+                    request_id,
+                    canonical_url.as_deref(),
+                    &item.privacy_level,
+                    expected_capture_job_type(&item),
+                )
+                .await?
+            {
+                return Ok(existing);
+            }
+        }
 
         if let Some(existing) = self
             .find_duplicate_url_capture(&item, &user_id, canonical_url.as_deref())
@@ -80,8 +103,10 @@ impl CaptureService {
 
         let object_id = Uuid::new_v4().to_string();
         let snapshot_id = Uuid::new_v4().to_string();
-        let job_id = Uuid::new_v4().to_string();
-        let correlation_id = Uuid::new_v4().to_string();
+        let job_id = request_id
+            .clone()
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
+        let correlation_id = request_id.unwrap_or_else(|| Uuid::new_v4().to_string());
         let now = item
             .captured_at
             .clone()
@@ -181,6 +206,32 @@ impl CaptureService {
         self.record_log(log_event).await;
 
         Ok(response)
+    }
+
+    async fn find_existing_request(
+        &self,
+        request_id: &str,
+        canonical_url: Option<&str>,
+        privacy_level: &str,
+        expected_job_type: &str,
+    ) -> AppResult<Option<SubmitCaptureResponse>> {
+        let mut tx = self.pool.begin().await?;
+        let existing = CaptureRepository::find_by_request_id(&mut tx, request_id).await?;
+        tx.commit().await?;
+
+        let Some(existing) = existing else {
+            return Ok(None);
+        };
+        if existing.capture.object_id.is_empty()
+            || existing.job_type != expected_job_type
+            || existing.canonical_url.as_deref() != canonical_url
+            || existing.privacy_level != privacy_level
+        {
+            return Err(AppError::PolicyDenied(
+                "capture.request_id_identity_conflict".to_string(),
+            ));
+        }
+        Ok(Some(existing_capture_response(existing.capture)))
     }
 
     async fn find_duplicate_url_capture(
@@ -697,6 +748,23 @@ fn has_text(value: &Option<String>) -> bool {
 
 fn is_deduplicated_url_capture(item: &RawCaptureItem) -> bool {
     item.source_type == "url" && !has_text(&item.raw_text) && !has_text(&item.raw_html)
+}
+
+fn expected_capture_job_type(item: &RawCaptureItem) -> &'static str {
+    if has_text(&item.raw_text) || has_text(&item.raw_html) {
+        "search.reindex_object"
+    } else {
+        "capture.fetch_url"
+    }
+}
+
+fn normalize_capture_request_id(request_id: Option<&str>) -> AppResult<Option<String>> {
+    let Some(request_id) = request_id else {
+        return Ok(None);
+    };
+    Uuid::parse_str(request_id)
+        .map(|value| Some(value.to_string()))
+        .map_err(|_| AppError::PolicyDenied("capture.request_id_invalid".to_string()))
 }
 
 fn normalized_capture_canonical_url(item: &RawCaptureItem) -> Option<String> {
@@ -1402,6 +1470,79 @@ return answer;</code></pre>
             .await;
 
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn capture_request_id_is_idempotent_and_identity_bound() {
+        let database = Database::initialize_in_memory()
+            .await
+            .expect("database should initialize");
+        let object_store = test_object_store();
+        let service = CaptureService::new(database.pool().clone(), object_store);
+        let request_id = uuid::Uuid::new_v4().to_string();
+        let item = RawCaptureItem {
+            id: None,
+            user_id: None,
+            source_type: "url".to_string(),
+            source_platform: Some("web".to_string()),
+            source_url: Some("https://example.com/idempotent".to_string()),
+            canonical_url: None,
+            title: None,
+            author: None,
+            captured_at: None,
+            raw_html: None,
+            raw_text: None,
+            assets: Vec::new(),
+            metadata: json!({}),
+            privacy_level: "personal".to_string(),
+            permission_context: confirmed_permission(),
+        };
+
+        let first = service
+            .submit_with_request_id(item.clone(), Some(&request_id))
+            .await
+            .expect("first request should be accepted");
+        let repeated = service
+            .submit_with_request_id(item, Some(&request_id))
+            .await
+            .expect("same request identity should be reused");
+
+        assert_eq!(first.object_id, repeated.object_id);
+        assert_eq!(first.job_id.as_deref(), Some(request_id.as_str()));
+        assert!(repeated.deduplicated);
+        let object_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM knowledge_objects")
+            .fetch_one(database.pool())
+            .await
+            .expect("object count should be readable");
+        assert_eq!(object_count, 1);
+
+        let conflict = service
+            .submit_with_request_id(
+                RawCaptureItem {
+                    source_url: Some("https://example.com/different".to_string()),
+                    ..RawCaptureItem {
+                        id: None,
+                        user_id: None,
+                        source_type: "url".to_string(),
+                        source_platform: Some("web".to_string()),
+                        source_url: None,
+                        canonical_url: None,
+                        title: None,
+                        author: None,
+                        captured_at: None,
+                        raw_html: None,
+                        raw_text: None,
+                        assets: Vec::new(),
+                        metadata: json!({}),
+                        privacy_level: "personal".to_string(),
+                        permission_context: confirmed_permission(),
+                    }
+                },
+                Some(&request_id),
+            )
+            .await
+            .expect_err("request id must not cross capture identity");
+        assert!(matches!(conflict, AppError::PolicyDenied(_)));
     }
 
     #[tokio::test]
