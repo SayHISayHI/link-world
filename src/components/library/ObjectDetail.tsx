@@ -79,7 +79,7 @@ export function ObjectDetail({
 }: ObjectDetailProps) {
   if (!object) {
     return (
-      <div className="flex h-screen items-center justify-center text-sm text-muted-foreground">
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
         Select an item to inspect.
       </div>
     );
@@ -98,7 +98,7 @@ export function ObjectDetail({
   const statusText = formatRelativeStatus(object.lifecycleStatus);
 
   return (
-    <div className="flex h-screen min-w-0 flex-col">
+    <div className="flex h-full min-w-0 flex-col">
       <header className="flex h-14 items-center justify-between border-b border-border px-5">
         <div className="min-w-0">
           <h2 className="truncate text-sm font-semibold">{title}</h2>
@@ -122,8 +122,8 @@ export function ObjectDetail({
           </Button>
         </div>
       </header>
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_320px]">
-        <article className="overflow-y-auto p-6">
+      <div className="flex min-h-0 flex-1">
+        <article className="min-w-0 flex-1 overflow-y-auto p-6">
           <div className="max-w-4xl">
             <div className="mb-4 flex items-center gap-2 text-xs text-muted-foreground">
               <Activity className="h-4 w-4" aria-hidden="true" />
@@ -194,7 +194,7 @@ export function ObjectDetail({
             ) : null}
           </div>
         </article>
-        <aside className="border-l border-border bg-background p-4">
+        <aside className="w-[320px] shrink-0 border-l border-border bg-background p-4 overflow-y-auto">
           <h3 className="text-sm font-semibold">Capture</h3>
           <div className="mt-3 rounded-md border border-border bg-surface p-3 text-xs leading-5">
             <div className="flex items-center justify-between gap-3">

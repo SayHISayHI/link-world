@@ -28,6 +28,31 @@ function renderObjectDetail(object: KnowledgeObject) {
 }
 
 describe("ObjectDetail", () => {
+  it("keeps the empty state sized to the parent pane", () => {
+    const { container } = render(
+      <ObjectDetail
+        detailLoading={false}
+        pingLoading={false}
+        deleteLoading={false}
+        retryLoading={false}
+        aiRunLoading={false}
+        searchIndexLoading={false}
+        evaluationLoading={false}
+        onPing={noop}
+        onDeleteObject={noop}
+        onRetryCapture={noop}
+        onOpenModelSettings={noop}
+        onRunAIAnalysis={noop}
+        onReindexObject={noop}
+        onRunEvaluation={noop}
+      />,
+    );
+
+    expect(screen.getByText("Select an item to inspect.")).toBeInTheDocument();
+    expect(container.firstChild).toHaveClass("h-full");
+    expect(container.firstChild).not.toHaveClass("h-screen");
+  });
+
   it("formats capture failure codes as recovery-oriented detail copy", () => {
     renderObjectDetail({
       id: "obj_failed",

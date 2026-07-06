@@ -30,7 +30,7 @@ const navItems: Array<{
 
 export function Sidebar({ route, onNavigate }: SidebarProps) {
   return (
-    <div className="flex h-full flex-col p-3">
+    <div className="flex h-full flex-col overflow-y-auto p-3">
       <div className="px-2 py-3">
         <div className="text-sm font-semibold tracking-normal">Link World</div>
         <div className="mt-1 text-xs text-muted-foreground">Local knowledge workspace</div>

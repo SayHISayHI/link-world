@@ -79,7 +79,7 @@ export function ObjectList({
   const rebuildProgress = Math.round(searchRebuildStatus?.progressPercent ?? 0);
 
   return (
-    <div className="h-screen overflow-y-auto p-3">
+    <div className="h-full overflow-y-auto p-3">
       <div className="mb-3 px-1">
         <h1 className="text-base font-semibold">{searchActive ? "Search" : heading}</h1>
         <p className="mt-1 text-xs text-muted-foreground">
