@@ -30,6 +30,7 @@ src/
 │   ├── library/             # object list/detail
 │   ├── analysis/            # AI Analysis presentation
 │   ├── evaluation/          # Evaluation result presentation
+│   ├── organization/        # triage, Collections, Topics, AI suggestions
 │   ├── settings/            # settings panels
 │   ├── recovery/            # startup recovery surfaces before normal AppState is available
 │   └── shared/              # common presentational components
@@ -93,8 +94,8 @@ Rules:
 `libraryStore` 管理轻量 domain cache：
 
 - current object id。
-- current list filter。
-- recent object list。
+- current typed `LibraryViewRef + LibraryFilters`。
+- cursor-paged object list。
 - object detail cache。
 - optimistic deletion state。
 
@@ -215,7 +216,7 @@ Route model:
 
 ```ts
 type AppRoute =
-  | { name: 'library'; filter?: string; objectId?: string }
+  | { name: 'library'; view?: LibraryViewRef; filters?: LibraryFilters; objectId?: string }
   | { name: 'search'; query?: string }
   | { name: 'settings'; panel?: 'models' | 'privacy' | 'capture' | 'plugins' | 'storage' | 'diagnostics' | 'about' }
   | { name: 'evaluation'; objectId: string; runId?: string };
@@ -231,7 +232,9 @@ Rules:
 - Browser preview may fall back to normal shell if Tauri runtime is unavailable; the desktop runtime must use `get_startup_status`.
 - 如果未来引入 React Router，必须使用 `HashRouter`，避免本地文件路径刷新问题。
 - Deep link / browser extension capture 进入应用后，只能转换为 route action，不直接改 domain store。
-- Sidebar 分类通过 `library.filter` 驱动后端过滤；`inbox` / `failed` 是 lifecycle 过滤，其余值按 object type 过滤。
+- Sidebar 使用后端返回的 `LibraryNavigation`；System、Collection、Tag、Smart 必须通过 `LibraryViewRef.kind` 区分。
+- 内容类型属于 `LibraryFilters.objectTypes`，不得重新混入一级导航；列表与 FTS 搜索必须提交同一 scope。
+- `Inbox` 只读取 `triage_status`，不能从 lifecycle 推断；AI enrich 不得自动改变 route 或 triage。
 - Settings 是与 Library 同级的正式 route；凭据表单不得嵌入对象详情。
 
 ## 6. Container and Presentational Components
@@ -296,7 +299,7 @@ o-referrer`。
 布局要求：
 
 - 左侧 Sidebar 宽度稳定。
-- 中间列表按 30 条分页并显式 Load more；后续可在不改变 command contract 的前提下替换为虚拟滚动。
+- 中间列表按 30 条、`(updated_at, id)` opaque cursor 分页并显式 Load more；append 必须按 object id 去重。
 - 右侧详情支持 loading、empty、failed、deleted。
 - 三栏区域不得出现嵌套卡片堆叠。
 - 工具按钮使用 lucide icons + tooltip。
@@ -454,7 +457,9 @@ Minimum frontend tests:
 - `MarkdownDocumentView` renders TOC, heading anchors, GFM tables, Callout and long-code controls。
 - unsafe HTML/URL、纯文本 fallback、AI hint 失效和 clipboard fallback 必须有组件测试。
 - `SearchCommand` handles loading, empty, failed, keyboard navigation。
-- `ObjectList` handles search empty, search failed, rebuild progress and rebuild cancellation boundary states。
+- `ObjectList` handles search empty, search failed, rebuild progress, rebuild cancellation and content-type filter states。
+- `Sidebar` renders server navigation counts, active typed view, collection create/rename/archive and Smart View creation without hardcoded content categories。
+- `OrganizationPanel` covers triage, collection membership, user Topics, pending AI suggestion confidence/rationale, accept and reject。
 - `SettingsPanel` masks API key。
 - `DiagnosticsSettings` renders local health, sanitized failed job summaries and normal model-configuration degradation；support-bundle export is disabled until the inline confirmation is checked, then shows only path/size/SHA-256 and never loads bundle content into React state。
 - `PluginPermissionPanel` displays required vs optional permissions。
@@ -464,7 +469,10 @@ E2E scenarios:
 
 - Add URL -> object appears -> parsed detail visible。
 - Failed parse -> browser capture fallback action visible。
-- Configure model -> AI analysis appears。
+- Configure model -> AI analysis appears with key points/actions/risks/claims and pending Topic suggestions。
+- Create Collection -> add object -> collection count and scoped list/search agree。
+- Accept/reject Topic suggestion -> only accepted suggestion becomes a canonical assignment。
+- Save current filters as Smart View -> reopen and receive the same result scope。
 - Trigger evaluation -> evaluation verdict visible。
 - Search -> open result。
 - Delete object -> result disappears from search。

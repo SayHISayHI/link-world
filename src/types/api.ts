@@ -276,6 +276,124 @@ export interface AIAnalysis {
   createdAt: string;
 }
 
+export type LibraryViewKind = "system" | "collection" | "tag" | "smart";
+
+export interface LibraryViewRef {
+  kind: LibraryViewKind;
+  id: string;
+}
+
+export interface LibraryFilters {
+  objectTypes: KnowledgeObjectType[];
+  lifecycleStatuses: ObjectLifecycle[];
+  tagIds: string[];
+  privacyLevels: PrivacyLevel[];
+  qualityMin?: number;
+  qualityMax?: number;
+}
+
+export interface LibraryQuery {
+  view: LibraryViewRef;
+  filters: LibraryFilters;
+  cursor?: string;
+  limit?: number;
+}
+
+export interface LibraryPage<T> {
+  items: T[];
+  nextCursor?: string;
+}
+
+export interface NavigationItem {
+  id: string;
+  label: string;
+  count: number;
+  kind: LibraryViewKind;
+  iconKey?: string;
+  colorToken?: string;
+  collectionType?: string;
+  revision?: number;
+}
+
+export interface LibraryNavigation {
+  systemViews: NavigationItem[];
+  collections: NavigationItem[];
+  topics: NavigationItem[];
+  smartViews: NavigationItem[];
+}
+
+export interface KnowledgeTag {
+  id: string;
+  name: string;
+  normalizedName: string;
+  source: "user" | "ai_generated" | "imported" | string;
+  colorToken?: string;
+}
+
+export interface KnowledgeCollection {
+  id: string;
+  name: string;
+  description?: string;
+  collectionType: "manual" | "smart" | string;
+  iconKey?: string;
+  colorToken?: string;
+  queryJson?: string;
+  sortOrder: number;
+  isPinned: boolean;
+  revision: number;
+}
+
+export interface TagSuggestion {
+  id: string;
+  objectId: string;
+  analysisId: string;
+  name: string;
+  normalizedName: string;
+  confidence?: number;
+  rationale?: string;
+  status: "pending" | "accepted" | "rejected" | "superseded" | string;
+  createdAt: string;
+}
+
+export interface ObjectOrganization {
+  objectId: string;
+  triageStatus: "inbox" | "filed";
+  tags: KnowledgeTag[];
+  collections: KnowledgeCollection[];
+  tagSuggestions: TagSuggestion[];
+}
+
+export interface CreateCollectionInput {
+  name: string;
+  description?: string;
+  iconKey?: string;
+  colorToken?: string;
+}
+
+export interface UpdateCollectionInput {
+  collectionId: string;
+  name?: string;
+  description?: string;
+  iconKey?: string;
+  colorToken?: string;
+  isPinned?: boolean;
+  sortOrder?: number;
+  expectedRevision: number;
+}
+
+export interface SmartViewRule {
+  schemaVersion: 1;
+  objectTypes: KnowledgeObjectType[];
+  tagIds: string[];
+  minimumQuality?: number;
+  analysisState?: "present" | "missing";
+  evaluationState?: "present" | "missing" | "failed";
+}
+export interface CreateSmartViewInput {
+  name: string;
+  description?: string;
+  rule: SmartViewRule;
+}
 export type ModelApiFamily =
   | "openai_chat_completions"
   | "openai_responses"

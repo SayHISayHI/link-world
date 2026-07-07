@@ -3,6 +3,7 @@ use crate::domain::ai::{
     ModelApiFamily, ModelProviderConfig, StoredModelProviderConfig,
 };
 use crate::errors::{AppError, AppResult};
+use crate::repositories::organization::OrganizationRepository;
 use crate::repositories::search::SearchRepository;
 use chrono::Utc;
 use serde_json::json;
@@ -493,6 +494,14 @@ impl AIRepository {
         .execute(&mut *tx)
         .await?;
 
+        OrganizationRepository::persist_ai_tag_suggestions(
+            &mut tx,
+            &analysis.object_id,
+            &analysis.id,
+            &analysis.tag_suggestions,
+        )
+        .await?;
+
         sqlx::query(
             r#"
             INSERT INTO ai_traces (
@@ -940,6 +949,7 @@ mod tests {
             display_hints_json: Some(
                 r#"{"schemaVersion":1,"mode":"reference","confidence":0.9}"#.to_string(),
             ),
+            tag_suggestions: Vec::new(),
             created_at: "2026-06-17T00:00:01Z".to_string(),
         };
         let trace = AITraceSubmission {

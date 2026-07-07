@@ -5,6 +5,8 @@ import type {
   BackgroundJob,
   KnowledgeObject,
   KnowledgeObjectDetail,
+  NavigationItem,
+  ObjectOrganization,
   PingResponse,
 } from "../../types/api";
 import type { AppUiError } from "../../lib/errors";
@@ -12,7 +14,10 @@ import { formatCaptureFailureReason } from "../../lib/captureFailures";
 import { formatRelativeStatus } from "../../lib/formatting";
 import { AIAnalysisPanel } from "../analysis/AIAnalysisPanel";
 import { EvaluationPanel } from "../evaluation/EvaluationPanel";
+import { OrganizationPanel } from "../organization/OrganizationPanel";
 import { selectCurrentDisplayHints } from "./displayHints";
+
+const noop = () => undefined;
 
 const MarkdownDocumentView = lazy(() =>
   import("./MarkdownDocumentView").then((module) => ({
@@ -40,6 +45,11 @@ interface ObjectDetailProps {
   searchIndexMessage?: string;
   evaluationLoading: boolean;
   evaluationError?: AppUiError;
+  organization?: ObjectOrganization;
+  organizationCollections?: NavigationItem[];
+  organizationLoading?: boolean;
+  organizationMutationLoading?: boolean;
+  organizationError?: AppUiError;
   onPing: () => void;
   onDeleteObject: () => void;
   onRetryCapture: () => void;
@@ -47,6 +57,12 @@ interface ObjectDetailProps {
   onRunAIAnalysis: () => void;
   onReindexObject: () => void;
   onRunEvaluation: () => void;
+  onMarkFiled?: (filed: boolean) => void;
+  onToggleCollection?: (collectionId: string, selected: boolean) => void;
+  onAddTag?: (name: string) => void;
+  onRemoveTag?: (tagId: string) => void;
+  onAcceptTagSuggestion?: (suggestionId: string) => void;
+  onRejectTagSuggestion?: (suggestionId: string) => void;
 }
 
 export function ObjectDetail({
@@ -69,6 +85,11 @@ export function ObjectDetail({
   searchIndexMessage,
   evaluationLoading,
   evaluationError,
+  organization,
+  organizationCollections = [],
+  organizationLoading = false,
+  organizationMutationLoading = false,
+  organizationError,
   onPing,
   onDeleteObject,
   onRetryCapture,
@@ -76,6 +97,12 @@ export function ObjectDetail({
   onRunAIAnalysis,
   onReindexObject,
   onRunEvaluation,
+  onMarkFiled = noop,
+  onToggleCollection = noop,
+  onAddTag = noop,
+  onRemoveTag = noop,
+  onAcceptTagSuggestion = noop,
+  onRejectTagSuggestion = noop,
 }: ObjectDetailProps) {
   const currentDetail = detail && (!object || detail.object.id === object.id) ? detail : undefined;
   const currentObject = currentDetail?.object ?? object;
@@ -228,7 +255,19 @@ export function ObjectDetail({
               <p className="mt-3 text-muted-foreground">{searchIndexMessage}</p>
             ) : null}
           </div>
-          <AIAnalysisPanel
+          <OrganizationPanel
+            organization={organization}
+            collections={organizationCollections}
+            loading={organizationLoading}
+            mutationLoading={organizationMutationLoading}
+            error={organizationError}
+            onMarkFiled={onMarkFiled}
+            onToggleCollection={onToggleCollection}
+            onAddTag={onAddTag}
+            onRemoveTag={onRemoveTag}
+            onAcceptSuggestion={onAcceptTagSuggestion}
+            onRejectSuggestion={onRejectTagSuggestion}
+          />          <AIAnalysisPanel
             latestAnalysis={latestAnalysis}
             runLoading={aiRunLoading}
             error={aiError}

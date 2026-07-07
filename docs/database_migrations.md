@@ -119,8 +119,9 @@ Old data:
 - Migration `0004_evaluation_runtime_contract.sql` adds nullable request/correlation UUIDs, plan/input/output schema versions defaulting to 1, a partial unique request index and a status index. Legacy evaluation rows remain readable with NULL identity and version 1 contracts.
 - Migration `0005_evaluation_traces.sql` adds one privacy-bounded trace per new Evaluation run. It stores execution identity, input/output hashes, timeout/latency, terminal status and stable `evaluation.*` code; it does not backfill legacy runs or store title, URL, content, plan, output or raw error.
 - Migration `0006_evaluation_retry_lineage.sql` adds nullable `retry_of_run_id` with `ON DELETE SET NULL` and a partial parent index. Retry creates a new run; existing/failed history is never reset or overwritten.
+- Migration `0007_knowledge_organization.sql` adds independent triage, enriches tags/Collections/membership metadata, and creates `tag_suggestions`. Existing enriched/evaluated/failed objects are filed to preserve prior Inbox results; new captures remain Inbox across AI enrichment. Only deduplicated tags from the latest historical analysis become pending suggestions; no canonical tag or assignment is created.
 - Analysis schema version 1 with `display_hints_json IS NULL` must deserialize as `displayHints: undefined` and use deterministic Markdown AST layout inference.
-- Newly generated general analyses use analysis schema version 2; the nested display hint has its own independent schema version 1.
+- Newly generated general analyses use analysis schema version 3; tags are structured suggestions with bounded confidence/rationale, while `ai_analysis.tags_json` remains a compatibility name snapshot. The nested display hint keeps its independent schema version 1.
 - Old `evaluation_runs` remain visible.
 - New prompt schema does not overwrite old output.
 
@@ -136,7 +137,7 @@ Every migration must be tested against:
 - DB with parsed documents.
 - DB with AI traces.
 - previous release DB with schema version 1 AI analyses and no display hint column.
-- upgraded DB containing both legacy analyses without display hints and schema version 2 analyses with valid or invalid hints.
+- upgraded DB containing legacy analyses without display hints, schema version 2 display hints, and schema version 3 pending Topic suggestions.
 - DB with evaluation artifacts.
 - DB with tombstones.
 
@@ -147,7 +148,8 @@ Every migration must be tested against:
 - 0001 fixture：1000 个对象，并覆盖 sensitive/secret、snapshot、parsed document、legacy AI analysis、AI trace、Evaluation artifact、失败 job、FTS、provider、tombstone 和 local setting。
 - 0001 → latest：验证所有核心/派生行数、隐私级别、FTS 可检索性、外键、`display_hints_json IS NULL` 兼容和 provider 默认 API family。
 - 0002 → latest：验证已有 display hints 原样保留，历史 provider identity 不改写。
-- 0003 → latest：验证非默认 `anthropic_messages` 不回退，并依次新增 0004 runtime identity/version、0005 privacy-bounded trace 与 0006 retry lineage/索引。
+- 0003 → latest：验证非默认 `anthropic_messages` 不回退，并依次新增 0004 runtime identity/version、0005 privacy-bounded trace、0006 retry lineage 和 0007 organization。
+- 0006 → latest：验证 enriched object 迁移为 filed、历史 AI tag 大小写去重成一个 pending suggestion、canonical tags 保持为空、Collection ID/名称保留并生成 normalized name。
 - 0001 legacy Evaluation row → latest：验证 request/correlation/retry parent 保持 NULL，plan/input/output schema version 均为 1，artifact 和历史 verdict 不丢失；legacy run 不强制伪造 trace。
 - future version：注入未知 migration 999 后必须返回 `DbMigration`，用户对象和 migration metadata 不被重写。
 

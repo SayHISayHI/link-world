@@ -116,7 +116,7 @@ Local Edition 必须支持：
 
 - 旧 AI analysis 和 evaluation result 不因 schema 升级被覆盖。
 
-当前自动化已覆盖 0001/0002/0003 历史 schema 到 current 0006、1000 对象 v1 数据集、外键/FTS/隐私/AI/Evaluation/job/provider/tombstone 不变量、未知未来 migration 的 fail-closed、启动 recovery UI 的受限操作展示，以及便携导出默认排除 secret 与本机 storage URI。真实安装包原地升级和进程级强制终止仍未完成。
+当前自动化已覆盖 0001/0002/0003 历史 schema 到 current 0007、1000 对象 v1 数据集、外键/FTS/隐私/AI/Evaluation/job/provider/tombstone 不变量、未知未来 migration 的 fail-closed、启动 recovery UI 的受限操作展示，以及便携导出默认排除 secret 与本机 storage URI。真实安装包原地升级和进程级强制终止仍未完成。
 
 ### 5.1 Evaluation Runtime
 

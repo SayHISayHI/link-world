@@ -14,6 +14,7 @@
 - 插件默认无权限，必须由 manifest 声明并由用户授权。
 - 云端不托管非官方第三方平台账号密码、cookie 或 session。
 - 删除对象必须清理派生索引、AI 输出、评估产物和对象存储。
+- AI 生成的 topic 只能写入 pending suggestion；未经过用户接受，不得成为 canonical tag、collection membership 或同步事实。
 
 ## 2. Data Classification
 
@@ -55,6 +56,8 @@ Before `TextGenerationProvider.generate` or any future embedding/rerank/vision p
 4. Check explicit authorization if needed.
 5. Create AI trace shell or policy denial audit.
 6. Redact logs.
+
+AI enrichment 产生的 `tag_suggestions` 必须保留 analysis/source lineage、置信度和简短 rationale，但不得存储额外正文副本。接受、拒绝和 supersede 是可审计状态转换；日志只能包含 object/suggestion/tag id 和稳定动作名，不得包含原始内容或完整模型响应。
 
 Provider connection tests do not include object content and do not create AI analyses, but they still use `SecretStore`, redacted errors and the configured destination. Windows Alpha 使用 Credential Manager（service `com.linkworld.app.model-provider`）；SQLite 只保存 `keyring:model-provider:<config-id>` 或显式环境变量引用。Read APIs return only `hasApiKey`, never the key or `secret_ref`. 删除 provider 配置时先删除 credential，再删除数据库引用；任一步失败都不得伪装为成功。
 Provider base URL 不允许携带 userinfo、query 或 fragment，避免把凭据混入 URL、错误或诊断日志。默认 provider 的 config id 存在 `local_settings`；删除默认项只清除选择，不自动把内容路由到其他第三方 provider。
@@ -161,6 +164,8 @@ Deletion must enqueue purge and remove:
 - `evaluation_runs`.
 - `evaluation_artifacts`.
 - `knowledge_fts`.
+- `object_tags` and `collection_objects` memberships.
+- `tag_suggestions`.
 - `vector_chunks_meta`.
 - `vec_chunks`.
 - object store files.

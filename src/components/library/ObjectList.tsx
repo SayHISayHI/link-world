@@ -1,6 +1,11 @@
 import { RefreshCw, XCircle } from "lucide-react";
 import type { RefObject } from "react";
-import type { KnowledgeObject, RebuildSearchIndexResponse, SearchResult } from "../../types/api";
+import type {
+  KnowledgeObject,
+  KnowledgeObjectType,
+  RebuildSearchIndexResponse,
+  SearchResult,
+} from "../../types/api";
 import { formatRelativeStatus } from "../../lib/formatting";
 import { cn } from "../../lib/cn";
 import type { AppUiError } from "../../lib/errors";
@@ -30,6 +35,7 @@ interface ObjectListProps {
   searchMaintenanceError?: AppUiError;
   searchMaintenanceMessage?: string;
   searchRebuildStatus?: RebuildSearchIndexResponse;
+  objectTypeFilter?: KnowledgeObjectType;
   onCaptureValueChange: (value: string) => void;
   onCaptureSubmit: () => void;
   onSearchValueChange: (value: string) => void;
@@ -39,6 +45,7 @@ interface ObjectListProps {
   onRebuildSearchIndex: () => void;
   onLoadMore: () => void;
   onSelectObject: (objectId: string) => void;
+  onObjectTypeFilterChange?: (value?: KnowledgeObjectType) => void;
 }
 
 export function ObjectList({
@@ -61,6 +68,7 @@ export function ObjectList({
   searchMaintenanceError,
   searchMaintenanceMessage,
   searchRebuildStatus,
+  objectTypeFilter,
   onCaptureValueChange,
   onCaptureSubmit,
   onSearchValueChange,
@@ -70,6 +78,7 @@ export function ObjectList({
   onRebuildSearchIndex,
   onLoadMore,
   onSelectObject,
+  onObjectTypeFilterChange = () => undefined,
 }: ObjectListProps) {
   const searchActive = searchValue.trim().length > 0;
   const displayObjects = searchActive ? searchResults.map((result) => result.object) : objects;
@@ -81,12 +90,31 @@ export function ObjectList({
   return (
     <div className="h-full overflow-y-auto p-3">
       <div className="mb-3 px-1">
-        <h1 className="text-base font-semibold">{searchActive ? "Search" : heading}</h1>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="min-w-0 truncate text-base font-semibold">
+            {searchActive ? "Search" : heading}
+          </h1>
+          <select
+            value={objectTypeFilter ?? ""}
+            onChange={(event) =>
+              onObjectTypeFilterChange(
+                (event.target.value || undefined) as KnowledgeObjectType | undefined,
+              )
+            }
+            className="h-8 max-w-32 rounded-sm border border-border bg-surface px-2 text-xs text-muted-foreground outline-none focus:border-accent"
+            aria-label="Filter content type"
+          >
+            <option value="">All types</option>
+            <option value="article">Articles</option>
+            <option value="github_repo">GitHub repos</option>
+            <option value="prompt">Prompts</option>
+            <option value="note">Notes</option>
+          </select>
+        </div>
         <p className="mt-1 text-xs text-muted-foreground">
           {searchActive ? "FTS results from parsed text and AI summaries." : "Captured items ready for processing."}
         </p>
       </div>
-
       <div className="mb-3 rounded-md border border-border bg-surface p-2">
         <div className="flex items-center gap-2">
           <input

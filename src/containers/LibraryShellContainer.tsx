@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "../components/layout/AppShell";
 import { ThreePaneLayout } from "../components/layout/ThreePaneLayout";
 import { ObjectDetail } from "../components/library/ObjectDetail";
@@ -10,15 +10,19 @@ import { useDeleteObject } from "../hooks/commands/useDeleteObject";
 import { useObjectDetail } from "../hooks/commands/useObjectDetail";
 import { useObjectJobs } from "../hooks/commands/useObjectJobs";
 import { usePing } from "../hooks/commands/usePing";
-import { useRecentObjects } from "../hooks/commands/useRecentObjects";
+import { useLibraryNavigation } from "../hooks/commands/useLibraryNavigation";
+import { useLibraryObjects } from "../hooks/commands/useLibraryObjects";
+import { useObjectOrganization } from "../hooks/commands/useObjectOrganization";
+import { useOrganizationMutations } from "../hooks/commands/useOrganizationMutations";
 import { useRebuildSearchIndex } from "../hooks/commands/useRebuildSearchIndex";
 import { useReindexObject } from "../hooks/commands/useReindexObject";
 import { useRetryBackgroundJob } from "../hooks/commands/useRetryBackgroundJob";
 import { useRetryEvaluation } from "../hooks/commands/useRetryEvaluation";
-import { useSearchHybrid } from "../hooks/commands/useSearchHybrid";
+import { useSearchLibrary } from "../hooks/commands/useSearchLibrary";
 import { useSubmitCapture } from "../hooks/commands/useSubmitCapture";
 import { useTriggerAIEnrichment } from "../hooks/commands/useTriggerAIEnrichment";
 import { useTriggerEvaluation } from "../hooks/commands/useTriggerEvaluation";
+import { allLibraryView, emptyLibraryFilters } from "../app/routes";
 import { formatAIFailureReason } from "../lib/aiFailures";
 import {
   subscribeToLibraryEvents,
@@ -31,6 +35,10 @@ import { useUiStore } from "../store/uiStore";
 import type {
   BackgroundJob,
   KnowledgeObject,
+  KnowledgeObjectType,
+  LibraryNavigation,
+  LibraryQuery,
+  NavigationItem,
   RebuildSearchIndexResponse,
   SearchIndexHealthResponse,
 } from "../types/api";
@@ -41,7 +49,6 @@ export function LibraryShellContainer() {
   const { route, setRoute } = useUiStore();
   const [captureUrl, setCaptureUrl] = useState("");
   const [lastCaptureJob, setLastCaptureJob] = useState<CaptureJobCompletedPayload>();
-  const [hasMoreObjects, setHasMoreObjects] = useState(false);
   const [searchMaintenanceMode, setSearchMaintenanceMode] = useState<"check" | "rebuild">();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const lastCompletedSearchRebuildJobRef = useRef<string>();
@@ -49,11 +56,26 @@ export function LibraryShellContainer() {
   const { query: searchQuery, setQuery: setSearchQuery } = useSearchStore();
   const { data, error, loading, ping } = usePing();
   const {
-    data: recentObjects,
-    error: recentObjectsError,
-    loading: recentObjectsLoading,
-    loadRecentObjects,
-  } = useRecentObjects();
+    data: libraryObjects,
+    nextCursor,
+    error: libraryObjectsError,
+    loading: libraryObjectsLoading,
+    loadLibraryObjects,
+  } = useLibraryObjects();
+  const {
+    data: navigation,
+    error: navigationError,
+    loading: navigationLoading,
+    loadNavigation,
+  } = useLibraryNavigation();
+  const {
+    data: objectOrganization,
+    error: objectOrganizationError,
+    loading: objectOrganizationLoading,
+    loadObjectOrganization,
+    resetObjectOrganization,
+  } = useObjectOrganization();
+  const organizationMutations = useOrganizationMutations();
   const {
     data: objectDetail,
     error: objectDetailError,
@@ -88,8 +110,8 @@ export function LibraryShellContainer() {
     error: searchError,
     loading: searchLoading,
     resetSearch,
-    searchHybrid,
-  } = useSearchHybrid();
+    searchLibrary,
+  } = useSearchLibrary();
   const {
     data: rebuildSearchIndexResult,
     error: rebuildSearchIndexError,
@@ -130,20 +152,19 @@ export function LibraryShellContainer() {
   const selectedSearchResult = searchResults.find((result) => result.object.id === selectedObjectId);
   const selectedObject = objects.find((object) => object.id === selectedObjectId) ?? selectedSearchResult?.object;
   const retryableCaptureJob = findRetryableCaptureJob(objectJobs, selectedObject?.id);
-  const libraryFilter =
-    route.name === "library" && route.filter && route.filter !== "all"
-      ? route.filter
-      : undefined;
+  const libraryQuery = useMemo<LibraryQuery>(
+    () => ({
+      view: route.name === "library" ? (route.view ?? allLibraryView) : allLibraryView,
+      filters: route.name === "library" ? (route.filters ?? emptyLibraryFilters) : emptyLibraryFilters,
+      limit: LIBRARY_PAGE_SIZE,
+    }),
+    [route],
+  );
 
   const refreshRecentObjects = useCallback(async () => {
-    const page = await loadRecentObjects({
-      filterType: libraryFilter,
-      limit: LIBRARY_PAGE_SIZE,
-      offset: 0,
-    });
-    setHasMoreObjects(page.length === LIBRARY_PAGE_SIZE);
-    return page;
-  }, [libraryFilter, loadRecentObjects]);
+    const page = await loadLibraryObjects({ query: { ...libraryQuery, cursor: undefined } });
+    return page?.items ?? [];
+  }, [libraryQuery, loadLibraryObjects]);
 
   const refreshSearchResults = useCallback(() => {
     const query = searchQuery.trim();
@@ -153,24 +174,33 @@ export function LibraryShellContainer() {
       return Promise.resolve([]);
     }
 
-    return searchHybrid({ query, filterType: libraryFilter, limit: 25 });
-  }, [libraryFilter, resetSearch, searchHybrid, searchQuery]);
+    return searchLibrary({
+      query,
+      limit: 25,
+      libraryQuery: { ...libraryQuery, cursor: undefined },
+    });
+  }, [libraryQuery, resetSearch, searchLibrary, searchQuery]);
   const eventActionsRef = useRef({
     loadObjectDetail,
     loadObjectJobs,
+    loadObjectOrganization,
+    loadNavigation,
     refreshRecentObjects,
     refreshSearchResults,
   });
   eventActionsRef.current = {
     loadObjectDetail,
     loadObjectJobs,
+    loadObjectOrganization,
+    loadNavigation,
     refreshRecentObjects,
     refreshSearchResults,
   };
 
   useEffect(() => {
     void refreshRecentObjects();
-  }, [refreshRecentObjects]);
+    void loadNavigation();
+  }, [loadNavigation, refreshRecentObjects]);
 
 
   useEffect(() => {
@@ -226,6 +256,11 @@ export function LibraryShellContainer() {
       const actions = eventActionsRef.current;
       void actions.refreshRecentObjects();
       void actions.refreshSearchResults();
+      void actions.loadNavigation();
+      const selectedId = useLibraryStore.getState().selectedObjectId;
+      if (selectedId) {
+        void actions.loadObjectOrganization(selectedId);
+      }
     };
     const refreshSelectedObject = (objectId?: string) => {
       if (!objectId || objectId !== useLibraryStore.getState().selectedObjectId) {
@@ -276,23 +311,27 @@ export function LibraryShellContainer() {
   }, []);
 
   useEffect(() => {
-    setObjects(recentObjects);
-  }, [recentObjects, setObjects]);
+    setObjects(libraryObjects);
+  }, [libraryObjects, setObjects]);
 
   useEffect(() => {
     if (!selectedObjectId) {
       resetObjectDetail();
       resetObjectJobs();
+      resetObjectOrganization();
       setSelectedDetail(undefined);
       return;
     }
 
     void loadObjectDetail(selectedObjectId);
     void loadObjectJobs({ objectId: selectedObjectId, limit: 10 });
+    void loadObjectOrganization(selectedObjectId);
   }, [
     loadObjectDetail,
     loadObjectJobs,
+    loadObjectOrganization,
     resetObjectDetail,
+    resetObjectOrganization,
     resetObjectJobs,
     selectedObjectId,
     setSelectedDetail,
@@ -393,6 +432,8 @@ export function LibraryShellContainer() {
   }, [
     loadObjectDetail,
     loadObjectJobs,
+    loadObjectOrganization,
+    loadNavigation,
     refreshRecentObjects,
     refreshSearchResults,
     retryBackgroundJob,
@@ -420,6 +461,8 @@ export function LibraryShellContainer() {
   }, [
     loadObjectDetail,
     loadObjectJobs,
+    loadObjectOrganization,
+    loadNavigation,
     refreshRecentObjects,
     refreshSearchResults,
     selectedObjectId,
@@ -427,15 +470,14 @@ export function LibraryShellContainer() {
   ]);
 
   const handleLoadMoreObjects = useCallback(async () => {
-    const page = await loadRecentObjects({
+    if (!nextCursor) {
+      return;
+    }
+    await loadLibraryObjects({
       append: true,
-      filterType: libraryFilter,
-      limit: LIBRARY_PAGE_SIZE,
-      offset: objects.length,
+      query: { ...libraryQuery, cursor: nextCursor },
     });
-    setHasMoreObjects(page.length === LIBRARY_PAGE_SIZE);
-  }, [libraryFilter, loadRecentObjects, objects.length]);
-
+  }, [libraryQuery, loadLibraryObjects, nextCursor]);
   const handleRebuildSearchIndex = useCallback(async () => {
     setSearchMaintenanceMode("rebuild");
     await rebuildSearchIndex();
@@ -475,6 +517,8 @@ export function LibraryShellContainer() {
   }, [
     loadObjectDetail,
     loadObjectJobs,
+    loadObjectOrganization,
+    loadNavigation,
     refreshRecentObjects,
     refreshSearchResults,
     reindexObject,
@@ -511,6 +555,8 @@ export function LibraryShellContainer() {
   }, [
     loadObjectDetail,
     loadObjectJobs,
+    loadObjectOrganization,
+    loadNavigation,
     refreshRecentObjects,
     refreshSearchResults,
     resetRetryEvaluation,
@@ -522,20 +568,168 @@ export function LibraryShellContainer() {
     triggerEvaluation,
   ]);
 
+  const refreshOrganizationUi = useCallback(async () => {
+    const tasks: Array<Promise<unknown>> = [loadNavigation(), refreshRecentObjects()];
+    if (searchQuery.trim()) {
+      tasks.push(refreshSearchResults());
+    }
+    if (selectedObjectId) {
+      tasks.push(loadObjectOrganization(selectedObjectId));
+    }
+    await Promise.all(tasks);
+  }, [
+    loadNavigation,
+    loadObjectOrganization,
+    refreshRecentObjects,
+    refreshSearchResults,
+    searchQuery,
+    selectedObjectId,
+  ]);
+
+  const handleCreateCollection = useCallback(
+    async (name: string) => {
+      const created = await organizationMutations.createCollection({
+        name,
+        iconKey: "folder",
+      });
+      if (created) {
+        await loadNavigation();
+      }
+    },
+    [loadNavigation, organizationMutations],
+  );
+
+  const handleCreateSmartView = useCallback(async () => {
+    const name = window.prompt("Name this smart view")?.trim();
+    if (!name) {
+      return;
+    }
+    const created = await organizationMutations.createSmartView({
+      name,
+      rule: {
+        schemaVersion: 1,
+        objectTypes: libraryQuery.filters.objectTypes,
+        tagIds: libraryQuery.filters.tagIds,
+        minimumQuality: libraryQuery.filters.qualityMin,
+      },
+    });
+    if (created) {
+      await loadNavigation();
+    }
+  }, [libraryQuery.filters, loadNavigation, organizationMutations]);
+  const handleRenameCollection = useCallback(
+    async (item: NavigationItem) => {
+      const nextName = window.prompt("Rename collection", item.label)?.trim();
+      if (!nextName || nextName === item.label || item.revision === undefined) {
+        return;
+      }
+      const updated = await organizationMutations.updateCollection({
+        collectionId: item.id,
+        name: nextName,
+        expectedRevision: item.revision,
+      });
+      if (updated) {
+        await loadNavigation();
+      }
+    },
+    [loadNavigation, organizationMutations],
+  );
+
+  const handleArchiveCollection = useCallback(
+    async (item: NavigationItem) => {
+      if (!window.confirm("Archive " + item.label + "? Saved items will remain in the library.")) {
+        return;
+      }
+      const archived = await organizationMutations.archiveCollection(item.id);
+      if (!archived) {
+        return;
+      }
+      if (route.name === "library" && route.view?.kind === "collection" && route.view.id === item.id) {
+        setRoute({ name: "library", view: allLibraryView, filters: emptyLibraryFilters });
+      }
+      await loadNavigation();
+    },
+    [loadNavigation, organizationMutations, route, setRoute],
+  );
+
+  const handleMarkFiled = useCallback(
+    async (filed: boolean) => {
+      if (!selectedObjectId) return;
+      const updated = await organizationMutations.markObjectTriaged(selectedObjectId, filed);
+      if (updated) await refreshOrganizationUi();
+    },
+    [organizationMutations, refreshOrganizationUi, selectedObjectId],
+  );
+
+  const handleToggleCollection = useCallback(
+    async (collectionId: string, selected: boolean) => {
+      if (!selectedObjectId) return;
+      const updated = selected
+        ? await organizationMutations.addObjectToCollection(selectedObjectId, collectionId)
+        : await organizationMutations.removeObjectFromCollection(selectedObjectId, collectionId);
+      if (updated) await refreshOrganizationUi();
+    },
+    [organizationMutations, refreshOrganizationUi, selectedObjectId],
+  );
+
+  const handleAddTag = useCallback(
+    async (name: string) => {
+      if (!selectedObjectId) return;
+      const tag = await organizationMutations.addUserTag(selectedObjectId, name);
+      if (tag) await refreshOrganizationUi();
+    },
+    [organizationMutations, refreshOrganizationUi, selectedObjectId],
+  );
+
+  const handleRemoveTag = useCallback(
+    async (tagId: string) => {
+      if (!selectedObjectId) return;
+      const removed = await organizationMutations.removeObjectTag(selectedObjectId, tagId);
+      if (removed) await refreshOrganizationUi();
+    },
+    [organizationMutations, refreshOrganizationUi, selectedObjectId],
+  );
+
+  const handleAcceptTagSuggestion = useCallback(
+    async (suggestionId: string) => {
+      const tag = await organizationMutations.acceptTagSuggestion(suggestionId);
+      if (tag) await refreshOrganizationUi();
+    },
+    [organizationMutations, refreshOrganizationUi],
+  );
+
+  const handleRejectTagSuggestion = useCallback(
+    async (suggestionId: string) => {
+      const rejected = await organizationMutations.rejectTagSuggestion(suggestionId);
+      if (rejected) await refreshOrganizationUi();
+    },
+    [organizationMutations, refreshOrganizationUi],
+  );
   if (route.name === "settings") {
     const panel = (route.panel ?? "models") as SettingsPanelName;
     return (
       <AppShell>
         <div className="grid min-h-screen grid-cols-[232px_minmax(0,1fr)]">
           <aside className="border-r border-border bg-surface">
-            <Sidebar route={route} onNavigate={setRoute} />
+            <Sidebar
+              route={route}
+              navigation={navigation}
+              loading={navigationLoading}
+              mutationLoading={organizationMutations.loading}
+              error={navigationError ?? organizationMutations.error}
+              onNavigate={setRoute}
+              onCreateCollection={handleCreateCollection}
+              onCreateSmartView={handleCreateSmartView}
+              onRenameCollection={handleRenameCollection}
+              onArchiveCollection={handleArchiveCollection}
+            />
           </aside>
           <SettingsPanel
             panel={panel}
             onPanelChange={(nextPanel) => setRoute({ name: "settings", panel: nextPanel })}
             onOpenObject={(objectId) => {
               selectObject(objectId);
-              setRoute({ name: "library", filter: "all" });
+              setRoute({ name: "library", view: allLibraryView, filters: emptyLibraryFilters });
             }}
           />
         </div>
@@ -545,15 +739,26 @@ export function LibraryShellContainer() {
   return (
     <AppShell>
       <ThreePaneLayout
-        sidebar={<Sidebar route={route} onNavigate={setRoute} />}
+        sidebar={<Sidebar
+              route={route}
+              navigation={navigation}
+              loading={navigationLoading}
+              mutationLoading={organizationMutations.loading}
+              error={navigationError ?? organizationMutations.error}
+              onNavigate={setRoute}
+              onCreateCollection={handleCreateCollection}
+              onCreateSmartView={handleCreateSmartView}
+              onRenameCollection={handleRenameCollection}
+              onArchiveCollection={handleArchiveCollection}
+            />}
         list={
           <ObjectList
             objects={objects}
-            heading={libraryHeading(route)}
-            hasMore={hasMoreObjects}
+            heading={libraryHeading(route, navigation)}
+            hasMore={Boolean(nextCursor)}
             selectedObjectId={selectedObjectId}
-            loading={recentObjectsLoading}
-            error={recentObjectsError}
+            loading={libraryObjectsLoading}
+            error={libraryObjectsError}
             captureValue={captureUrl}
             captureLoading={submitCaptureLoading}
             captureError={submitCaptureError}
@@ -566,6 +771,7 @@ export function LibraryShellContainer() {
             searchMaintenanceLoading={rebuildSearchIndexLoading || searchIndexHealthLoading}
             searchMaintenanceError={rebuildSearchIndexError ?? searchIndexHealthError}
             searchRebuildStatus={rebuildSearchIndexResult}
+            objectTypeFilter={libraryQuery.filters.objectTypes[0]}
             searchMaintenanceMessage={searchMaintenanceMessage(
               searchMaintenanceMode,
               rebuildSearchIndexResult,
@@ -585,6 +791,16 @@ export function LibraryShellContainer() {
               void handleLoadMoreObjects();
             }}
             onSelectObject={selectObject}
+            onObjectTypeFilterChange={(objectType?: KnowledgeObjectType) => {
+              setRoute({
+                name: "library",
+                view: libraryQuery.view,
+                filters: {
+                  ...libraryQuery.filters,
+                  objectTypes: objectType ? [objectType] : [],
+                },
+              });
+            }}
           />
         }
         detail={
@@ -608,6 +824,11 @@ export function LibraryShellContainer() {
             searchIndexMessage={reindexStatusMessage(reindexObjectResult, selectedObjectId)}
             evaluationLoading={triggerEvaluationLoading || retryEvaluationLoading}
             evaluationError={triggerEvaluationError ?? retryEvaluationError}
+            organization={objectOrganization}
+            organizationCollections={navigation?.collections ?? []}
+            organizationLoading={objectOrganizationLoading}
+            organizationMutationLoading={organizationMutations.loading}
+            organizationError={objectOrganizationError ?? organizationMutations.error}
             onPing={() => {
               void ping();
             }}
@@ -617,6 +838,12 @@ export function LibraryShellContainer() {
             onRunAIAnalysis={handleRunAIAnalysis}
             onReindexObject={handleReindexSelectedObject}
             onRunEvaluation={handleRunEvaluation}
+            onMarkFiled={handleMarkFiled}
+            onToggleCollection={handleToggleCollection}
+            onAddTag={handleAddTag}
+            onRemoveTag={handleRemoveTag}
+            onAcceptTagSuggestion={handleAcceptTagSuggestion}
+            onRejectTagSuggestion={handleRejectTagSuggestion}
           />
         }
       />
@@ -624,21 +851,22 @@ export function LibraryShellContainer() {
   );
 }
 
-function libraryHeading(route: ReturnType<typeof useUiStore.getState>["route"]) {
+function libraryHeading(
+  route: ReturnType<typeof useUiStore.getState>["route"],
+  navigation?: LibraryNavigation,
+) {
   if (route.name !== "library") {
     return "All";
   }
-  const labels: Record<string, string> = {
-    all: "All",
-    article: "Articles",
-    failed: "Failed",
-    github_repo: "GitHub",
-    inbox: "Inbox",
-    prompt: "Prompts",
-  };
-  return labels[route.filter ?? "all"] ?? "All";
+  const view = route.view ?? allLibraryView;
+  const items = [
+    ...(navigation?.systemViews ?? []),
+    ...(navigation?.collections ?? []),
+    ...(navigation?.topics ?? []),
+    ...(navigation?.smartViews ?? []),
+  ];
+  return items.find((item) => item.kind === view.kind && item.id === view.id)?.label ?? "Library";
 }
-
 function reindexStatusMessage(
   result: { objectId: string; indexed: boolean } | undefined,
   selectedObjectId?: string,

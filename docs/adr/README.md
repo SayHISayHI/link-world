@@ -23,3 +23,4 @@ ADR 用于记录 Link World 的关键架构决策。任何会影响长期架构�
 - [0006 - Markdown AST rendering and advisory AI display hints](./0006-markdown-ast-rendering-and-ai-display-hints.md)
 - [0007 - Model provider runtime and protocol adapters](./0007-model-provider-runtime-and-protocol-adapters.md)
 - [0008 - Shared application core for desktop and CLI](./0008-shared-core-for-desktop-and-cli.md)
+- [0009 - Dynamic knowledge organization and user-owned taxonomy](./0009-dynamic-knowledge-organization.md)

@@ -5,6 +5,7 @@ pub mod diagnostics;
 pub mod evaluation;
 pub mod library;
 pub mod operations;
+pub mod organization;
 pub mod portable_export;
 pub mod search;
 pub mod system;

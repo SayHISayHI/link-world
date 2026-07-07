@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS knowledge_objects (
         )
     ),
     failure_reason TEXT,               -- lifecycle_status = 'failed' 时记录可展示错误
+    triage_status TEXT NOT NULL DEFAULT 'inbox' CHECK (triage_status IN ('inbox', 'filed')),
+    triaged_at DATETIME,
     captured_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -226,26 +228,66 @@ CREATE TABLE IF NOT EXISTS evaluation_artifacts (
     FOREIGN KEY (evaluation_run_id) REFERENCES evaluation_runs(id) ON DELETE CASCADE
 );
 
--- 9. 标签与集合表
+-- 9. 标签、建议与集合表
 CREATE TABLE IF NOT EXISTS tags (
     id TEXT PRIMARY KEY,
     name TEXT UNIQUE NOT NULL,
-    source TEXT NOT NULL CHECK (source IN ('user', 'ai_generated', 'imported'))
+    normalized_name TEXT,
+    source TEXT NOT NULL CHECK (source IN ('user', 'ai_generated', 'imported')),
+    color_token TEXT,
+    created_at DATETIME,
+    updated_at DATETIME,
+    archived_at DATETIME
 );
 
 CREATE TABLE IF NOT EXISTS object_tags (
     object_id TEXT NOT NULL,
     tag_id TEXT NOT NULL,
+    assignment_source TEXT NOT NULL DEFAULT 'user' CHECK (
+        assignment_source IN ('user', 'ai_accepted', 'imported', 'rule')
+    ),
+    analysis_id TEXT,
+    confidence REAL CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
+    created_at DATETIME,
+    updated_at DATETIME,
     PRIMARY KEY (object_id, tag_id),
     FOREIGN KEY (object_id) REFERENCES knowledge_objects(id) ON DELETE CASCADE,
-    FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+    FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE,
+    FOREIGN KEY (analysis_id) REFERENCES ai_analysis(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS tag_suggestions (
+    id TEXT PRIMARY KEY,
+    object_id TEXT NOT NULL,
+    analysis_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    normalized_name TEXT NOT NULL,
+    confidence REAL CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
+    rationale TEXT,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (
+        status IN ('pending', 'accepted', 'rejected', 'superseded')
+    ),
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    decided_at DATETIME,
+    UNIQUE (analysis_id, normalized_name),
+    FOREIGN KEY (object_id) REFERENCES knowledge_objects(id) ON DELETE CASCADE,
+    FOREIGN KEY (analysis_id) REFERENCES ai_analysis(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS collections (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
     name TEXT NOT NULL,
-    collection_type TEXT NOT NULL DEFAULT 'manual', -- 'manual', 'smart', 'system'
+    normalized_name TEXT,
+    description TEXT,
+    collection_type TEXT NOT NULL DEFAULT 'manual', -- 'manual', 'smart'
+    icon_key TEXT,
+    color_token TEXT,
+    query_json TEXT,                    -- validated SmartViewRule schema; never SQL
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    is_pinned INTEGER NOT NULL DEFAULT 0 CHECK (is_pinned IN (0, 1)),
+    revision INTEGER NOT NULL DEFAULT 1,
+    archived_at DATETIME,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -255,12 +297,28 @@ CREATE TABLE IF NOT EXISTS collection_objects (
     object_id TEXT NOT NULL,
     sort_order INTEGER NOT NULL DEFAULT 0,
     added_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    membership_source TEXT NOT NULL DEFAULT 'user' CHECK (
+        membership_source IN ('user', 'ai_accepted', 'imported', 'rule')
+    ),
     PRIMARY KEY (collection_id, object_id),
     FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
     FOREIGN KEY (object_id) REFERENCES knowledge_objects(id) ON DELETE CASCADE
 );
 
--- 9. 全文索引表 (FTS5)
+CREATE INDEX IF NOT EXISTS idx_knowledge_objects_triage_updated
+    ON knowledge_objects(triage_status, updated_at DESC, id DESC)
+    WHERE lifecycle_status != 'deleted';
+CREATE INDEX IF NOT EXISTS idx_tags_active_normalized
+    ON tags(normalized_name) WHERE archived_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_object_tags_tag_object
+    ON object_tags(tag_id, object_id);
+CREATE INDEX IF NOT EXISTS idx_collections_active_order
+    ON collections(user_id, archived_at, is_pinned DESC, sort_order, name);
+CREATE INDEX IF NOT EXISTS idx_collection_objects_object
+    ON collection_objects(object_id, collection_id);
+CREATE INDEX IF NOT EXISTS idx_tag_suggestions_object_status
+    ON tag_suggestions(object_id, status, created_at DESC);
+-- 10. 全文索引表 (FTS5)
 -- FTS 是派生索引，不是正文 source of truth。
 -- 写入 parsed_documents 和 ai_analysis 后，由应用层或触发器同步维护。
 CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(

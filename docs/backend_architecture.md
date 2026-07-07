@@ -192,7 +192,7 @@ Rules:
 - Repository 不做业务判断，只返回 typed row 或 domain DTO。
 - FTS、vector、cache 是派生索引，不得作为正文 source of truth。
 - FTS ranking uses explicit field weights: title 8, author 3, parsed content 1 and latest AI summary 4. `object_id` and `parsed_document_id` remain unindexed identifiers. Search snippets must be derived from FTS at query time and suppressed for `secret` objects so result rows do not reveal secret body content.
-- Search filter composition reuses Library navigation semantics: `inbox` means `captured` or `parsed`, `failed` means lifecycle failed, and other values are matched against `object_type`.
+- New UI search resolves the same typed `LibraryViewRef + LibraryFilters` as normal listing. `Inbox` reads `triage_status`; Collection/Tag use membership; Smart Views compile only validated schema v1 rule fields. Content type remains an orthogonal filter. Legacy string filters are compatibility-only.
 - Search index health checks are read-only and return counts plus capped object-id samples for missing, stale, orphaned and duplicate FTS rows. They must not return snippets, parsed text, AI summaries, URLs with query content or object bodies. Repair remains an explicit `rebuild_search_index` or `reindex_object` action.
 - Full search-index rebuild uses a staged FTS table (`knowledge_fts_rebuild`) and publishes only through an atomic final swap. Progress is persisted in `background_jobs.payload_json` with `expectedObjects`, `indexedObjects`, `stage` and `cancellable`. The persisted UUID job id is the rebuild correlation id; reindex uses its generated operation/job UUID and persists it with the successful transaction. User cancellation is honored before `finalizing`; once finalizing begins, cancellation is disabled to avoid exposing a partially swapped index. Cancelled rebuilds preserve the previously published `knowledge_fts`. Rebuild failures persist only stable `search.rebuild_failed` recovery text, clean staging and converge to a failed response. SearchService maps query/rebuild/reindex/health database failures to stable `search.*` recovery text before IPC; raw SQLite errors never enter jobs, events, logs or IPC.
 
@@ -210,6 +210,16 @@ Recommended repositories:
 - `AuditRepository`
 - `SettingsRepository`
 
+### 6.1 Knowledge organization query boundary
+
+`OrganizationRepository` 是 tags、object_tags、tag_suggestions、collections、collection_objects 和 triage 查询的唯一数据访问边界。`OrganizationService` 负责名称/描述长度、Smart View schema、view identity、optimistic revision 和用户所有权校验。
+
+- `LibraryQuery` 的 cursor 是不透明 JSON token，只允许合法 `(updated_at, id)`；默认 30、上限 100。
+- `ResolvedView` 与 filter predicate builder 由列表和 FTS repository 共享，禁止复制出第二套含义不同的 scope 逻辑。
+- manual Collection 使用 membership；smart Collection 使用 versioned `query_json`，不得物化或接受 SQL。
+- AI suggestions 上限 8 个有效去重标签；名称、confidence 和 rationale 有界。模型不能直接写 canonical tags。
+- Collection 名称按 normalized name 在 active user scope 内去重；更新要求匹配 `revision`，冲突 fail closed。
+- navigation 计数只聚合 non-deleted objects，并依赖 0007 的 triage/membership/suggestion indexes。
 ## 7. Transaction Boundaries
 
 必须使用 transaction 的场景：
@@ -217,7 +227,9 @@ Recommended repositories:
 - 创建 `KnowledgeObject` + `domain_events`。
 - 写入 `source_snapshots` + 更新 lifecycle。
 - 写入 `parsed_documents` + 更新 lifecycle + FTS enqueue event。
-- 写入 `ai_analysis`（包括可选 `display_hints_json`）+ `ai_traces` + 更新 lifecycle。
+- 写入 schema v3 `ai_analysis` + `ai_traces` + supersede 旧 pending `tag_suggestions` + 新 suggestions + 更新 lifecycle；任何一步失败都不得留下部分分析。
+- 接受 AI Topic 建议：校验 pending identity + find/create canonical tag + upsert `object_tags(ai_accepted)` + 更新 suggestion/triage + audit。
+- Collection membership、正式 Topic assignment 和 triage 更新与只含内部 ID 的 audit record。
 - Evaluation reservation：`evaluation_runs(planned)` + `background_jobs(queued)` + `evaluation_traces(planned)` + `evaluation.planned`，以唯一 request UUID 占位。
 - Evaluation completion/failure：校验 run/job/trace/correlation identity 后，原子更新 run/job/trace、artifact、object lifecycle 与 terminal domain event。
 - 删除对象 + tombstone + cleanup job。
@@ -543,14 +555,15 @@ Backend minimum test matrix:
 
 - State machine: all lifecycle transitions including `failed`。
 - Error mapping: every `AppError` maps to `IpcErrorCode`。
-- Migration: empty DB；production migrator 生成的 0001/0002/0003 historical fixtures → current 0006；1000-object invariants；unknown future version fail-closed；existing-schema restore point；guard interruption convergence。
+- Migration: empty DB；production migrator 生成的 0001/0002/0003/0006 historical fixtures → current 0007；1000-object invariants；historical AI tags become deduplicated pending suggestions without canonical assignment；unknown future version fail-closed；existing-schema restore point；guard interruption convergence。
 - Portable export: non-secret object markdown/metadata export, secret skip count, and storage URI / credential-reference omission.
 - Support bundle: explicit confirmation, atomic local publication, valid schema/hash, bounded validated runtime logs, and adversarial omission of object bodies, job/domain-event payloads, audit metadata, plugin manifest secrets, URL query values, credential references and local absolute paths.
 - Structured logging: JSONL round-trip, redaction rejection, size bounds and capture submit/start/success/failure correlation continuity.
 - Capture transaction: object + event + job。
 - Startup recovery: redacted startup status, backup id extraction, restricted backup/restore command availability。
 - Parse pipeline: snapshot + parsed_documents + event。
-- AI pipeline: ai_analysis + optional display hints + ai_traces；无效提示不得导致主体分析失败，`reason` 最多保留 160 个字符。
+- AI pipeline: schema v3 ai_analysis + optional display hints + ai_traces + bounded tag suggestions；无效提示不得导致主体分析失败，`reason` 最多保留 160 个字符。
+- Organization: typed view/filter composition、cursor stability、manual membership、revision conflict、suggestion supersede/accept/reject、user assignment preservation、audit redaction。
 - Evaluation: run + artifacts + evidence JSON。
 - Deletion: tombstone + cleanup job + search invisibility。
 - Backup: atomic staging publication + manifest/file hashes + SQLite quick_check + tamper detection。

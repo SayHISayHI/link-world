@@ -100,7 +100,7 @@
 2. Windows Alpha 的 API Key 保存到 Credential Manager；普通配置表只保存 credential reference。删除 provider 时必须同步删除 credential，禁止写入日志或前端持久化状态。
 3. Rust 端由项目自有 `ModelProviderRegistry` 和 capability contract 隔离业务层，内置 `genai` adapter 支持 OpenAI Chat Completions/Responses、Anthropic Messages、Google Generative AI、Ollama 及 OpenAI-compatible Chat；Embedding 使用独立 capability contract 后续实现。
 4. 当对象进入 `parsed` 状态后，从 `parsed_documents` 读取正文，使用 `builtin.general_enrichment` prompt `0.2.0` 拼接输入并发送 Chat 请求。
-5. 解析 schema version 2 的 LLM JSON，写入 `ai_analysis` 和可选的版本化 `display_hints_json`，同时写入 `ai_traces`；无效展示提示不得让主体分析失败。
+5. 解析 schema version 3 的 LLM JSON，写入 `ai_analysis`、可选的版本化 `display_hints_json`、pending `tag_suggestions` 和 `ai_traces`；无效展示提示或 Topic 建议不得让主体分析失败，建议不得直接写入 canonical tags。
 6. AI 调用失败时对象保持 `parsed`，记录错误，不允许后台任务崩溃。
 7. 验证标准：切换协议时请求由 registry 发送到正确 endpoint；多配置互不覆盖且默认项显式；连接测试返回 provider/model/latency；文章详情页在数秒后出现 AI 摘要、分数、行动项和 trace 摘要；删除默认配置、提示无效或记录过期时仍使用 Markdown AST 推断完成基础阅读展示。
 

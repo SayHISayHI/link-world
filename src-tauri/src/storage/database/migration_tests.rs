@@ -221,7 +221,7 @@ async fn upgrades_v1_release_fixture_without_losing_core_or_derived_data() {
             .fetch_all(pool)
             .await
             .expect("migration metadata should query");
-    assert_eq!(applied_versions, vec![1, 2, 3, 4, 5, 6]);
+    assert_eq!(applied_versions, vec![1, 2, 3, 4, 5, 6, 7]);
     let evaluation_contract: (Option<String>, Option<String>, Option<String>, i64, i64, i64) =
         sqlx::query_as(
             "SELECT request_id, correlation_id, retry_of_run_id, plan_schema_version, input_schema_version, output_schema_version FROM evaluation_runs WHERE id = 'evaluation-1'",
@@ -306,7 +306,7 @@ async fn v3_fixture_adds_evaluation_runtime_contract_and_preserves_api_family() 
     .await
     .expect("v3 provider should query");
     assert_eq!(api_family, "anthropic_messages");
-    assert_eq!(table_count(database.pool(), "_sqlx_migrations").await, 6);
+    assert_eq!(table_count(database.pool(), "_sqlx_migrations").await, 7);
     assert_eq!(table_count(database.pool(), "evaluation_traces").await, 0);
     let evaluation_columns: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM pragma_table_info('evaluation_runs') WHERE name IN ('request_id', 'correlation_id', 'plan_schema_version', 'input_schema_version', 'output_schema_version')",
@@ -319,6 +319,55 @@ async fn v3_fixture_adds_evaluation_runtime_contract_and_preserves_api_family() 
     cleanup(data_dir, database.pool()).await;
 }
 
+#[tokio::test]
+async fn upgrades_v6_fixture_preserving_taxonomy_as_pending_suggestions() {
+    let (data_dir, historical_pool) = historical_database(6).await;
+    sqlx::query(
+        "INSERT INTO knowledge_objects (id, user_id, object_type, privacy_level, lifecycle_status) VALUES ('object-v6', 'local-user', 'article', 'personal', 'enriched')",
+    )
+    .execute(&historical_pool)
+    .await
+    .expect("v6 object should seed");
+    sqlx::query(
+        "INSERT INTO ai_analysis (id, object_id, analysis_type, schema_version, summary, tags_json) VALUES ('analysis-v6', 'object-v6', 'general_summary', 2, 'summary', '[\"Rust\",\"rust\"]')",
+    )
+    .execute(&historical_pool)
+    .await
+    .expect("v6 analysis should seed");
+    sqlx::query(
+        "INSERT INTO collections (id, user_id, name, collection_type) VALUES ('collection-v6', 'local-user', 'Research', 'manual')",
+    )
+    .execute(&historical_pool)
+    .await
+    .expect("v6 collection should seed");
+    historical_pool.close().await;
+
+    let database = Database::initialize(data_dir.clone())
+        .await
+        .expect("v6 fixture should migrate");
+    let triage_status: String =
+        sqlx::query_scalar("SELECT triage_status FROM knowledge_objects WHERE id = 'object-v6'")
+            .fetch_one(database.pool())
+            .await
+            .expect("triage status should query");
+    assert_eq!(triage_status, "filed");
+    let suggestions: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM tag_suggestions WHERE object_id = 'object-v6' AND status = 'pending'",
+    )
+    .fetch_one(database.pool())
+    .await
+    .expect("suggestions should query");
+    assert_eq!(suggestions, 1);
+    assert_eq!(table_count(database.pool(), "tags").await, 0);
+    let normalized_collection: String =
+        sqlx::query_scalar("SELECT normalized_name FROM collections WHERE id = 'collection-v6'")
+            .fetch_one(database.pool())
+            .await
+            .expect("collection should query");
+    assert_eq!(normalized_collection, "research");
+
+    cleanup(data_dir, database.pool()).await;
+}
 #[tokio::test]
 async fn rejects_database_from_unknown_future_migration_without_rewriting_user_data() {
     let (data_dir, historical_pool) = historical_database(3).await;

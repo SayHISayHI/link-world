@@ -1,12 +1,16 @@
 use crate::domain::knowledge::KnowledgeObject;
+use crate::domain::organization::LibraryQuery;
 use crate::domain::search::{
     RebuildSearchIndexResponse, SearchIndexHealthResponse, SearchResult,
     SEARCH_REBUILD_FAILURE_REASON,
 };
 use crate::errors::{AppError, AppResult};
+use crate::repositories::organization::{
+    append_filter_predicates, append_view_predicate, validate_filters, OrganizationRepository,
+};
 use serde_json::{json, Value};
 use sqlx::sqlite::SqliteRow;
-use sqlx::{Row, Sqlite, SqlitePool, Transaction};
+use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool, Transaction};
 
 const DEFAULT_SEARCH_LIMIT: i64 = 20;
 const MAX_SEARCH_LIMIT: i64 = 50;
@@ -98,6 +102,65 @@ impl SearchRepository {
             .collect())
     }
 
+    pub async fn search_library(
+        &self,
+        query: &str,
+        limit: Option<i64>,
+        library_query: LibraryQuery,
+    ) -> AppResult<Vec<SearchResult>> {
+        let Some(fts_query) = build_fts_query(query) else {
+            return Ok(Vec::new());
+        };
+        validate_filters(&library_query.filters)?;
+        let organization = OrganizationRepository::new(self.pool.clone());
+        let resolved_view = organization.resolve_view(&library_query.view).await?;
+        let terms = normalized_terms(query);
+        let limit = clamp_limit(limit);
+        let mut builder = QueryBuilder::<Sqlite>::new(
+            r#"
+            SELECT
+                objects.id,
+                objects.user_id,
+                objects.object_type,
+                objects.title,
+                objects.canonical_url,
+                objects.source_platform,
+                objects.author,
+                objects.privacy_level,
+                objects.lifecycle_status,
+                objects.failure_reason,
+                objects.captured_at,
+                objects.updated_at,
+                fts.title AS indexed_title,
+                fts.author AS indexed_author,
+                fts.content AS indexed_content,
+                fts.ai_summary AS indexed_ai_summary,
+                CASE
+                    WHEN objects.privacy_level = 'secret' THEN NULL
+                    ELSE snippet(knowledge_fts, -1, '[', ']', '...', 16)
+                END AS snippet,
+                bm25(knowledge_fts, 0.0, 0.0, 8.0, 3.0, 1.0, 4.0) AS rank
+            FROM knowledge_fts AS fts
+            INNER JOIN knowledge_objects AS objects ON objects.id = fts.object_id
+            WHERE knowledge_fts MATCH "#,
+        );
+        builder.push_bind(fts_query);
+        builder.push(" AND objects.lifecycle_status != 'deleted'");
+        append_view_predicate(&mut builder, &resolved_view);
+        append_filter_predicates(&mut builder, &library_query.filters);
+        builder
+            .push(" ORDER BY rank ASC, objects.updated_at DESC LIMIT ")
+            .push_bind(limit);
+        let rows = builder
+            .build()
+            .fetch_all(&self.pool)
+            .await
+            .map_err(map_search_error)?;
+        Ok(rows
+            .into_iter()
+            .map(|row| search_result_from_row(row, &terms))
+            .collect())
+    }
     pub async fn rebuild_index_with_job(&self, job_id: &str, now: &str) -> AppResult<i64> {
         let mut tx = self.pool.begin().await?;
 

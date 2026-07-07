@@ -12,3 +12,4 @@ src-tauri/gen/schemas/
 sprint2-readiness*.json
 sprint3-readiness*.json
 sprint5-readiness*.json
+.agents/

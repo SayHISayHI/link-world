@@ -159,7 +159,9 @@ Component tests:
 - `AIAnalysisPanel` shows run state, summary and trace, contains no provider credential form, and links to Settings.
 - `EvaluationPanel` shows verdict, evidence and limitations.
 - model provider settings list multiple stable ids without returning API keys, create/edit/delete configs, enforce one explicit default, allow protocol selection, clear key drafts after save and invalidate stale connection-test success after edits.
-- Sidebar filters All/Inbox/Articles/GitHub/Prompts/Failed through backend semantics; ObjectList appends 30-item pages without duplicates.
+- `Sidebar` renders backend-provided system views, collections, accepted topics and smart views with authoritative counts; it does not hard-code domain categories.
+- `OrganizationPanel` keeps triage, user topics, collection membership and AI topic suggestions as separate mutations; accepting or rejecting a suggestion is explicit and idempotent.
+- `ObjectList` and search resolve the same typed `LibraryViewRef` plus filters, and append cursor pages without duplicates or cross-scope leakage.
 - `ObjectList` renders actionable search empty/error states and displays rebuild progress, cancel action and non-cancellable finalizing boundary.
 - `PluginPermissionPanel` distinguishes required vs optional permissions.
 
@@ -186,11 +188,12 @@ MVP smoke tests:
 8. A selected-text capture stores only the explicit selection and does not substitute the surrounding DOM article.
 9. Rebuild and Reindex leave the parsed document unchanged.
 10. Configure two fake model providers, connection-test one, select an explicit default, reopen Settings and verify no key is returned.
-11. Switch library lifecycle/type filters and load a second page without duplicate rows.
-12. AI analysis fixture response writes trace.
-13. Trigger evaluation fixture response writes verdict.
-14. Delete object.
-15. Search no longer returns object.
+11. Switch among a system view, collection and topic; apply lifecycle/type filters and load a second page without duplicate rows.
+12. AI analysis fixture response writes trace and pending topic suggestions without mutating canonical topics.
+13. Accept one topic suggestion, reject another, and verify list and search use the resulting accepted topic scope.
+14. Trigger evaluation fixture response writes verdict.
+15. Delete object.
+16. Search no longer returns object and organization joins/suggestions are removed.
 
 If CI cannot automate an installed browser extension, steps 6-8 must be covered by Loopback contract integration tests and repeated as a manual Chrome smoke test before release.
 
@@ -238,7 +241,7 @@ Fixture categories:
 - database seed records.
 - deterministic search benchmark records for small smoke, 5k and 20k object corpora.
 - valid and tampered backup manifests/object payloads.
-- generated database fixtures from every published migration baseline; current automated baselines are 0001/0002/0003.
+- generated database fixtures from every published migration baseline; current automated baselines are 0001/0002/0003/0006, all upgraded through 0007.
 - real-process forced termination at prepared, moving-live, live-moved and candidate-installed boundaries in the Windows installation test matrix.
 - external API error responses.
 

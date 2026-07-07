@@ -1,3 +1,4 @@
+use crate::domain::organization::NewTagSuggestion;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -130,7 +131,7 @@ pub struct AIModelAnalysisOutput {
     #[serde(default)]
     pub category: Option<String>,
     #[serde(default)]
-    pub tags: Vec<String>,
+    pub tags: Vec<AIModelTagSuggestion>,
     #[serde(default)]
     pub key_points: Vec<Value>,
     #[serde(default)]
@@ -145,6 +146,30 @@ pub struct AIModelAnalysisOutput {
     pub confidence: Option<f64>,
     #[serde(default)]
     pub display_hints: Option<Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum AIModelTagSuggestion {
+    Name(String),
+    Structured {
+        name: String,
+        confidence: Option<f64>,
+        rationale: Option<String>,
+    },
+}
+
+impl AIModelTagSuggestion {
+    pub fn parts(&self) -> (&str, Option<f64>, Option<&str>) {
+        match self {
+            Self::Name(name) => (name, None, None),
+            Self::Structured {
+                name,
+                confidence,
+                rationale,
+            } => (name, *confidence, rationale.as_deref()),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -173,6 +198,7 @@ pub struct AIAnalysisSubmission {
     pub quality_score: Option<f64>,
     pub confidence: Option<f64>,
     pub display_hints_json: Option<String>,
+    pub tag_suggestions: Vec<NewTagSuggestion>,
     pub created_at: String,
 }
 

@@ -1,3 +1,4 @@
+use crate::domain::organization::LibraryQuery;
 use crate::domain::search::{
     RebuildSearchIndexResponse, ReindexObjectResponse, SearchIndexHealthResponse, SearchResult,
     SEARCH_REBUILD_FAILURE_REASON,
@@ -24,6 +25,21 @@ pub async fn search_hybrid(
     Ok(map_ipc_result(result))
 }
 
+#[tauri::command]
+pub async fn search_library(
+    state: tauri::State<'_, AppState>,
+    query: String,
+    limit: Option<i64>,
+    library_query: LibraryQuery,
+) -> Result<IpcResponse<Vec<SearchResult>>, String> {
+    let result = async {
+        let service = SearchService::from_state(state.inner())?;
+        service.search_library(&query, limit, library_query).await
+    }
+    .await;
+
+    Ok(map_ipc_result(result))
+}
 #[tauri::command]
 pub async fn rebuild_search_index(
     app_handle: tauri::AppHandle,

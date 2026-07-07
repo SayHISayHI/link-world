@@ -14,16 +14,16 @@ MVP 不做云端代登录和后台批量抓取。所有采集都必须来自用�
 
 - **左侧边栏 (Sidebar)**
   - 顶部：全局搜索框，CMD/CTRL + K 触发指令面板。
-  - 中间：固定分类导航，包括 All、Inbox、Articles、GitHub Repos、Prompts、Failed。
+  - 中间：固定 System Views（Inbox、All、Needs Attention）、用户 Collections、已接受 Topics 和 Smart Views；内容类型不占一级导航。
   - 底部：设置入口，用于配置模型提供商、凭据、插件和本地存储。
 - **中间列表栏 (List View)**
-  - 根据左侧选中的分类，显示对应的 Knowledge Object 列表；All/Inbox/Articles/GitHub Repos/Prompts/Failed 必须映射为后端过滤，而不是只改变高亮。
+  - 根据强类型 `LibraryViewRef + LibraryFilters` 显示对象；普通列表和 FTS 搜索必须复用同一后端 scope，不能只在前端过滤。
   - 列表按固定页大小加载，MVP 使用显式 Load more，不一次读取全部对象。
   - 每个列表项显示标题、来源图标、AI 一句话摘要、生命周期状态、标签和失败提示。
 - **右侧详情区 (Detail View)**
   - 顶部操作栏：来源链接、重新解析、重新评估、删除。
   - 主视图：左侧使用安全 Markdown 阅读器显示 `parsed_documents` 正文，包括目录、标题锚点、Callout、表格和长代码折叠；右侧显示 AI Analysis 和 Evaluation 模块。
-  - AI Analysis 显示摘要、质量初评分、关键行动点、风险、置信度和 trace 摘要；只提供运行和进入模型设置的动作，不在对象上下文编辑 provider 或 API Key。
+  - AI Analysis 显示摘要、质量初评分、关键点、行动项、风险、待验证论断、置信度和 trace，并明确标注为未验证模型解释；Organization 显示 triage、Collections、正式 Topics 和 AI 建议。
   - Evaluation 显示 verdict、score、维度评分、evidence、limitations 和 artifacts。
 
 ## 3. 核心用户故事 (User Stories)
@@ -49,10 +49,11 @@ MVP 不做云端代登录和后台批量抓取。所有采集都必须来自用�
 ### Epic 3: AI 增强与总结 (AI Enrichment)
 
 - **US 3.1**: 对象进入 `parsed` 状态后，Rust 后台任务从 `parsed_documents` 读取正文，拼接内部 Prompt 模板，并发送给配置好的本地或云端模型。
-- **US 3.2**: 获得结构化响应后，系统自动写入 `ai_analysis`，包括 `summary`、`tags`、`key_points`、`risks`、`action_items`、`quality_score`、`confidence` 和可选、版本化的 `display_hints_json`。
+- **US 3.2**: 获得 schema v3 结构化响应后，系统写入 `ai_analysis`，包括 `summary`、兼容标签快照、`key_points`、`claims`、`risks`、`action_items`、`quality_score`、`confidence` 和可选 `display_hints_json`；带置信度与理由的标签另写入 `tag_suggestions`。
 - **US 3.3**: 每次 AI 调用必须写入 `ai_traces`，记录 provider、model、capability、prompt template、input hash、output hash、tokens、成本和耗时。
 - **US 3.4**: 如果 AI 调用失败，对象保持 `parsed`，错误写入日志和用户可见提示，不允许阻塞后续队列。
 - **US 3.5**: AI 展示提示只能在匹配当前 `parsed_document` 且置信度达到门槛时建议文档级布局；它不得修改 Markdown、AST、链接/图片策略或其他安全规则。提示缺失、无效或过期时自动回退到确定性 AST 推断。
+- **US 3.6**: AI 标签默认为待确认建议；重跑只 supersede 旧 pending 建议，不能覆盖用户标签、已接受标签或拒绝历史。
 
 ### Epic 4: 评估验证 (Evaluation)
 
@@ -60,12 +61,20 @@ MVP 不做云端代登录和后台批量抓取。所有采集都必须来自用�
 - **US 4.2**: Evaluation 结果必须包含 verdict、score、维度评分、evidence、limitations、next actions 和 artifacts，而不是只有 AI 摘要。
 - **US 4.3**: MVP 的 evaluator 可以先做轻量验证，例如 GitHub 元数据检查、README 分析、Prompt 基准测试样例生成；但接口必须保留 sandbox artifact 和 evidence。
 
-### Epic 5: 检索 (Search)
+### Epic 5: 知识组织 (Knowledge Organization)
+
+- **US 5.1**: 新对象进入独立 `triage_status=inbox`；解析或 AI enrich 不得替用户完成归档。
+- **US 5.2**: 用户可以创建、重命名和归档 manual Collection，并把对象加入或移出；归档 Collection 不删除对象。
+- **US 5.3**: 用户可以增加或移除正式 Topic，并接受/拒绝 AI 标签建议；接受建议后形成可追溯 `ai_accepted` assignment。
+- **US 5.4**: 用户可以把当前结构化过滤条件保存为 schema v1 Smart View；系统只接受校验后的 JSON rule，不接受 SQL。
+- **US 5.5**: 列表按 `(updated_at, id)` cursor 分页；Collection 更新使用 revision 乐观并发控制。
+
+### Epic 6: 检索 (Search)
 
 - **US 5.1**: 用户在全局搜索框输入关键字，系统调用 Rust 提供的 FTS5 接口，在标题、解析正文和 AI 总结中进行全文匹配，快速展示下拉结果。
 - **US 5.2**: 如果 Embedding Provider 与 sqlite-vec 可用，则系统提供语义搜索；如果 sqlite-vec 在时间盒内遇到编译或分发困难，MVP 可回退到纯 FTS5，但 schema 和 API 必须保留向量能力边界。
 
-### Epic 6: 本地数据安全 (Post-MVP)
+### Epic 7: 本地数据安全 (Post-MVP)
 
 - **US 6.1**: 用户可以在 Storage 设置中创建、列出和验证同机 restore point；备份必须同时覆盖一致的 SQLite 快照与对象存储，并明确提示包含用户内容。
 - **US 6.2**: 用户显式二次确认 Restore 后，系统必须重新验证目标、创建 safety restore point、在私有副本上迁移，并在重启后的数据库连接池建立前切换数据；失败或中断必须恢复旧数据并展示结果。
@@ -110,6 +119,7 @@ MVP 不做云端代登录和后台批量抓取。所有采集都必须来自用�
 | Parse | 网页正文、GitHub README、Prompt 文本 | PDF / Markdown | 视频 transcript、Newsletter |
 | AI Enrichment | 摘要、标签、行动项、质量初评分 | 风险、关联旧内容 | 自动生成学习路径 |
 | Evaluation | GitHub repo、Prompt 最小评估 | 教程可执行性评估 | 浏览器自动试用、代码 sandbox |
+| Organization | Inbox triage、manual Collections、Topics、AI suggestions、Smart Views | Topic merge、批量归档 | 聚类图谱、协作空间 |
 | Search | FTS5 全文搜索 | sqlite-vec 语义搜索 | 知识图谱探索 |
 | Privacy | 本地优先、安全凭据、敏感内容授权 | Collection 级授权 | 端到端加密云同步 |
 | Export | Markdown、JSON | Obsidian folder | Notion、Readwise、团队空间 |
@@ -162,9 +172,10 @@ MVP 需要内置本地可查看的匿名化指标面板；云端遥测必须默�
 ## 9. 端到端验收场景
 
 - 用户首次打开应用，不配置 AI，仍可保存 URL、解析正文、全文搜索。
-- 用户配置模型后，保存文章会生成摘要、标签、行动项、AI trace。
+- 用户配置模型后，保存文章会生成摘要、行动项、AI trace 和待确认 Topic 建议；接受前不会改变正式 taxonomy。
 - 用户保存 GitHub repo 后，可以看到 README 摘要、基础质量评分，并手动触发 repo evaluation。
 - 用户保存 Prompt 后，可以看到变量、适用场景、测试样例和改进建议。
 - 用户保存受限网页时，系统进入 `failed`，展示原因，并建议使用浏览器扩展当前页保存。
-- 用户删除对象后，详情、搜索、AI 分析、向量 chunk、评估产物都不可再被检索到。
+- 用户可以把对象加入 Collection、接受/拒绝 Topic 建议、保存 Smart View，并在同一 scope 内获得一致列表与搜索结果。
+- 用户删除对象后，详情、搜索、AI 分析、组织关系、向量 chunk、评估产物都不可再被检索到。
 - 用户把对象标记为 sensitive 后，第三方 AI 调用必须要求显式授权。

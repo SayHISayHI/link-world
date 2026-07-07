@@ -22,7 +22,7 @@
 | Component | Purpose | Data source | Notes |
 | --- | --- | --- | --- |
 | `AppShell` | App root layout | route/ui store | owns global layout only |
-| `Sidebar` | navigation and settings entry | props | no command calls |
+| `Sidebar` | dynamic system views, collections, topics, smart views and settings entry | `LibraryNavigation` props | no command calls; counts come from backend |
 | `MainToolbar` | add/search/evaluation actions | container props | icon buttons with tooltip |
 | `ThreePaneLayout` | sidebar/list/detail structure | ui store | stable dimensions |
 | `ResizablePane` | pane resizing | ui store | persist only UI sizes |
@@ -44,6 +44,7 @@
 | `Callout` | trusted NOTE/TIP/IMPORTANT/WARNING/CAUTION presentation | regular quote, five callout kinds |
 | `TagList` | render tags | empty |
 | `SourceLinkButton` | open source URL | unavailable |
+| `OrganizationPanel` | triage, collection membership, user topics and AI topic suggestion review | loading, mutation failed, empty suggestions |
 
 Document rendering rules:
 
@@ -53,12 +54,15 @@ Document rendering rules:
 - 目录、标题锚点、代码操作和折叠控件必须支持键盘与 accessible name。
 - renderer 不渲染原始 HTML，不允许危险 URL 协议，也不允许 AI 绕过安全组件。
 - Object failure panels must format persisted `capture.*` failure reasons through the shared formatter so stable diagnostic codes do not become primary user-facing text.
+- Content type, lifecycle and triage are independent dimensions. UI must not present one as a substitute for another.
+- AI topic suggestions remain visually distinct from accepted topics until the user accepts them; rejection must not create a canonical topic.
+- Collection and topic navigation must retain stable IDs in route state. Renames change labels, not active scope identity.
 
 ## 5. AI and Evaluation Components
 
 | Component | Purpose | Required data |
 | --- | --- | --- |
-| `AIAnalysisPanel` | run action, summary and trace metadata; link to model settings | `AIAnalysis` |
+| `AIAnalysisPanel` | structured summary, quality estimate, confidence, key points, actions, risks, source claims and trace metadata; link to model settings | `AIAnalysis` |
 | `AITracePopover` | provider/model/time/cost | `AITrace` |
 | `QualityScoreBadge` | 0-10 score | score + confidence |
 | `RiskList` | risk display | risk type/severity/detail |
@@ -72,6 +76,7 @@ Document rendering rules:
 Rules:
 
 - AI panel must label model inference separately from original facts.
+- AI quality is an estimate, not an evaluation verdict. Claims remain unverified until an evaluator produces evidence.
 - AI failure panels must format persisted `ai.*` failure reasons through the shared formatter so stable diagnostic codes do not become primary user-facing text.
 - Evaluation panel must show limitations when present.
 - A failed latest run exposes Retry; retry creates a new lineage child and must not replace or relabel the failed parent.
@@ -200,6 +205,7 @@ MVP must implement:
 - `CodeBlock`
 - `Callout`
 - `AIAnalysisPanel`
+- `OrganizationPanel`
 - `EvaluationPanel`
 - `AddUrlDialog`
 - `SearchInput`

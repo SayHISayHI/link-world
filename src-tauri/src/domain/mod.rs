@@ -6,6 +6,7 @@ pub mod evaluation;
 pub mod jobs;
 pub mod knowledge;
 pub mod lifecycle;
+pub mod organization;
 pub mod portable_export;
 pub mod search;
 pub mod startup;

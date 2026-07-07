@@ -416,6 +416,8 @@ erDiagram
   KNOWLEDGE_OBJECT ||--o{ EVALUATION_RUN : has
   KNOWLEDGE_OBJECT ||--o{ USER_ACTION : receives
   KNOWLEDGE_OBJECT }o--o{ TAG : tagged
+  KNOWLEDGE_OBJECT ||--o{ TAG_SUGGESTION : receives
+  AI_ANALYSIS ||--o{ TAG_SUGGESTION : proposes
   KNOWLEDGE_OBJECT }o--o{ COLLECTION : grouped
   KNOWLEDGE_OBJECT }o--o{ KNOWLEDGE_OBJECT : related
   AI_ANALYSIS ||--o{ AI_TRACE : records
@@ -503,7 +505,15 @@ erDiagram
 - `deleted`: 已删除或等待清理。
 - `failed`: pipeline 失败，需要重试或人工处理。
 
-### 5.4 Source snapshot policy
+### 5.4 Knowledge organization
+
+- System Views 是代码定义的 scope；Inbox 使用独立 triage，Needs Attention 聚合 object/job failure。
+- manual Collection 是用户所有的显式 membership；smart Collection 是经 schema 校验的 rule，不存 SQL。
+- Topic 只来自用户 assignment 或用户接受的 AI suggestion；模型 category/tag 快照不直接改变导航。
+- 新 analysis 只 supersede 旧 pending suggestion；accepted/rejected 和 user assignment 是不可覆盖历史。
+- 列表与搜索共享 `LibraryViewRef + LibraryFilters`，cursor 固定按 `(updated_at, id)`。
+
+### 5.5 Source snapshot policy
 
 每个对象至少保存:
 
@@ -592,7 +602,11 @@ AI enrichment 的标准输出:
 interface AIAnalysisOutput {
   summary: string;
   category: string;
-  tags: string[];
+  tags: Array<{
+    name: string;
+    confidence: number;
+    rationale: string;
+  }>;
   keyPoints: string[];
   claims: Claim[];
   actionItems: ActionItem[];
@@ -1130,6 +1144,8 @@ MVP 架构要求:
 - AI 输出和评估结果不覆盖原文。
 - 同一对象可以拥有多个 AI analysis 版本。
 - 同一对象可以拥有多个 evaluation run。
+- AI suggestion 与正式 Topic assignment 分离；重跑不会覆盖用户组织。
+- Collection/Tag/Smart View 列表与 FTS search 对同一 typed scope 返回一致对象集合。
 
 ### 13.2 Local-first acceptance
 

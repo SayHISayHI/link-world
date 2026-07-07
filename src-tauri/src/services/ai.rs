@@ -1,10 +1,12 @@
 use crate::domain::ai::{
     AIAnalysisSubmission, AIDisplayHintsV1, AIEnrichmentInput, AIEnrichmentRunResult,
-    AIModelAnalysisOutput, AITraceSubmission, ModelProviderConfig, ModelProviderConfigView,
-    ModelProviderTestResult, StoredModelProviderConfig,
+    AIModelAnalysisOutput, AIModelTagSuggestion, AITraceSubmission, ModelProviderConfig,
+    ModelProviderConfigView, ModelProviderTestResult, StoredModelProviderConfig,
 };
+use crate::domain::organization::NewTagSuggestion;
 use crate::errors::{AppError, AppResult};
 use crate::repositories::ai::AIRepository;
+use crate::repositories::organization::normalize_name;
 use crate::runtime::models::{
     ChatOutputFormat, ModelProviderRegistry, TextGenerationRequest, TextGenerationResponse,
 };
@@ -15,11 +17,12 @@ use chrono::Utc;
 use reqwest::Url;
 use serde_json::{json, Value};
 use sqlx::SqlitePool;
+use std::collections::BTreeSet;
 use tauri::Emitter;
 use uuid::Uuid;
 
 const GENERAL_ENRICHMENT_PROMPT_ID: &str = "builtin.general_enrichment";
-const GENERAL_ENRICHMENT_PROMPT_VERSION: &str = "0.2.0";
+const GENERAL_ENRICHMENT_PROMPT_VERSION: &str = "0.3.0";
 const MAX_MODEL_INPUT_CHARS: usize = 24_000;
 
 #[derive(Clone)]
@@ -446,16 +449,36 @@ impl AIEnrichmentService {
         let now = Utc::now().to_rfc3339();
         let analysis_id = Uuid::new_v4().to_string();
         let output_hash = sha256_hex(model_output.content.as_bytes());
+        let normalized_tags = normalize_model_tag_suggestions(&analysis_output.tags);
+        let tag_names = normalized_tags
+            .iter()
+            .map(|(name, _, _, _)| name.clone())
+            .collect::<Vec<_>>();
+        let tag_suggestions = normalized_tags
+            .into_iter()
+            .map(
+                |(name, normalized_name, confidence, rationale)| NewTagSuggestion {
+                    id: Uuid::new_v4().to_string(),
+                    object_id: input.object_id.clone(),
+                    analysis_id: analysis_id.clone(),
+                    name,
+                    normalized_name,
+                    confidence,
+                    rationale,
+                    created_at: now.clone(),
+                },
+            )
+            .collect();
 
         let analysis = AIAnalysisSubmission {
             id: analysis_id.clone(),
             object_id: input.object_id.clone(),
             parsed_document_id: input.parsed_document_id.clone(),
             analysis_type: "general_summary".to_string(),
-            schema_version: 2,
+            schema_version: 3,
             summary: analysis_output.summary,
             category: analysis_output.category,
-            tags_json: serialize_json(&analysis_output.tags)?,
+            tags_json: serialize_json(&tag_names)?,
             key_points_json: serialize_json(&analysis_output.key_points)?,
             claims_json: serialize_json(&analysis_output.claims)?,
             action_items_json: serialize_json(&analysis_output.action_items)?,
@@ -463,6 +486,7 @@ impl AIEnrichmentService {
             quality_score: analysis_output.quality_score,
             confidence: analysis_output.confidence,
             display_hints_json,
+            tag_suggestions,
             created_at: now.clone(),
         };
         let trace = AITraceSubmission {
@@ -877,7 +901,7 @@ fn build_general_enrichment_prompt(input: &AIEnrichmentInput) -> String {
 {{
   "summary": "2-4 sentence concise summary",
   "category": "short category",
-  "tags": ["tag"],
+  "tags": [{{"name":"tag","confidence":0.0,"rationale":"why this tag applies"}}],
   "keyPoints": ["important point"],
   "claims": [],
   "actionItems": ["concrete next action"],
@@ -922,6 +946,34 @@ fn parse_analysis_output(content: &str) -> AppResult<AIModelAnalysisOutput> {
     Ok(output)
 }
 
+fn normalize_model_tag_suggestions(
+    values: &[AIModelTagSuggestion],
+) -> Vec<(String, String, Option<f64>, Option<String>)> {
+    let mut seen = BTreeSet::new();
+    let mut normalized = Vec::new();
+    for value in values.iter().take(16) {
+        let (name, confidence, rationale) = value.parts();
+        let name = truncate_chars(name.trim(), 48);
+        if name.chars().count() < 2 || name.chars().any(char::is_control) {
+            continue;
+        }
+        let normalized_name = normalize_name(&name);
+        if normalized_name.is_empty() || !seen.insert(normalized_name.clone()) {
+            continue;
+        }
+        let confidence =
+            confidence.filter(|value| value.is_finite() && (0.0..=1.0).contains(value));
+        let rationale = rationale
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| truncate_chars(value, 160));
+        normalized.push((name, normalized_name, confidence, rationale));
+        if normalized.len() == 8 {
+            break;
+        }
+    }
+    normalized
+}
 fn normalize_display_hints(value: Option<&Value>) -> Option<AIDisplayHintsV1> {
     let object = value?.as_object()?;
     if object.get("schemaVersion")?.as_i64()? != 1 {
@@ -1039,7 +1091,7 @@ mod tests {
         .expect("model output should parse");
 
         assert_eq!(output.summary, "Useful technique.");
-        assert_eq!(output.tags, vec!["rust"]);
+        assert_eq!(output.tags[0].parts().0, "rust");
         assert_eq!(output.quality_score, Some(0.8));
     }
 

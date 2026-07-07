@@ -180,6 +180,101 @@ export interface AITrace {
   latencyMs?: number;
 }
 
+export type LibraryViewKind = 'system' | 'collection' | 'tag' | 'smart';
+
+export interface LibraryViewRef {
+  kind: LibraryViewKind;
+  id: string;
+}
+
+export interface LibraryFilters {
+  objectTypes: KnowledgeObjectType[];
+  lifecycleStatuses: ObjectLifecycle[];
+  tagIds: string[];
+  privacyLevels: PrivacyLevel[];
+  qualityMin?: number;
+  qualityMax?: number;
+}
+
+export interface LibraryQuery {
+  view: LibraryViewRef;
+  filters: LibraryFilters;
+  cursor?: string;
+  limit?: number;
+}
+
+export interface LibraryPage<T> {
+  items: T[];
+  nextCursor?: string;
+}
+
+export interface NavigationItem {
+  id: string;
+  label: string;
+  count: number;
+  kind: LibraryViewKind;
+  iconKey?: string;
+  colorToken?: string;
+  collectionType?: string;
+  revision?: number;
+}
+
+export interface LibraryNavigation {
+  systemViews: NavigationItem[];
+  collections: NavigationItem[];
+  topics: NavigationItem[];
+  smartViews: NavigationItem[];
+}
+
+export interface KnowledgeTag {
+  id: string;
+  name: string;
+  normalizedName: string;
+  source: 'user' | 'ai_generated' | 'imported' | string;
+  colorToken?: string;
+}
+
+export interface KnowledgeCollection {
+  id: string;
+  name: string;
+  description?: string;
+  collectionType: 'manual' | 'smart' | string;
+  iconKey?: string;
+  colorToken?: string;
+  queryJson?: string;
+  sortOrder: number;
+  isPinned: boolean;
+  revision: number;
+}
+
+export interface TagSuggestion {
+  id: string;
+  objectId: string;
+  analysisId: string;
+  name: string;
+  normalizedName: string;
+  confidence?: number;
+  rationale?: string;
+  status: 'pending' | 'accepted' | 'rejected' | 'superseded' | string;
+  createdAt: string;
+}
+
+export interface ObjectOrganization {
+  objectId: string;
+  triageStatus: 'inbox' | 'filed';
+  tags: KnowledgeTag[];
+  collections: KnowledgeCollection[];
+  tagSuggestions: TagSuggestion[];
+}
+
+export interface SmartViewRule {
+  schemaVersion: 1;
+  objectTypes: KnowledgeObjectType[];
+  tagIds: string[];
+  minimumQuality?: number;
+  analysisState?: 'present' | 'missing';
+  evaluationState?: 'present' | 'missing' | 'failed';
+}
 export interface EvaluatorCapability {
   schemaVersion: 1;
   evaluatorType: string;
@@ -613,16 +708,13 @@ export interface CaptureCommands {
  * 模块：Library (核心知识库查阅)
  */
 export interface LibraryCommands {
-  // 获取最近的知识对象列表 (支持分页与类型过滤)
-  // invoke('get_recent_objects', { limit, offset, filterType })
+  // Legacy offset/string-filter compatibility surface. New UI code must use list_library_objects.
   get_recent_objects: (args: {
     limit: number;
     offset: number;
     filterType?: KnowledgeObjectType | 'inbox' | 'failed';
   }) => Promise<IpcResponse<KnowledgeObject[]>>;
 
-  // 获取对象的完整详情 (包含解析正文、AI 分析、快照和评估记录)
-  // invoke('get_object_detail', { objectId })
   get_object_detail: (args: { objectId: string }) => Promise<IpcResponse<{
     object: KnowledgeObject;
     parsedDocument?: ParsedDocument;
@@ -631,15 +723,74 @@ export interface LibraryCommands {
     evaluations: EvaluationRun[];
   }>>;
 
-  // 执行基于 SQLite FTS5 和可选向量索引的混合搜索；filterType 复用 Library 列表语义。
-  // invoke('search_hybrid', { query, limit, filterType })
+  get_library_navigation: () => Promise<IpcResponse<LibraryNavigation>>;
+  list_library_objects: (args: {
+    query: LibraryQuery;
+  }) => Promise<IpcResponse<LibraryPage<KnowledgeObject>>>;
+  get_object_organization: (args: {
+    objectId: string;
+  }) => Promise<IpcResponse<ObjectOrganization>>;
+
+  create_collection: (args: {
+    input: { name: string; description?: string; iconKey?: string; colorToken?: string };
+  }) => Promise<IpcResponse<KnowledgeCollection>>;
+  create_smart_view: (args: {
+    input: { name: string; description?: string; rule: SmartViewRule };
+  }) => Promise<IpcResponse<KnowledgeCollection>>;
+  update_collection: (args: {
+    input: {
+      collectionId: string;
+      name?: string;
+      description?: string;
+      iconKey?: string;
+      colorToken?: string;
+      isPinned?: boolean;
+      sortOrder?: number;
+      expectedRevision: number;
+    };
+  }) => Promise<IpcResponse<KnowledgeCollection>>;
+  archive_collection: (args: { collectionId: string }) => Promise<IpcResponse<boolean>>;
+  add_object_to_collection: (args: {
+    objectId: string;
+    collectionId: string;
+  }) => Promise<IpcResponse<boolean>>;
+  remove_object_from_collection: (args: {
+    objectId: string;
+    collectionId: string;
+  }) => Promise<IpcResponse<boolean>>;
+  mark_object_triaged: (args: {
+    objectId: string;
+    filed: boolean;
+  }) => Promise<IpcResponse<boolean>>;
+  add_user_tag: (args: {
+    objectId: string;
+    name: string;
+  }) => Promise<IpcResponse<KnowledgeTag>>;
+  remove_object_tag: (args: {
+    objectId: string;
+    tagId: string;
+  }) => Promise<IpcResponse<boolean>>;
+  accept_tag_suggestion: (args: {
+    suggestionId: string;
+  }) => Promise<IpcResponse<KnowledgeTag>>;
+  reject_tag_suggestion: (args: {
+    suggestionId: string;
+  }) => Promise<IpcResponse<boolean>>;
+
+  // New UI search composes with the exact same typed scope as list_library_objects.
+  search_library: (args: {
+    query: string;
+    limit: number;
+    libraryQuery: LibraryQuery;
+  }) => Promise<IpcResponse<SearchResult[]>>;
+
+  // Legacy compatibility search.
   search_hybrid: (args: {
     query: string;
     limit: number;
     filterType?: KnowledgeObjectType | 'inbox' | 'failed';
   }) => Promise<IpcResponse<SearchResult[]>>;
 }
-
 /**
  * 模块：Agent / Settings (AI 模型配置与管理)
  */

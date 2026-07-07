@@ -1,7 +1,7 @@
 # Link World 状态机规范
 
 状态: Draft  
-适用范围: Knowledge Object、Background Job、AI Analysis、Evaluation、Deletion、Sync
+适用范围: Knowledge Object、Triage、Tag Suggestion、Background Job、AI Analysis、Evaluation、Deletion、Sync
 
 ## 1. Purpose
 
@@ -61,7 +61,18 @@ When multiple derived states exist:
 - `evaluated` wins over `enriched`.
 - `enriched` wins over `parsed`.
 - `failed` is tied to a specific pipeline step and must not overwrite a more advanced successful state from a different job.
+- AI enrichment failure leaves an already parsed object at `parsed`; failed job state belongs in `background_jobs`.
 
+### 2.4 Independent triage lifecycle
+
+```mermaid
+stateDiagram-v2
+  [*] --> inbox
+  inbox --> filed: explicit file / manual organization / accept suggestion
+  filed --> inbox: move back to Inbox
+```
+
+`triage_status` is independent from `lifecycle_status`. Every new capture starts in Inbox and remains there after parse/enrich/evaluate. Adding a manual Collection membership, adding a user Topic, accepting an AI Topic suggestion, or choosing File marks it filed. Migration 0007 files already-enriched/evaluated/failed historical objects only to preserve the previous visible Inbox set.
 ## 3. Background Job Lifecycle
 
 ```mermaid
@@ -122,6 +133,23 @@ Rules:
 - AI event payloads may contain only an internal analysis id or stable `ai.*` error code; they must not copy prompts, model output, provider configuration, URL or raw errors.
 - If model output schema validation fails, do not store it as successful analysis.
 
+### 4.1 Tag suggestion lifecycle
+
+```mermaid
+stateDiagram-v2
+  [*] --> pending
+  pending --> accepted: user accepts
+  pending --> rejected: user rejects
+  pending --> superseded: newer analysis succeeds
+```
+
+Rules:
+
+- New analysis supersedes only pending suggestions for the object.
+- Accepted/rejected history and `object_tags` assignments are never rewritten by a model rerun.
+- Accept atomically creates or finds a normalized canonical tag, upserts `ai_accepted` assignment, records analysis/confidence, files the object, and writes an ID-only audit event.
+- Reject stores the decision without creating a canonical tag.
+- User assignment wins if an accepted suggestion targets an already user-owned object/tag relationship.
 ## 5. Evaluation Lifecycle
 
 ```mermaid

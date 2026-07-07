@@ -9,6 +9,7 @@ pub mod github_evaluator;
 pub mod library;
 pub mod migration;
 pub mod operations;
+pub mod organization;
 pub mod portable_export;
 pub mod prompt_evaluator;
 pub mod restore;

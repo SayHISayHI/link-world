@@ -1,3 +1,4 @@
+use crate::domain::organization::LibraryQuery;
 use crate::domain::search::{
     RebuildSearchIndexResponse, ReindexObjectResponse, SearchIndexHealthResponse, SearchResult,
     SEARCH_HEALTH_FAILURE_REASON, SEARCH_QUERY_FAILURE_REASON, SEARCH_REBUILD_FAILURE_REASON,
@@ -50,6 +51,17 @@ impl SearchService {
             .map_err(sanitize_search_query_error)
     }
 
+    pub async fn search_library(
+        &self,
+        query: &str,
+        limit: Option<i64>,
+        library_query: LibraryQuery,
+    ) -> AppResult<Vec<SearchResult>> {
+        self.repository
+            .search_library(query, limit, library_query)
+            .await
+            .map_err(sanitize_search_query_error)
+    }
     pub async fn rebuild_search_index(&self) -> AppResult<RebuildSearchIndexResponse> {
         let job_id = Uuid::new_v4().to_string();
         let now = Utc::now().to_rfc3339();
