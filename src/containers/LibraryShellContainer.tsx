@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "../components/layout/AppShell";
 import { ThreePaneLayout } from "../components/layout/ThreePaneLayout";
+import { TopBar } from "../components/layout/TopBar";
 import { ObjectDetail } from "../components/library/ObjectDetail";
 import { ObjectList } from "../components/library/ObjectList";
 import { Sidebar } from "../components/library/Sidebar";
@@ -47,7 +48,6 @@ const LIBRARY_PAGE_SIZE = 30;
 
 export function LibraryShellContainer() {
   const { route, setRoute } = useUiStore();
-  const [captureUrl, setCaptureUrl] = useState("");
   const [lastCaptureJob, setLastCaptureJob] = useState<CaptureJobCompletedPayload>();
   const [searchMaintenanceMode, setSearchMaintenanceMode] = useState<"check" | "rebuild">();
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -341,8 +341,8 @@ export function LibraryShellContainer() {
     setSelectedDetail(objectDetail);
   }, [objectDetail, setSelectedDetail]);
 
-  const handleCaptureSubmit = useCallback(async () => {
-    const url = captureUrl.trim();
+  const handleCaptureSubmit = useCallback(async (submittedUrl: string) => {
+    const url = submittedUrl.trim();
     if (!url) {
       return;
     }
@@ -366,7 +366,7 @@ export function LibraryShellContainer() {
       return;
     }
 
-    setCaptureUrl("");
+    setSearchQuery("");
     if (response.deduplicated) {
       setLastCaptureJob({
         status: "deduplicated",
@@ -375,7 +375,7 @@ export function LibraryShellContainer() {
       });
     }
     selectObject(response.objectId);
-  }, [captureUrl, selectObject, submitCapture]);
+  }, [setSearchQuery, selectObject, submitCapture]);
 
   const handleDeleteObject = useCallback(async () => {
     if (!selectedObjectId) {
@@ -739,6 +739,22 @@ export function LibraryShellContainer() {
   return (
     <AppShell>
       <ThreePaneLayout
+        topBar={
+          <TopBar
+            searchValue={searchQuery}
+            onSearchValueChange={setSearchQuery}
+            onClearSearch={() => {
+              setSearchQuery("");
+              resetSearch();
+            }}
+            searchMaintenanceLoading={rebuildSearchIndexLoading || searchIndexHealthLoading}
+            searchRebuildStatus={rebuildSearchIndexResult}
+            captureLoading={submitCaptureLoading}
+            captureError={submitCaptureError}
+            captureJob={lastCaptureJob}
+            onCaptureSubmit={handleCaptureSubmit}
+          />
+        }
         sidebar={<Sidebar
               route={route}
               navigation={navigation}
@@ -759,48 +775,14 @@ export function LibraryShellContainer() {
             selectedObjectId={selectedObjectId}
             loading={libraryObjectsLoading}
             error={libraryObjectsError}
-            captureValue={captureUrl}
-            captureLoading={submitCaptureLoading}
-            captureError={submitCaptureError}
-            captureJob={lastCaptureJob}
-            searchInputRef={searchInputRef}
-            searchValue={searchQuery}
             searchResults={searchResults}
+            searchActive={searchQuery.trim().length > 0}
             searchLoading={searchLoading}
             searchError={searchError}
-            searchMaintenanceLoading={rebuildSearchIndexLoading || searchIndexHealthLoading}
-            searchMaintenanceError={rebuildSearchIndexError ?? searchIndexHealthError}
-            searchRebuildStatus={rebuildSearchIndexResult}
-            objectTypeFilter={libraryQuery.filters.objectTypes[0]}
-            searchMaintenanceMessage={searchMaintenanceMessage(
-              searchMaintenanceMode,
-              rebuildSearchIndexResult,
-              searchIndexHealth,
-            )}
-            onCaptureValueChange={setCaptureUrl}
-            onCaptureSubmit={handleCaptureSubmit}
-            onSearchValueChange={setSearchQuery}
-            onClearSearch={() => {
-              setSearchQuery("");
-              resetSearch();
-            }}
-            onCancelSearchIndexRebuild={handleCancelSearchIndexRebuild}
-            onCheckSearchIndex={handleCheckSearchIndex}
-            onRebuildSearchIndex={handleRebuildSearchIndex}
             onLoadMore={() => {
               void handleLoadMoreObjects();
             }}
             onSelectObject={selectObject}
-            onObjectTypeFilterChange={(objectType?: KnowledgeObjectType) => {
-              setRoute({
-                name: "library",
-                view: libraryQuery.view,
-                filters: {
-                  ...libraryQuery.filters,
-                  objectTypes: objectType ? [objectType] : [],
-                },
-              });
-            }}
           />
         }
         detail={

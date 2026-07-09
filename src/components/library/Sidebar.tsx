@@ -68,10 +68,6 @@ export function Sidebar({
 
   return (
     <div className="flex h-full flex-col overflow-y-auto px-3 py-3">
-      <div className="px-2 py-3">
-        <div className="text-sm font-semibold tracking-normal">Link World</div>
-        <div className="mt-1 text-xs text-muted-foreground">Local knowledge workspace</div>
-      </div>
 
       <nav className="mt-2 space-y-5" aria-label="Knowledge library">
         <NavigationSection
