@@ -26,16 +26,10 @@ function renderObjectList(
       heading="All"
       hasMore={false}
       loading={false}
-      captureValue=""
-      captureLoading={false}
       searchValue=""
       searchResults={[]}
       searchLoading={false}
       searchMaintenanceLoading={false}
-      onCaptureValueChange={noop}
-      onCaptureSubmit={noop}
-      onSearchValueChange={noop}
-      onClearSearch={noop}
       onCancelSearchIndexRebuild={noop}
       onCheckSearchIndex={noop}
       onRebuildSearchIndex={noop}

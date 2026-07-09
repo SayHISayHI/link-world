@@ -1,17 +1,16 @@
 import { Search, X, CornerDownLeft, CheckCircle2, AlertCircle } from "lucide-react";
 import { useEffect, useState } from "react";
+import type { RefObject } from "react";
 import { useUiStore } from "../../store/uiStore";
 import { formatCaptureFailureReason } from "../../lib/captureFailures";
 import type { AppUiError } from "../../lib/errors";
-import type { RebuildSearchIndexResponse } from "../../types/api";
 
 interface TopBarProps {
   // Search Props
   searchValue: string;
   onSearchValueChange: (val: string) => void;
   onClearSearch: () => void;
-  searchMaintenanceLoading?: boolean;
-  searchRebuildStatus?: RebuildSearchIndexResponse;
+  searchInputRef?: RefObject<HTMLInputElement>;
   
   // Capture Props
   captureLoading: boolean;
@@ -28,6 +27,7 @@ export function TopBar({
   searchValue,
   onSearchValueChange,
   onClearSearch,
+  searchInputRef,
   captureLoading,
   captureError,
   captureJob,
@@ -92,14 +92,16 @@ export function TopBar({
     onClearSearch();
   };
 
-  const { paneWidths } = useUiStore();
+  const sidebarCollapsed = useUiStore((s) => s.sidebarCollapsed);
+  const paneWidths = useUiStore((s) => s.paneWidths);
+  const sidebarHeaderWidth = sidebarCollapsed ? 64 : paneWidths.sidebar;
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-border/60 bg-surface pr-4">
       {/* Left: Brand / Title */}
       <div 
         className="flex shrink-0 items-center px-4" 
-        style={{ width: paneWidths.sidebar }}
+        style={{ width: sidebarHeaderWidth }}
       >
         <h1 className="text-sm font-semibold tracking-normal text-foreground truncate mr-2">Link World</h1>
       </div>
@@ -109,6 +111,7 @@ export function TopBar({
         <div className="relative w-full max-w-2xl">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
+            ref={searchInputRef}
             className="h-10 w-full rounded-md border border-border bg-background pl-9 pr-10 text-sm outline-none transition-colors focus:ring-2 focus:ring-accent focus:border-transparent"
             placeholder="Search or paste a URL to save..."
             value={inputValue}

@@ -36,7 +36,6 @@ import { useUiStore } from "../store/uiStore";
 import type {
   BackgroundJob,
   KnowledgeObject,
-  KnowledgeObjectType,
   LibraryNavigation,
   LibraryQuery,
   NavigationItem,
@@ -47,7 +46,10 @@ import type {
 const LIBRARY_PAGE_SIZE = 30;
 
 export function LibraryShellContainer() {
-  const { route, setRoute } = useUiStore();
+  const route = useUiStore((s) => s.route);
+  const setRoute = useUiStore((s) => s.setRoute);
+  const sidebarCollapsed = useUiStore((s) => s.sidebarCollapsed);
+  const paneWidths = useUiStore((s) => s.paneWidths);
   const [lastCaptureJob, setLastCaptureJob] = useState<CaptureJobCompletedPayload>();
   const [searchMaintenanceMode, setSearchMaintenanceMode] = useState<"check" | "rebuild">();
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -152,6 +154,7 @@ export function LibraryShellContainer() {
   const selectedSearchResult = searchResults.find((result) => result.object.id === selectedObjectId);
   const selectedObject = objects.find((object) => object.id === selectedObjectId) ?? selectedSearchResult?.object;
   const retryableCaptureJob = findRetryableCaptureJob(objectJobs, selectedObject?.id);
+  const sidebarWidth = sidebarCollapsed ? 64 : paneWidths.sidebar;
   const libraryQuery = useMemo<LibraryQuery>(
     () => ({
       view: route.name === "library" ? (route.view ?? allLibraryView) : allLibraryView,
@@ -709,7 +712,10 @@ export function LibraryShellContainer() {
     const panel = (route.panel ?? "models") as SettingsPanelName;
     return (
       <AppShell>
-        <div className="grid min-h-screen grid-cols-[232px_minmax(0,1fr)]">
+        <div
+          className="grid min-h-screen"
+          style={{ gridTemplateColumns: `${sidebarWidth}px minmax(0, 1fr)` }}
+        >
           <aside className="border-r border-border bg-surface">
             <Sidebar
               route={route}
@@ -747,8 +753,7 @@ export function LibraryShellContainer() {
               setSearchQuery("");
               resetSearch();
             }}
-            searchMaintenanceLoading={rebuildSearchIndexLoading || searchIndexHealthLoading}
-            searchRebuildStatus={rebuildSearchIndexResult}
+            searchInputRef={searchInputRef}
             captureLoading={submitCaptureLoading}
             captureError={submitCaptureError}
             captureJob={lastCaptureJob}
@@ -777,8 +782,20 @@ export function LibraryShellContainer() {
             error={libraryObjectsError}
             searchResults={searchResults}
             searchActive={searchQuery.trim().length > 0}
+            searchValue={searchQuery}
             searchLoading={searchLoading}
             searchError={searchError}
+            searchMaintenanceLoading={rebuildSearchIndexLoading || searchIndexHealthLoading}
+            searchMaintenanceError={rebuildSearchIndexError ?? searchIndexHealthError}
+            searchMaintenanceMessage={searchMaintenanceMessage(
+              searchMaintenanceMode,
+              rebuildSearchIndexResult,
+              searchIndexHealth,
+            )}
+            searchRebuildStatus={rebuildSearchIndexResult}
+            onCancelSearchIndexRebuild={handleCancelSearchIndexRebuild}
+            onCheckSearchIndex={handleCheckSearchIndex}
+            onRebuildSearchIndex={handleRebuildSearchIndex}
             onLoadMore={() => {
               void handleLoadMoreObjects();
             }}
