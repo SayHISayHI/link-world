@@ -1,4 +1,4 @@
-import { Search, X, CornerDownLeft } from "lucide-react";
+import { Search, X, CornerDownLeft, CheckCircle2, AlertCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { formatCaptureFailureReason } from "../../lib/captureFailures";
 import type { AppUiError } from "../../lib/errors";
@@ -64,12 +64,6 @@ export function TopBar({
   
   const failure = captureJob?.failureReason ? formatCaptureFailureReason(captureJob.failureReason) : undefined;
   const isDeduplicated = captureJob?.status === "deduplicated";
-  const jobTone =
-    captureJob?.status === "failed"
-      ? "bg-red-50 text-red-800 border-red-200"
-      : captureJob?.status === "succeeded" || isDeduplicated
-        ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-        : "bg-muted text-muted-foreground border-border";
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && isUrl && !captureLoading) {
@@ -79,6 +73,7 @@ export function TopBar({
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setShowToast(false);
     const newVal = e.target.value;
     setInputValue(newVal);
     
@@ -115,54 +110,46 @@ export function TopBar({
             onKeyDown={handleKeyDown}
             disabled={captureLoading}
           />
-          {searchActive && !captureLoading && (
-            <button
-              type="button"
-              onClick={handleClear}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-sm p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-
-          {/* Inline hint when URL is detected */}
-          {isUrl && !captureJob && !captureError && !captureLoading && (
-            <div className="absolute left-0 top-12 z-50 flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground shadow-sm animate-in fade-in slide-in-from-top-1">
-              <CornerDownLeft className="h-3 w-3" />
-              <span>Press <kbd className="rounded border bg-muted px-1 font-sans text-[10px] font-medium text-foreground">Enter</kbd> to save link</span>
-            </div>
-          )}
-
-          {/* Loading State Overlay */}
-          {captureLoading && (
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground animate-pulse">
-              Saving...
-            </div>
-          )}
-
-          {/* Capture Job/Error Status Popover */}
-          {showToast && (captureJob || captureError) && (
-            <div className="absolute left-0 top-12 z-50 w-full rounded-md border border-border bg-background p-2 shadow-md animate-in fade-in slide-in-from-top-1">
-              {captureJob ? (
-                <div className={`rounded-sm px-3 py-2 text-xs leading-5 border ${jobTone}`}>
-                  <p className="font-medium">
-                    {failure?.title ?? (isDeduplicated ? "Already saved" : `Capture job ${captureJob.status}`)}
-                  </p>
-                  {failure ? <p className="mt-0.5">{failure.message}</p> : null}
-                  {!failure && isDeduplicated ? (
-                    <p className="mt-0.5">Opened the existing library item.</p>
-                  ) : null}
-                  {!failure && !isDeduplicated && captureJob.lifecycleStatus ? <p className="mt-0.5">Object is now {captureJob.lifecycleStatus}.</p> : null}
-                </div>
-              ) : null}
-              {captureError ? (
-                <div className="rounded-sm border border-red-200 bg-red-50 px-3 py-2 text-xs leading-5 text-red-800">
-                  <p className="font-medium">{captureError.title}</p>
-                  <p className="mt-0.5">{captureError.message}</p>
-                </div>
-              ) : null}
-            </div>
-          )}
+          {/* Status and Actions Container */}
+          <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-2">
+            {captureLoading ? (
+              <div className="flex items-center gap-1.5 pr-2 text-xs text-muted-foreground animate-pulse">
+                <span className="h-3.5 w-3.5 rounded-full border-2 border-muted-foreground border-t-transparent animate-spin" />
+                <span>Saving...</span>
+              </div>
+            ) : showToast && (captureJob || captureError) ? (
+              <div className={`group relative flex cursor-default items-center gap-1.5 pr-2 text-xs animate-in fade-in zoom-in-95 ${captureError || captureJob?.status === 'failed' ? 'text-red-500' : 'text-accent'}`}>
+                {captureError || captureJob?.status === 'failed' ? (
+                  <>
+                    <AlertCircle className="h-4 w-4" />
+                    <span className="font-medium">{captureError?.title ?? "Failed"}</span>
+                    {/* Error Tooltip */}
+                    <div className="absolute right-0 top-full mt-2 hidden w-64 rounded-md border border-border bg-surface p-3 text-xs text-foreground shadow-lg group-hover:block z-50">
+                      {captureError?.message ?? failure?.message ?? "An unknown error occurred."}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span className="font-medium">{isDeduplicated ? "Already saved" : "Saved"}</span>
+                  </>
+                )}
+              </div>
+            ) : isUrl ? (
+              <div className="flex items-center gap-1.5 pr-2 text-xs text-muted-foreground animate-in fade-in">
+                <span>Press <kbd className="rounded border border-border bg-muted px-1 font-sans text-[10px] font-medium text-foreground">Enter</kbd></span>
+                <CornerDownLeft className="h-3 w-3" />
+              </div>
+            ) : searchActive ? (
+              <button
+                type="button"
+                onClick={handleClear}
+                className="rounded-sm p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
 

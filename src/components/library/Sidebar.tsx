@@ -261,7 +261,7 @@ function NavigationItems({
               type="button"
               className={`flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-sm transition-colors ${
                 active
-                  ? "bg-muted font-medium text-foreground"
+                  ? "bg-accent/10 font-medium text-accent"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
               }`}
               onClick={() => onSelect({ kind: item.kind, id: item.id })}
@@ -278,7 +278,7 @@ function NavigationItems({
               </span>
             </button>
             {renderActions ? (
-              <div className="absolute right-1 flex items-center bg-muted opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">
+              <div className="absolute right-1 flex items-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">
                 {renderActions(item)}
               </div>
             ) : null}

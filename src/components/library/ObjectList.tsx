@@ -39,8 +39,8 @@ export function ObjectList({
   const resultByObjectId = searchResults ? new Map(searchResults.map((result) => [result.object.id, result])) : new Map();
 
   return (
-    <div className="h-full overflow-y-auto p-3">
-      <div className="mb-3 px-1">
+    <div className="h-full overflow-y-auto">
+      <div className="px-4 pt-4 pb-2">
         <div className="flex items-center justify-between gap-3">
           <h1 className="min-w-0 truncate text-base font-semibold">
             {searchActive ? "Search" : heading}
@@ -51,13 +51,13 @@ export function ObjectList({
 
 
       {searchLoading ? (
-        <div className="rounded-md border border-border bg-surface p-3 text-xs text-muted-foreground">
+        <div className="mx-4 my-2 rounded-md border border-border bg-surface p-3 text-xs text-muted-foreground">
           Searching local index...
         </div>
       ) : null}
 
       {!searchLoading && searchError ? (
-        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-800">
+        <div className="mx-4 my-2 rounded-md border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-800">
           <p className="font-medium">{searchError.title}</p>
           <p className="mt-1">{searchError.message}</p>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -94,7 +94,7 @@ export function ObjectList({
       ) : null}
 
       {searchActive && !searchLoading && !searchError && searchResults?.length === 0 ? (
-        <div className="rounded-md border border-dashed border-border bg-surface p-4 text-xs leading-5 text-muted-foreground">
+        <div className="mx-4 my-2 rounded-md border border-dashed border-border bg-surface p-4 text-xs leading-5 text-muted-foreground">
           <p className="font-medium text-foreground">No matching objects</p>
           <p className="mt-1">
             No local search results found. Try broader terms or clear the current filter.
@@ -108,7 +108,7 @@ export function ObjectList({
         </div>
       ) : null}
 
-      <div className="space-y-2">
+      <div className="flex flex-col border-t border-border">
         {displayObjects.map((object) => {
           const result = resultByObjectId.get(object.id);
 
@@ -116,44 +116,52 @@ export function ObjectList({
             <button
               key={object.id}
               className={cn(
-                "w-full rounded-md border border-border bg-surface p-3 text-left transition-colors hover:bg-muted",
-                selectedObjectId === object.id && "border-accent bg-accent/5",
+                "relative w-full border-b border-border bg-surface px-4 py-3 text-left transition-colors hover:bg-muted/60",
+                selectedObjectId === object.id && "bg-accent/[0.08] before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-accent"
               )}
               onClick={() => onSelectObject(object.id)}
               type="button"
             >
-              <div className="flex items-center justify-between gap-3">
-                <div className="truncate text-sm font-medium">{object.title ?? object.canonicalUrl ?? object.id}</div>
-                <span className="shrink-0 rounded-sm bg-muted px-2 py-1 text-[11px] text-muted-foreground">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <h3 className="truncate text-sm font-medium leading-snug text-foreground/95">
+                    {object.title ?? object.canonicalUrl ?? object.id}
+                  </h3>
+                  {result?.snippet ? (
+                    <p className="mt-1.5 line-clamp-2 text-[13px] leading-relaxed text-muted-foreground/80">
+                      {result.snippet}
+                    </p>
+                  ) : object.canonicalUrl || object.sourcePlatform ? (
+                    <p className="mt-1.5 line-clamp-1 text-[13px] leading-relaxed text-muted-foreground/80">
+                      {object.sourcePlatform ? `${object.sourcePlatform} · ` : ""}
+                      {object.canonicalUrl ?? object.type}
+                    </p>
+                  ) : null}
+                  {result?.matchedFields.length ? (
+                    <p className="mt-2 text-[11px] text-accent/80">
+                      Matched: {result.matchedFields.join(", ")}
+                    </p>
+                  ) : null}
+                </div>
+                <span className="mt-0.5 shrink-0 rounded border border-border/60 bg-muted/30 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">
                   {formatRelativeStatus(object.lifecycleStatus)}
                 </span>
               </div>
-              {result?.snippet ? (
-                <p className="mt-2 line-clamp-3 text-xs leading-5 text-muted-foreground">{result.snippet}</p>
-              ) : object.canonicalUrl || object.sourcePlatform ? (
-                <p className="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">
-                  {object.sourcePlatform ? `${object.sourcePlatform} - ` : ""}
-                  {object.canonicalUrl ?? object.type}
-                </p>
-              ) : null}
-              {result?.matchedFields.length ? (
-                <p className="mt-2 text-[11px] text-muted-foreground">
-                  Matched {result.matchedFields.join(", ")}
-                </p>
-              ) : null}
             </button>
           );
         })}
       </div>
       {!searchActive && hasMore ? (
-        <button
-          className="mt-3 h-9 w-full rounded-md border border-border text-xs text-muted-foreground hover:bg-muted disabled:opacity-60"
-          disabled={loading}
-          onClick={onLoadMore}
+        <div className="p-4">
+          <button
+            className="h-9 w-full rounded-md border border-border text-xs text-muted-foreground hover:bg-muted disabled:opacity-60"
+            disabled={loading}
+            onClick={onLoadMore}
           type="button"
         >
-          {loading ? "Loading..." : "Load more"}
-        </button>
+            {loading ? "Loading..." : "Load more"}
+          </button>
+        </div>
       ) : null}
     </div>
   );
