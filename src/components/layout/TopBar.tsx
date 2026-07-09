@@ -1,5 +1,6 @@
 import { Search, X, CornerDownLeft, CheckCircle2, AlertCircle } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useUiStore } from "../../store/uiStore";
 import { formatCaptureFailureReason } from "../../lib/captureFailures";
 import type { AppUiError } from "../../lib/errors";
 import type { RebuildSearchIndexResponse } from "../../types/api";
@@ -91,11 +92,16 @@ export function TopBar({
     onClearSearch();
   };
 
+  const { paneWidths } = useUiStore();
+
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-surface px-4">
+    <header className="flex h-14 shrink-0 items-center justify-between border-b border-border/60 bg-surface pr-4">
       {/* Left: Brand / Title */}
-      <div className="flex w-[216px] shrink-0 items-center">
-        <h1 className="text-sm font-semibold tracking-normal text-foreground">Link World</h1>
+      <div 
+        className="flex shrink-0 items-center px-4" 
+        style={{ width: paneWidths.sidebar }}
+      >
+        <h1 className="text-sm font-semibold tracking-normal text-foreground truncate mr-2">Link World</h1>
       </div>
 
       {/* Middle: Omnibox (Search & Capture) */}

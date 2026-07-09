@@ -1,5 +1,5 @@
-import { lazy, Suspense } from "react";
-import { Activity, RefreshCw, Trash2 } from "lucide-react";
+import { lazy, Suspense, useState, useRef, useEffect } from "react";
+import { Activity, RefreshCw, Trash2, PanelRight, PanelRightClose } from "lucide-react";
 import { Button } from "../ui/button";
 import type {
   BackgroundJob,
@@ -16,6 +16,8 @@ import { AIAnalysisPanel } from "../analysis/AIAnalysisPanel";
 import { EvaluationPanel } from "../evaluation/EvaluationPanel";
 import { OrganizationPanel } from "../organization/OrganizationPanel";
 import { selectCurrentDisplayHints } from "./displayHints";
+import { useUiStore } from "../../store/uiStore";
+import { Resizer } from "../layout/Resizer";
 
 const noop = () => undefined;
 
@@ -104,6 +106,33 @@ export function ObjectDetail({
   onAcceptTagSuggestion = noop,
   onRejectTagSuggestion = noop,
 }: ObjectDetailProps) {
+  const storeWidths = useUiStore((s) => s.paneWidths);
+  const setStoreWidth = useUiStore((s) => s.setPaneWidth);
+  const detailSidebarCollapsed = useUiStore((s) => s.detailSidebarCollapsed);
+  const setDetailSidebarCollapsed = useUiStore((s) => s.setDetailSidebarCollapsed);
+
+  const [detailSidebarWidth, setDetailSidebarWidth] = useState(storeWidths.detailSidebar);
+  const initialWidthRef = useRef(storeWidths.detailSidebar);
+
+  useEffect(() => {
+    setDetailSidebarWidth(storeWidths.detailSidebar);
+  }, [storeWidths.detailSidebar]);
+
+  const handleDragStart = () => {
+    initialWidthRef.current = detailSidebarWidth;
+  };
+
+  const handleDrag = (deltaX: number) => {
+    // Note: dragging the left edge to the right means a positive deltaX decreases the width
+    // because the handle is on the left edge.
+    // So new width = initial - deltaX
+    setDetailSidebarWidth(Math.max(200, Math.min(500, initialWidthRef.current - deltaX)));
+  };
+
+  const handleDragEnd = () => {
+    setStoreWidth("detailSidebar", detailSidebarWidth);
+  };
+
   const currentDetail = detail && (!object || detail.object.id === object.id) ? detail : undefined;
   const currentObject = currentDetail?.object ?? object;
 
@@ -136,19 +165,41 @@ export function ObjectDetail({
             {currentObject.type} / {statusText}
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1">
           <Button
             variant="ghost"
             onClick={onDeleteObject}
             disabled={deleteLoading}
             title="Delete object"
+            className="text-muted-foreground hover:text-red-700 hover:bg-red-50 w-8 h-8 p-0"
           >
             <Trash2 className="h-4 w-4" aria-hidden="true" />
-            Delete
           </Button>
-          <Button onClick={onPing} disabled={pingLoading} title="Ping backend">
+          <Button 
+            variant="ghost"
+            onClick={onPing} 
+            disabled={pingLoading} 
+            title="Ping backend"
+            className="text-muted-foreground w-8 h-8 p-0"
+          >
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
-            Ping
+          </Button>
+          <div className="w-px h-4 bg-border mx-1" />
+          <Button
+            variant="ghost"
+            onClick={() => setDetailSidebarCollapsed(!detailSidebarCollapsed)}
+            title={detailSidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+            className="text-muted-foreground w-8 h-8 p-0"
+          >
+            <PanelRight className="h-4 w-4" aria-hidden="true" />
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => useUiStore.getState().setDetailPaneCollapsed(true)}
+            title="Close detail pane (Ctrl+Alt+B)"
+            className="text-muted-foreground hover:text-foreground w-8 h-8 p-0"
+          >
+            <PanelRightClose className="h-4 w-4" aria-hidden="true" />
           </Button>
         </div>
       </header>
@@ -224,8 +275,19 @@ export function ObjectDetail({
             ) : null}
           </div>
         </article>
-        <aside className="w-[320px] shrink-0 border-l border-border bg-background p-4 overflow-y-auto">
-          <h3 className="text-sm font-semibold">Capture</h3>
+        
+        {!detailSidebarCollapsed && (
+          <aside 
+            className="relative shrink-0 border-l border-border bg-background p-4 overflow-y-auto transition-[width] duration-200 ease-in-out"
+            style={{ width: detailSidebarWidth }}
+          >
+            <Resizer 
+              className="absolute left-0 top-0 bottom-0 -translate-x-1/2"
+              onDragStart={handleDragStart}
+              onDrag={handleDrag} 
+              onDragEnd={handleDragEnd} 
+            />
+            <h3 className="text-sm font-semibold">Capture</h3>
           <div className="mt-3 rounded-md border border-border bg-surface p-3 text-xs leading-5">
             <div className="flex items-center justify-between gap-3">
               <p className="font-medium">Lifecycle</p>
@@ -300,6 +362,7 @@ export function ObjectDetail({
             ) : null}
           </div>
         </aside>
+        )}
       </div>
     </div>
   );

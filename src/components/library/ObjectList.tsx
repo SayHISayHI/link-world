@@ -1,7 +1,9 @@
-import { RefreshCw, XCircle } from "lucide-react";
+import { RefreshCw, XCircle, PanelRightOpen } from "lucide-react";
 import type { RefObject } from "react";
 import { formatRelativeStatus } from "../../lib/formatting";
 import { cn } from "../../lib/cn";
+import { Button } from "../ui/button";
+import { useUiStore } from "../../store/uiStore";
 import type { AppUiError } from "../../lib/errors";
 import type { KnowledgeObject, SearchResult } from "../../types/api";
 import { ObjectListItem } from "./ObjectListItem";
@@ -35,18 +37,34 @@ export function ObjectList({
   onLoadMore,
   onSelectObject,
 }: ObjectListProps) {
+  const detailPaneCollapsed = useUiStore((s) => s.detailPaneCollapsed);
+  const setDetailPaneCollapsed = useUiStore((s) => s.setDetailPaneCollapsed);
+
   const displayObjects = searchActive && searchResults ? searchResults.map((result) => result.object) : objects;
   const resultByObjectId = searchResults ? new Map(searchResults.map((result) => [result.object.id, result])) : new Map();
 
+  const handleSelectObject = (objectId: string) => {
+    setDetailPaneCollapsed(false);
+    onSelectObject(objectId);
+  };
+
   return (
     <div className="h-full overflow-y-auto">
-      <div className="px-4 pt-4 pb-2">
-        <div className="flex items-center justify-between gap-3">
-          <h1 className="min-w-0 truncate text-base font-semibold">
-            {searchActive ? "Search" : heading}
-          </h1>
+      <div className="flex h-14 shrink-0 items-center justify-between gap-3 px-5">
+        <h1 className="min-w-0 truncate text-base font-semibold">
+          {searchActive ? "Search" : heading}
+        </h1>
+          {detailPaneCollapsed && (
+            <Button
+              variant="ghost"
+              onClick={() => setDetailPaneCollapsed(false)}
+              title="Open detail pane (Ctrl+Alt+B)"
+              className="text-muted-foreground hover:text-foreground w-8 h-8 p-0"
+            >
+              <PanelRightOpen className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          )}
         </div>
-      </div>
 
 
 
@@ -119,7 +137,7 @@ export function ObjectList({
                 "relative w-full border-b border-border bg-surface px-4 py-3 text-left transition-colors hover:bg-muted/60",
                 selectedObjectId === object.id && "bg-accent/[0.08] before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-accent"
               )}
-              onClick={() => onSelectObject(object.id)}
+              onClick={() => handleSelectObject(object.id)}
               type="button"
             >
               <div className="flex items-start justify-between gap-4">
