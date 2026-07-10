@@ -55,7 +55,7 @@ export function ThreePaneLayout({ topBar, sidebar, list, detail }: ThreePaneLayo
       <div className="flex min-h-0 flex-1 border-border">
         <aside 
           className="relative shrink-0 border-r border-border bg-surface"
-          style={{ width: sidebarCollapsed ? 64 : sidebarWidth }}
+          style={{ width: sidebarCollapsed ? 56 : sidebarWidth }}
         >
           {sidebar}
           {!sidebarCollapsed && (

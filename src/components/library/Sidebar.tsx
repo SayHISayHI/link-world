@@ -90,12 +90,12 @@ export function Sidebar({
               <h2 className="text-[11px] font-semibold uppercase text-muted-foreground">Collections</h2>
               <button
                 type="button"
-                className="flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="flex h-6 w-6 items-center justify-end rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
                 onClick={() => setCreating(true)}
                 title="New collection"
                 aria-label="New collection"
               >
-                <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                <Plus className="h-3.5 w-3.5 translate-x-[3px]" aria-hidden="true" />
               </button>
             </div>
           )}
@@ -251,12 +251,12 @@ function NavigationSection({
           {onAdd ? (
             <button
               type="button"
-              className="flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="flex h-6 w-6 items-center justify-end rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
               onClick={onAdd}
               title={"New " + label.toLowerCase().replace(/s$/, "")}
               aria-label={"New " + label.toLowerCase().replace(/s$/, "")}
             >
-              <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+              <Plus className="h-3.5 w-3.5 translate-x-[3px]" aria-hidden="true" />
             </button>
           ) : null}
         </div>
@@ -300,7 +300,7 @@ function NavigationItems({
           <div key={`${item.kind}:${item.id}`} className="group relative flex items-center w-full">
             <button
               type="button"
-              className={`flex min-w-0 items-center gap-2 rounded-md text-sm transition-all duration-200 ${
+              className={`flex min-w-0 items-center gap-2 rounded-md text-sm ${
                 collapsed ? "h-9 w-9 justify-center mx-auto" : "h-9 flex-1 px-2 text-left"
               } ${
                 active
@@ -316,7 +316,7 @@ function NavigationItems({
                 <>
                   <span className="min-w-0 flex-1 truncate">{item.label}</span>
                   <span
-                    className={`text-[11px] tabular-nums text-muted-foreground ${
+                    className={`w-6 text-right font-mono text-[11px] tracking-tight text-muted-foreground ${
                       renderActions ? "group-hover:opacity-0 group-focus-within:opacity-0" : ""
                     }`}
                   >

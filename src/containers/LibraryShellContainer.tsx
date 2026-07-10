@@ -708,70 +708,71 @@ export function LibraryShellContainer() {
     },
     [organizationMutations, refreshOrganizationUi],
   );
+  const topBar = (
+    <TopBar
+      searchValue={searchQuery}
+      onSearchValueChange={setSearchQuery}
+      onClearSearch={() => {
+        setSearchQuery("");
+        resetSearch();
+      }}
+      searchInputRef={searchInputRef}
+      captureLoading={submitCaptureLoading}
+      captureError={submitCaptureError}
+      captureJob={lastCaptureJob}
+      onCaptureSubmit={handleCaptureSubmit}
+    />
+  );
+
+  const sidebar = (
+    <Sidebar
+      route={route}
+      navigation={navigation}
+      loading={navigationLoading}
+      mutationLoading={organizationMutations.loading}
+      error={navigationError ?? organizationMutations.error}
+      onNavigate={setRoute}
+      onCreateCollection={handleCreateCollection}
+      onCreateSmartView={handleCreateSmartView}
+      onRenameCollection={handleRenameCollection}
+      onArchiveCollection={handleArchiveCollection}
+    />
+  );
+
   if (route.name === "settings") {
     const panel = (route.panel ?? "models") as SettingsPanelName;
     return (
       <AppShell>
-        <div
-          className="grid min-h-screen"
-          style={{ gridTemplateColumns: `${sidebarWidth}px minmax(0, 1fr)` }}
-        >
-          <aside className="border-r border-border bg-surface">
-            <Sidebar
-              route={route}
-              navigation={navigation}
-              loading={navigationLoading}
-              mutationLoading={organizationMutations.loading}
-              error={navigationError ?? organizationMutations.error}
-              onNavigate={setRoute}
-              onCreateCollection={handleCreateCollection}
-              onCreateSmartView={handleCreateSmartView}
-              onRenameCollection={handleRenameCollection}
-              onArchiveCollection={handleArchiveCollection}
-            />
-          </aside>
-          <SettingsPanel
-            panel={panel}
-            onPanelChange={(nextPanel) => setRoute({ name: "settings", panel: nextPanel })}
-            onOpenObject={(objectId) => {
-              selectObject(objectId);
-              setRoute({ name: "library", view: allLibraryView, filters: emptyLibraryFilters });
-            }}
-          />
+        <div className="flex h-screen w-full flex-col overflow-hidden">
+          {topBar}
+          <div className="flex min-h-0 flex-1 border-t border-border">
+            <aside 
+              className="relative shrink-0 border-r border-border bg-surface"
+              style={{ width: sidebarWidth }}
+            >
+              {sidebar}
+            </aside>
+            <section className="flex-1 bg-surface overflow-auto">
+              <SettingsPanel
+                panel={panel}
+                onPanelChange={(nextPanel) => setRoute({ name: "settings", panel: nextPanel })}
+                onOpenObject={(objectId) => {
+                  selectObject(objectId);
+                  setRoute({ name: "library", view: allLibraryView, filters: emptyLibraryFilters });
+                }}
+              />
+            </section>
+          </div>
         </div>
       </AppShell>
     );
   }
+
   return (
     <AppShell>
       <ThreePaneLayout
-        topBar={
-          <TopBar
-            searchValue={searchQuery}
-            onSearchValueChange={setSearchQuery}
-            onClearSearch={() => {
-              setSearchQuery("");
-              resetSearch();
-            }}
-            searchInputRef={searchInputRef}
-            captureLoading={submitCaptureLoading}
-            captureError={submitCaptureError}
-            captureJob={lastCaptureJob}
-            onCaptureSubmit={handleCaptureSubmit}
-          />
-        }
-        sidebar={<Sidebar
-              route={route}
-              navigation={navigation}
-              loading={navigationLoading}
-              mutationLoading={organizationMutations.loading}
-              error={navigationError ?? organizationMutations.error}
-              onNavigate={setRoute}
-              onCreateCollection={handleCreateCollection}
-              onCreateSmartView={handleCreateSmartView}
-              onRenameCollection={handleRenameCollection}
-              onArchiveCollection={handleArchiveCollection}
-            />}
+        topBar={topBar}
+        sidebar={sidebar}
         list={
           <ObjectList
             objects={objects}
