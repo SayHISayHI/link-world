@@ -1,4 +1,4 @@
-# Link World 数据库迁移规范
+# Node Tide 数据库迁移规范
 
 状态: Active baseline
 适用范围: SQLite / sqlx migrations / Local Edition

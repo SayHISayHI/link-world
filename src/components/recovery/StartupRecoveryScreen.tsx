@@ -28,7 +28,7 @@ export function StartupRecoveryScreen({ status }: StartupRecoveryScreenProps) {
                     Restricted startup recovery
                   </p>
                   <h1 className="mt-1 text-2xl font-semibold">
-                    Link World could not open the normal library safely.
+                    Node Tide could not open the normal library safely.
                   </h1>
                   <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
                     {issue?.message ??

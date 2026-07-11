@@ -1,11 +1,11 @@
-# Link World 第三方调用韧性规范
+# Node Tide 第三方调用韧性规范
 
 状态: Draft  
 适用范围: Model providers、GitHub API、URL fetch、browser capture bridge、future cloud APIs
 
 ## 1. Purpose
 
-Link World 依赖外部网络和第三方 API，但产品必须在外部服务不可用时保持本地核心能力。本文档定义 timeout、retry、rate limit、fallback、错误分类和用户反馈规范。
+Node Tide 依赖外部网络和第三方 API，但产品必须在外部服务不可用时保持本地核心能力。本文档定义 timeout、retry、rate limit、fallback、错误分类和用户反馈规范。
 
 ## 2. External Dependency Classes
 

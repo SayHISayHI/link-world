@@ -1234,7 +1234,7 @@ mod tests {
             .expect("database should initialize");
         let object_store = test_object_store();
         let telemetry_dir = std::env::temp_dir().join(format!(
-            "link-world-evaluation-timeout-{}",
+            "node-tide-evaluation-timeout-{}",
             uuid::Uuid::new_v4()
         ));
         seed_parsed_object(
@@ -1474,7 +1474,7 @@ mod tests {
         ])
         .await;
         let telemetry_dir = std::env::temp_dir().join(format!(
-            "link-world-github-evaluation-{}",
+            "node-tide-github-evaluation-{}",
             uuid::Uuid::new_v4()
         ));
         let service = EvaluationService::new(database.pool().clone(), object_store)
@@ -1559,7 +1559,7 @@ mod tests {
         .await
         .expect("secret GitHub object should update");
         let telemetry_dir =
-            std::env::temp_dir().join(format!("link-world-github-policy-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("node-tide-github-policy-{}", uuid::Uuid::new_v4()));
         let service = EvaluationService::new(database.pool().clone(), object_store)
             .with_github_metadata_client(GitHubMetadataClient::for_test(
                 "http://127.0.0.1:1/",
@@ -1698,7 +1698,7 @@ mod tests {
     }
 
     fn test_object_store() -> ObjectStore {
-        let root = std::env::temp_dir().join(format!("link-world-test-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("node-tide-test-{}", uuid::Uuid::new_v4()));
         ObjectStore::initialize(root).expect("object store should initialize")
     }
 }

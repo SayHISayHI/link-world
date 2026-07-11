@@ -5,13 +5,13 @@ Date: 2026-07-03
 
 ## Context
 
-Link World 当前通过 Tauri commands 暴露本地能力。总体架构已经把 CLI 列为客户端，但代码库没有 CLI binary、机器输出契约或桌面/CLI 并发访问同一数据目录的规则。若直接把 Tauri command 逐个复制成 CLI handler，会产生两套参数校验、业务编排、错误映射和隐私边界，并增加状态机漂移风险。
+Node Tide 当前通过 Tauri commands 暴露本地能力。总体架构已经把 CLI 列为客户端，但代码库没有 CLI binary、机器输出契约或桌面/CLI 并发访问同一数据目录的规则。若直接把 Tauri command 逐个复制成 CLI handler，会产生两套参数校验、业务编排、错误映射和隐私边界，并增加状态机漂移风险。
 
-Windows 桌面宿主当前生成 `link-world.exe`，release build 还使用 Windows GUI subsystem。CLI 需要 console subsystem，不能以同名二进制覆盖桌面宿主。Local Edition 的 migration、restore、FTS rebuild 和对象存储操作也要求明确的单写入者边界。
+Windows 桌面宿主当前生成 `node-tide.exe`，release build 还使用 Windows GUI subsystem。CLI 需要 console subsystem，不能以同名二进制覆盖桌面宿主。Local Edition 的 migration、restore、FTS rebuild 和对象存储操作也要求明确的单写入者边界。
 
 ## Decision
 
-1. 新增独立的 `link-world-cli.exe` binary，桌面宿主和 CLI 都链接现有 Rust library。
+1. 新增独立的 `node-tide-cli.exe` binary，桌面宿主和 CLI 都链接现有 Rust library。
 2. Tauri commands 与 CLI 都是 adapter；两者只能调用共享 application service、policy、repository、job、event 和 telemetry，不能互相调用或复制业务逻辑。
 3. 首期 CLI 直接打开本地数据目录，但桌面端和 CLI 必须通过跨进程 runtime lock 实现单写入者/单运行者互斥。竞争失败立即返回稳定的 `ERR_RUNTIME_BUSY`。
 4. help、version 和 shell completion 不初始化本地数据。生产首期不开放任意数据目录参数。

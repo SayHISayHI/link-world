@@ -1,4 +1,4 @@
-# Link World CLI 开发计划
+# Node Tide CLI 开发计划
 
 状态：Implemented；自动化门禁已建立，签名与最终真实机发布矩阵仍开放
 创建日期：2026-07-03  
@@ -7,7 +7,7 @@
 
 ## 1. 目的
 
-Link World CLI 的目标是让可重复、可批处理和可自动化的核心能力脱离 GUI 使用，并为脚本、CI 和后续 Agent/MCP 接入提供稳定边界。CLI 不是另一套业务实现，也不以机械复制每个界面按钮为目标。
+Node Tide CLI 的目标是让可重复、可批处理和可自动化的核心能力脱离 GUI 使用，并为脚本、CI 和后续 Agent/MCP 接入提供稳定边界。CLI 不是另一套业务实现，也不以机械复制每个界面按钮为目标。
 
 首期成功标准：
 
@@ -59,7 +59,7 @@ flowchart LR
 ```text
 src-tauri/src/
 ├── bin/
-│   └── link-world-cli.rs       # 独立 console binary
+│   └── node-tide-cli.rs       # 独立 console binary
 ├── cli/
 │   ├── mod.rs                  # 参数解析与 dispatch
 │   ├── output.rs               # text/json 输出与 schema version
@@ -70,7 +70,7 @@ src-tauri/src/
 └── ...
 ```
 
-Windows 首期二进制名使用 `link-world-cli.exe`。当前桌面宿主已经占用 `link-world.exe`，不能在同一安装目录发布同名文件。是否在后续版本提供 `lw` 或 `link-world` shell alias，须经过安装、冲突和升级验证后决定。
+Windows 首期二进制名使用 `node-tide-cli.exe`。当前桌面宿主已经占用 `node-tide.exe`，不能在同一安装目录发布同名文件。是否在后续版本提供 `lw` 或 `node-tide` shell alias，须经过安装、冲突和升级验证后决定。
 
 ### 3.2 共享核心规则
 
@@ -95,37 +95,37 @@ Windows 首期二进制名使用 `link-world-cli.exe`。当前桌面宿主已经
 命令命名使用名词分组和显式动词；所有 ID 参数必须经过既有 identifier/UUID 校验。
 
 ```text
-link-world-cli version
-link-world-cli status [--output text|json]
-link-world-cli diagnostics show [--output text|json]
+node-tide-cli version
+node-tide-cli status [--output text|json]
+node-tide-cli diagnostics show [--output text|json]
 
-link-world-cli object list [--type TYPE] [--limit N] [--cursor CURSOR]
-link-world-cli object show <OBJECT_ID> [--include-content]
-link-world-cli object delete <OBJECT_ID> --yes
+node-tide-cli object list [--type TYPE] [--limit N] [--cursor CURSOR]
+node-tide-cli object show <OBJECT_ID> [--include-content]
+node-tide-cli object delete <OBJECT_ID> --yes
 
-link-world-cli search <QUERY> [--type TYPE] [--limit N]
-link-world-cli capture url <URL> [--request-id UUID]
+node-tide-cli search <QUERY> [--type TYPE] [--limit N]
+node-tide-cli capture url <URL> [--request-id UUID]
 
-link-world-cli analysis run <OBJECT_ID> [--request-id UUID]
-link-world-cli evaluation list
-link-world-cli evaluation run <OBJECT_ID> <EVALUATOR> [--request-id UUID]
-link-world-cli evaluation show <RUN_ID>
-link-world-cli evaluation retry <RUN_ID> [--request-id UUID]
+node-tide-cli analysis run <OBJECT_ID> [--request-id UUID]
+node-tide-cli evaluation list
+node-tide-cli evaluation run <OBJECT_ID> <EVALUATOR> [--request-id UUID]
+node-tide-cli evaluation show <RUN_ID>
+node-tide-cli evaluation retry <RUN_ID> [--request-id UUID]
 
-link-world-cli job show <JOB_ID>
-link-world-cli job retry <JOB_ID>
+node-tide-cli job show <JOB_ID>
+node-tide-cli job retry <JOB_ID>
 
-link-world-cli search-index check
-link-world-cli search-index rebuild
-link-world-cli search-index status <JOB_ID>
-link-world-cli search-index cancel <JOB_ID>
-link-world-cli search-index reindex <OBJECT_ID>
+node-tide-cli search-index check
+node-tide-cli search-index rebuild
+node-tide-cli search-index status <JOB_ID>
+node-tide-cli search-index cancel <JOB_ID>
+node-tide-cli search-index reindex <OBJECT_ID>
 
-link-world-cli diagnostics export --yes
-link-world-cli export library --format json|markdown|both --yes
-link-world-cli backup create
-link-world-cli backup list
-link-world-cli backup verify <BACKUP_ID>
+node-tide-cli diagnostics export --yes
+node-tide-cli export library --format json|markdown|both --yes
+node-tide-cli backup create
+node-tide-cli backup list
+node-tide-cli backup verify <BACKUP_ID>
 ```
 
 首期不开放 `restore apply`。恢复涉及候选验证、safety backup、进程重启和 rollback，继续由桌面 recovery UI 承担。只有在 CLI 能表达同等级显式确认、阶段结果和故障恢复后，才能单独立项加入。
@@ -282,8 +282,8 @@ CLI 首期代码实现只有同时满足以下条件才能标记为完成；对�
 
 ## 10. 已定实施决策
 
-1. CLI 以独立 `link-world-cli.exe` artifact 发布；`install-link-world-cli.ps1` 负责显式用户级安装和可选 PATH，不由桌面安装器静默修改 PATH。
-2. 首期命令名固定为 `link-world-cli`，不提供未经冲突验证的短 alias。
+1. CLI 以独立 `node-tide-cli.exe` artifact 发布；`install-node-tide-cli.ps1` 负责显式用户级安装和可选 PATH，不由桌面安装器静默修改 PATH。
+2. 首期命令名固定为 `node-tide-cli`，不提供未经冲突验证的短 alias。
 3. 参数解析采用 `clap 4.6.x`，completion 使用 `clap_complete 4.6.x`；两者为 MIT OR Apache-2.0，MSRV 与项目 Rust 1.85 对齐，并进入 Cargo.lock/RustSec 门禁。
 4. Library、Operations 和 Portable Export 已抽为共享 application service；CLI adapter 不依赖 repository、sqlx 或 Tauri window API。
 5. 首期明确不支持桌面端与 CLI 并发打开同一数据目录，竞争稳定返回 `ERR_RUNTIME_BUSY`。daemon/IPC 仅在真实需求成立后另立 ADR。

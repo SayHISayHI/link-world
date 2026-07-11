@@ -1,10 +1,10 @@
-# Link World 技术选型与规范 (Tech Stack)
+# Node Tide 技术选型与规范 (Tech Stack)
 
-本文档定义了 Link World 的核心技术基石。任何 AI 工具在接手开发时，必须严格遵守本文档定义的库与框架。
+本文档定义了 Node Tide 的核心技术基石。任何 AI 工具在接手开发时，必须严格遵守本文档定义的库与框架。
 
 ## 1. 整体架构 (Architecture)
 
-Link World 采用 **桌面端 Local-first** 的架构。底层由 Rust 驱动 (Tauri)，提供原生性能、文件系统访问与 SQLite 数据库管理；上层由 React 渲染极致的现代化 UI，前后端通过 Tauri IPC (Inter-Process Communication) 进行异步通信。
+Node Tide 采用 **桌面端 Local-first** 的架构。底层由 Rust 驱动 (Tauri)，提供原生性能、文件系统访问与 SQLite 数据库管理；上层由 React 渲染极致的现代化 UI，前后端通过 Tauri IPC (Inter-Process Communication) 进行异步通信。
 
 ## 2. 核心技术栈 (Core Stack)
 
@@ -20,7 +20,7 @@ Link World 采用 **桌面端 Local-first** 的架构。底层由 Rust 驱动 (T
   - 注意: sqlite-vec 仍处在 pre-v1 阶段，MVP 必须允许在编译或分发遇阻时回退到纯 FTS5。
 - **多线程 / 异步运行时**: [Tokio](https://tokio.rs/)
 - **CLI 参数与 completion**: `clap 4.6.x` + `clap_complete 4.6.x`
-  - 独立 `link-world-cli.exe` 使用 console subsystem；桌面与 CLI 共享 Rust application services，不共享 adapter。
+  - 独立 `node-tide-cli.exe` 使用 console subsystem；桌面与 CLI 共享 Rust application services，不共享 adapter。
 - **网络请求 (官方 API、用户提交 URL 拉取、本地模型网关)**: [reqwest](https://docs.rs/reqwest)
   - 注意: 不得用于规避第三方平台限制或云端代登录批量抓取。
 
@@ -62,11 +62,11 @@ Link World 采用 **桌面端 Local-first** 的架构。底层由 Rust 驱动 (T
 ## 3. 目录架构约定 (Directory Structure)
 
 ```text
-link-world/
+node-tide/
 ├── src-tauri/                 # Rust 后端与宿主环境
 │   ├── src/
 │   │   ├── main.rs            # Tauri 应用入口
-│   │   ├── bin/link-world-cli.rs # CLI console 入口
+│   │   ├── bin/node-tide-cli.rs # CLI console 入口
 │   │   ├── cli/               # 参数、JSON/text、退出码与 dispatch adapter
 │   │   ├── commands/          # 暴露给前端的 IPC 接口定义
 │   │   ├── services/          # GUI/CLI 共享 application use cases

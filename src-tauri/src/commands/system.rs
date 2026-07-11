@@ -48,7 +48,7 @@ pub fn ping(state: tauri::State<'_, AppState>) -> IpcResponse<PingResponse> {
         let backend_version = service.backend_version();
 
         Ok(PingResponse {
-            message: "Link World backend is available.".to_string(),
+            message: "Node Tide backend is available.".to_string(),
             backend_version,
         })
     })

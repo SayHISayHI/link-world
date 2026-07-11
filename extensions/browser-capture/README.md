@@ -1,10 +1,10 @@
-# Link World Browser Capture
+# Node Tide Browser Capture
 
 Minimal Manifest V3 extension for MVP browser capture.
 
 ## Local Install
 
-1. Start the Link World desktop app.
+1. Start the Node Tide desktop app.
 2. Open Chromium extension management.
 3. Enable developer mode.
 4. Load unpacked extension from this directory: `extensions/browser-capture`.

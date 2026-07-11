@@ -1,4 +1,4 @@
-# Link World 架构设计文档
+# Node Tide 架构设计文档
 
 版本: 0.1  
 状态: Draft  
@@ -6,9 +6,9 @@
 
 ## 1. Vision
 
-Link World 的目标不是做一个更智能的收藏夹，而是做一个面向个人和团队的信息资产处理系统。
+Node Tide 的目标不是做一个更智能的收藏夹，而是做一个面向个人和团队的信息资产处理系统。
 
-用户在 Twitter/X、知乎、小红书、微信、GitHub、博客、论文、视频、Newsletter、聊天工具中看到有价值的信息后，可以通过浏览器扩展、移动端分享、桌面端、导入器或官方 API 将内容保存到 Link World。系统会把原始内容解析为统一的知识对象，并围绕这个对象进行分类、总结、检索、评估、验证、关联、回顾和再利用。
+用户在 Twitter/X、知乎、小红书、微信、GitHub、博客、论文、视频、Newsletter、聊天工具中看到有价值的信息后，可以通过浏览器扩展、移动端分享、桌面端、导入器或官方 API 将内容保存到 Node Tide。系统会把原始内容解析为统一的知识对象，并围绕这个对象进行分类、总结、检索、评估、验证、关联、回顾和再利用。
 
 核心问题:
 
@@ -213,7 +213,7 @@ flowchart TB
   Policy --> Audit
 ```
 
-该图描述长期逻辑架构，不代表每个客户端均已实现。当前 Windows Local Edition 已提供 Desktop App、Browser Extension 和独立 `link-world-cli.exe`；CLI 范围与门禁见 [cli_development_plan.md](./cli_development_plan.md)。CLI 不直接接入 SQLite 或复制桌面业务逻辑，而是与 Tauri adapter 共享 application services；两者首期通过 OS-backed runtime lock 互斥打开同一数据目录。
+该图描述长期逻辑架构，不代表每个客户端均已实现。当前 Windows Local Edition 已提供 Desktop App、Browser Extension 和独立 `node-tide-cli.exe`；CLI 范围与门禁见 [cli_development_plan.md](./cli_development_plan.md)。CLI 不直接接入 SQLite 或复制桌面业务逻辑，而是与 Tauri adapter 共享 application services；两者首期通过 OS-backed runtime lock 互斥打开同一数据目录。
 
 ### 3.2 Deployment modes
 
@@ -655,7 +655,7 @@ interface RiskItem {
 
 ### 7.1 Purpose
 
-Evaluation Engine 是 Link World 和普通 AI 收藏工具的主要差异。它不只总结内容，还判断内容是否值得使用，并在可行时进行小规模验证。
+Evaluation Engine 是 Node Tide 和普通 AI 收藏工具的主要差异。它不只总结内容，还判断内容是否值得使用，并在可行时进行小规模验证。
 
 目标:
 

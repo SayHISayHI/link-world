@@ -370,7 +370,7 @@ fn render_markdown(
         .or(parsed_document.title.as_deref())
         .unwrap_or("Untitled");
     let mut markdown = String::new();
-    markdown.push_str("<!-- Exported from Link World. This file intentionally omits credentials and local storage paths. -->\n\n");
+    markdown.push_str("<!-- Exported from Node Tide. This file intentionally omits credentials and local storage paths. -->\n\n");
     markdown.push_str("# ");
     markdown.push_str(title.trim());
     markdown.push_str("\n\n");
@@ -474,10 +474,8 @@ mod tests {
 
     #[tokio::test]
     async fn export_library_writes_non_secret_markdown_and_redacted_metadata() {
-        let data_dir = std::env::temp_dir().join(format!(
-            "link-world-portable-export-test-{}",
-            Uuid::new_v4()
-        ));
+        let data_dir =
+            std::env::temp_dir().join(format!("node-tide-portable-export-test-{}", Uuid::new_v4()));
         let database = Database::initialize(data_dir.clone())
             .await
             .expect("database should initialize");

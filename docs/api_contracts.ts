@@ -1,5 +1,5 @@
 /**
- * Link World - Tauri IPC 接口契约与数据结构规范
+ * Node Tide - Tauri IPC 接口契约与数据结构规范
  *
  * 此文件为文档约束文件，并非运行代码。
  * 目的：前端 (React) 与后端 (Rust) 必须遵循此处的接口签名进行通信。

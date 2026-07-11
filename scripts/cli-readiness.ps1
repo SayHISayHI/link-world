@@ -119,7 +119,7 @@ function Invoke-CliJson {
 $repo = (Resolve-Path $RepoRoot).Path
 $cargoManifest = 'src-tauri/Cargo.toml'
 $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss')
-$fixtureRoot = Join-Path ([System.IO.Path]::GetTempPath()) "链界-cli-readiness-$stamp"
+$fixtureRoot = Join-Path ([System.IO.Path]::GetTempPath()) "拾海-cli-readiness-$stamp"
 $script:Redactions = @(
   @{ value = $repo; replacement = '<repo>' },
   @{ value = [Environment]::GetFolderPath('UserProfile'); replacement = '<user-profile>' },
@@ -127,7 +127,7 @@ $script:Redactions = @(
 )
 
 if (-not $OutputPath) {
-  $OutputPath = Join-Path ([System.IO.Path]::GetTempPath()) "link-world-cli-readiness-$stamp.json"
+  $OutputPath = Join-Path ([System.IO.Path]::GetTempPath()) "node-tide-cli-readiness-$stamp.json"
 }
 
 $steps = @(
@@ -138,7 +138,7 @@ $steps = @(
   @{ Name = 'capture request id identity tests'; Command = @('cargo', 'test', '--manifest-path', $cargoManifest, '--lib', 'capture_request_id_is_idempotent_and_identity_bound') },
   @{ Name = 'AI request id identity tests'; Command = @('cargo', 'test', '--manifest-path', $cargoManifest, '--lib', 'manual_enrichment_request_id_reuses_terminal_operation_and_rejects_cross_object_use') },
   @{ Name = 'portable export privacy and format tests'; Command = @('cargo', 'test', '--manifest-path', $cargoManifest, '--lib', 'services::portable_export::tests') },
-  @{ Name = 'CLI debug binary build'; Command = @('cargo', 'build', '--manifest-path', $cargoManifest, '--bin', 'link-world-cli') }
+  @{ Name = 'CLI debug binary build'; Command = @('cargo', 'build', '--manifest-path', $cargoManifest, '--bin', 'node-tide-cli') }
 )
 
 if (-not $SkipClippy) {
@@ -156,11 +156,11 @@ foreach ($step in $steps) {
   Write-Host "    $($result.status) in $($result.durationMs)ms"
 }
 
-$cliPath = Join-Path $repo 'src-tauri/target/debug/link-world-cli.exe'
-$previousDataDir = [Environment]::GetEnvironmentVariable('LINK_WORLD_DATA_DIR', 'Process')
+$cliPath = Join-Path $repo 'src-tauri/target/debug/node-tide-cli.exe'
+$previousDataDir = [Environment]::GetEnvironmentVariable('NODE_TIDE_DATA_DIR', 'Process')
 try {
   New-Item -ItemType Directory -Path $fixtureRoot -Force | Out-Null
-  [Environment]::SetEnvironmentVariable('LINK_WORLD_DATA_DIR', $fixtureRoot, 'Process')
+  [Environment]::SetEnvironmentVariable('NODE_TIDE_DATA_DIR', $fixtureRoot, 'Process')
 
   $results += Invoke-AssertionStep -Name 'version help and PowerShell completion avoid data initialization' -Body {
     $version = Invoke-CliJson -CliPath $cliPath -Arguments @('version')
@@ -264,13 +264,13 @@ try {
   }
 
   $results += Invoke-AssertionStep -Name 'user-level CLI install and removal script' -Body {
-    $installer = Join-Path $repo 'scripts/install-link-world-cli.ps1'
+    $installer = Join-Path $repo 'scripts/install-node-tide-cli.ps1'
     $installDirectory = Join-Path $fixtureRoot 'cli-install'
     & pwsh -NoProfile -ExecutionPolicy Bypass -File $installer -SourcePath $cliPath -InstallDirectory $installDirectory | Out-Null
     if ($global:LASTEXITCODE -ne 0) {
       throw 'CLI installation script failed.'
     }
-    $installedCli = Join-Path $installDirectory 'link-world-cli.exe'
+    $installedCli = Join-Path $installDirectory 'node-tide-cli.exe'
     $version = Invoke-CliJson -CliPath $installedCli -Arguments @('version')
     if (-not $version.ok) {
       throw 'Installed CLI did not run.'
@@ -283,7 +283,7 @@ try {
   }
 }
 finally {
-  [Environment]::SetEnvironmentVariable('LINK_WORLD_DATA_DIR', $previousDataDir, 'Process')
+  [Environment]::SetEnvironmentVariable('NODE_TIDE_DATA_DIR', $previousDataDir, 'Process')
   if (-not $KeepFixture -and (Test-Path -LiteralPath $fixtureRoot)) {
     $resolvedFixture = [System.IO.Path]::GetFullPath($fixtureRoot)
     $resolvedTemp = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
@@ -298,7 +298,7 @@ $failed = @($results | Where-Object { $_.status -ne 'passed' })
 $report = [pscustomobject]@{
   schemaVersion = 1
   generatedAt = (Get-Date).ToString('o')
-  scope = 'link-world-cli-readiness'
+  scope = 'node-tide-cli-readiness'
   status = if ($failed.Count -eq 0) { 'passed' } else { 'failed' }
   clippySkipped = [bool]$SkipClippy
   results = $results

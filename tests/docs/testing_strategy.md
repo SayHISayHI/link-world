@@ -1,11 +1,11 @@
-# Link World 测试规范
+# Node Tide 测试规范
 
 状态: Draft
 适用范围: Rust backend、React frontend、Tauri IPC、浏览器扩展、Loopback Capture、文档解析器、AI prompts、evaluators、database migrations
 
 ## 1. Purpose
 
-本文档定义 Link World 的测试分层、最低覆盖要求、fixtures 规范和评测数据管理。目标是保证 Local-first、捕获与解析边界、AI trace、Evaluation Engine、隐私策略、迁移和 UI 状态在持续迭代中不退化。
+本文档定义 Node Tide 的测试分层、最低覆盖要求、fixtures 规范和评测数据管理。目标是保证 Local-first、捕获与解析边界、AI trace、Evaluation Engine、隐私策略、迁移和 UI 状态在持续迭代中不退化。
 
 文章处理链路必须保持以下职责边界：
 

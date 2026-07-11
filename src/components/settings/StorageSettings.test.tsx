@@ -67,7 +67,7 @@ describe("StorageSettings", () => {
       exportLibrary,
       summary: {
         exportId: "export-1",
-        exportRoot: "C:/Users/example/AppData/Roaming/link-world/exports/export-1",
+        exportRoot: "C:/Users/example/AppData/Roaming/node-tide/exports/export-1",
         format: "markdown_json_directory",
         objectCount: 2,
         skippedSecretCount: 1,

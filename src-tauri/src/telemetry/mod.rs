@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 const LOGS_DIR_NAME: &str = "logs";
+// Legacy storage ABI: support bundles continue the existing bounded log stream.
 const LOG_FILE_NAME: &str = "link-world.jsonl";
 const ROTATED_LOG_FILE_NAME: &str = "link-world.jsonl.1";
 const MAX_LOG_FILE_BYTES: u64 = 2 * 1024 * 1024;
@@ -296,7 +297,7 @@ mod tests {
     #[tokio::test]
     async fn writes_and_reads_bounded_structured_log_entries() {
         let data_dir =
-            std::env::temp_dir().join(format!("link-world-structured-log-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("node-tide-structured-log-{}", Uuid::new_v4()));
         let logger = StructuredLogger::new(&data_dir);
         let correlation_id = Uuid::new_v4().to_string();
 
@@ -336,7 +337,7 @@ mod tests {
     #[test]
     fn rotates_the_current_log_before_the_bound_is_exceeded() {
         let data_dir =
-            std::env::temp_dir().join(format!("link-world-log-rotation-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("node-tide-log-rotation-{}", Uuid::new_v4()));
         let logger = StructuredLogger::new(&data_dir);
         let log_dir = logger.path().parent().expect("log path should have parent");
         fs::create_dir_all(log_dir).expect("log directory should initialize");
@@ -360,7 +361,7 @@ mod tests {
     #[tokio::test]
     async fn rejects_sensitive_or_unstructured_log_messages() {
         let data_dir = std::env::temp_dir().join(format!(
-            "link-world-structured-log-denied-{}",
+            "node-tide-structured-log-denied-{}",
             Uuid::new_v4()
         ));
         let logger = StructuredLogger::new(&data_dir);

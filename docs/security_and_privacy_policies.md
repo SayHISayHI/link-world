@@ -1,4 +1,4 @@
-# Link World 安全与隐私策略红线
+# Node Tide 安全与隐私策略红线
 
 状态: Draft
 关系: 本文档是 `security_privacy_compliance.md` 的执行策略版，偏向实现红线和检查项。

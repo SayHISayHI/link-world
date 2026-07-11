@@ -2,6 +2,9 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { initialRoute, type AppRoute } from "../app/routes";
 
+// Kept stable during the Node Tide rename so existing UI preferences survive the upgrade.
+const LEGACY_UI_STORAGE_KEY = "link-world-ui";
+
 interface UiStore {
   route: AppRoute;
   sidebarCollapsed: boolean;
@@ -41,7 +44,7 @@ export const useUiStore = create<UiStore>()(
         })),
     }),
     {
-      name: "link-world-ui",
+      name: LEGACY_UI_STORAGE_KEY,
       partialize: (state) => ({ 
         paneWidths: state.paneWidths, 
         sidebarCollapsed: state.sidebarCollapsed,

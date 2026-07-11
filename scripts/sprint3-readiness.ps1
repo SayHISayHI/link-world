@@ -66,7 +66,7 @@ $cargoManifest = Join-Path $repo 'src-tauri/Cargo.toml'
 
 if (-not $OutputPath) {
   $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss')
-  $OutputPath = Join-Path ([System.IO.Path]::GetTempPath()) "link-world-sprint3-readiness-$stamp.json"
+  $OutputPath = Join-Path ([System.IO.Path]::GetTempPath()) "node-tide-sprint3-readiness-$stamp.json"
 }
 
 $steps = @(

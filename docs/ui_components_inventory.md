@@ -1,4 +1,4 @@
-# Link World UI 组件清单与规范
+# Node Tide UI 组件清单与规范
 
 状态: Draft
 适用范围: React / shadcn/ui / Tailwind / Lucide
@@ -25,6 +25,8 @@
 | `Sidebar` | dynamic system views, collections, topics, smart views and settings entry | `LibraryNavigation` props | no command calls; counts come from backend |
 | `MainToolbar` | add/search/evaluation actions | container props | icon buttons with tooltip |
 | `ThreePaneLayout` | sidebar/list/detail structure | ui store | stable dimensions |
+| `SettingsRouteLayout` | TopBar/sidebar/settings-content structure | ui store | shares expanded/collapsed sidebar widths with `ThreePaneLayout`; route shell does not scroll |
+| `TopBar` | brand and omnibox for text search and URL capture | ui store + container props | brand slot keeps the expanded width and full `拾海 · Node Tide` label when Sidebar collapses; clear and capture states remain keyboard accessible |
 | `ResizablePane` | pane resizing | ui store | persist only UI sizes |
 | `CommandPalette` | global search/actions | search hooks | keyboard-first |
 
@@ -136,6 +138,7 @@ Rules:
 
 - API key never displayed in full after save；读取只显示 credential available / no credential。
 - 模型凭据只能在 Settings 编辑；对象详情只显示运行、结果和进入 Settings 的动作。
+- `SettingsPanel` 使用父 route 的剩余高度，只有内容 main 区域滚动；不得在 `SettingsRouteLayout` 内再次声明 `h-screen`。
 - 只有 enabled 且支持 chat 的配置可以成为默认项；UI 不提供隐式 failover。
 - Provider 允许常见预设和自定义标识；protocol 必须显式可见，不能从品牌名隐式猜测后隐藏。
 - Base URL 输入 API 根路径，不包含具体 operation endpoint。
@@ -196,6 +199,7 @@ MVP must implement:
 - `AppShell`
 - `Sidebar`
 - `ThreePaneLayout`
+- `SettingsRouteLayout`
 - `ObjectListContainer`
 - `ObjectList`（包括后端 filter、30 条分页、Load more、搜索空态/失败态、索引重建进度和取消边界）
 - `ObjectListItem`

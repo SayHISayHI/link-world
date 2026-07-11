@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "Link World Capture",
+  "name": "拾海 · Node Tide Capture",
   "version": "0.3.0",
-  "description": "Save the current page to the local Link World desktop app.",
+  "description": "Save the current page to the local Node Tide desktop app.",
   "action": {
-    "default_title": "Save to Link World",
+    "default_title": "Save to Node Tide",
     "default_popup": "popup.html"
   },
   "permissions": ["activeTab", "scripting"],

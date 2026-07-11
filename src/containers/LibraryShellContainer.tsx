@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "../components/layout/AppShell";
+import { SettingsRouteLayout } from "../components/layout/SettingsRouteLayout";
 import { ThreePaneLayout } from "../components/layout/ThreePaneLayout";
 import { TopBar } from "../components/layout/TopBar";
 import { ObjectDetail } from "../components/library/ObjectDetail";
@@ -48,8 +49,6 @@ const LIBRARY_PAGE_SIZE = 30;
 export function LibraryShellContainer() {
   const route = useUiStore((s) => s.route);
   const setRoute = useUiStore((s) => s.setRoute);
-  const sidebarCollapsed = useUiStore((s) => s.sidebarCollapsed);
-  const paneWidths = useUiStore((s) => s.paneWidths);
   const [lastCaptureJob, setLastCaptureJob] = useState<CaptureJobCompletedPayload>();
   const [searchMaintenanceMode, setSearchMaintenanceMode] = useState<"check" | "rebuild">();
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -154,7 +153,6 @@ export function LibraryShellContainer() {
   const selectedSearchResult = searchResults.find((result) => result.object.id === selectedObjectId);
   const selectedObject = objects.find((object) => object.id === selectedObjectId) ?? selectedSearchResult?.object;
   const retryableCaptureJob = findRetryableCaptureJob(objectJobs, selectedObject?.id);
-  const sidebarWidth = sidebarCollapsed ? 64 : paneWidths.sidebar;
   const libraryQuery = useMemo<LibraryQuery>(
     () => ({
       view: route.name === "library" ? (route.view ?? allLibraryView) : allLibraryView,
@@ -743,27 +741,16 @@ export function LibraryShellContainer() {
     const panel = (route.panel ?? "models") as SettingsPanelName;
     return (
       <AppShell>
-        <div className="flex h-screen w-full flex-col overflow-hidden">
-          {topBar}
-          <div className="flex min-h-0 flex-1 border-t border-border">
-            <aside 
-              className="relative shrink-0 border-r border-border bg-surface"
-              style={{ width: sidebarWidth }}
-            >
-              {sidebar}
-            </aside>
-            <section className="flex-1 bg-surface overflow-auto">
-              <SettingsPanel
-                panel={panel}
-                onPanelChange={(nextPanel) => setRoute({ name: "settings", panel: nextPanel })}
-                onOpenObject={(objectId) => {
-                  selectObject(objectId);
-                  setRoute({ name: "library", view: allLibraryView, filters: emptyLibraryFilters });
-                }}
-              />
-            </section>
-          </div>
-        </div>
+        <SettingsRouteLayout topBar={topBar} sidebar={sidebar}>
+          <SettingsPanel
+            panel={panel}
+            onPanelChange={(nextPanel) => setRoute({ name: "settings", panel: nextPanel })}
+            onOpenObject={(objectId) => {
+              selectObject(objectId);
+              setRoute({ name: "library", view: allLibraryView, filters: emptyLibraryFilters });
+            }}
+          />
+        </SettingsRouteLayout>
       </AppShell>
     );
   }

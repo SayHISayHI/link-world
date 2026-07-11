@@ -42,7 +42,7 @@ export function App() {
     return (
       <AppShell>
         <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
-          Starting Link World...
+          Starting Node Tide...
         </div>
       </AppShell>
     );

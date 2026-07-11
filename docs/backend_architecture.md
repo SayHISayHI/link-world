@@ -1,11 +1,11 @@
-# Link World 后端架构规范
+# Node Tide 后端架构规范
 
 状态: Draft  
 适用范围: Tauri v2 / Rust backend / Local Edition first
 
 ## 1. Purpose
 
-本文档规定 Link World Rust 后端的工程模式。目标不是提前写复杂框架，而是防止 Tauri command、SQLite 访问、AI 调用、插件、后台任务和安全策略混在一起，导致后续无法维护。
+本文档规定 Node Tide Rust 后端的工程模式。目标不是提前写复杂框架，而是防止 Tauri command、SQLite 访问、AI 调用、插件、后台任务和安全策略混在一起，导致后续无法维护。
 
 后端实现必须满足：
 

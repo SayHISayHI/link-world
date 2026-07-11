@@ -1,4 +1,4 @@
--- Link World 基础数据库模型定义 (SQLite)
+-- Node Tide 基础数据库模型定义 (SQLite)
 -- 包含核心实体表、解析正文表、AI Trace、Evaluation Engine、全文搜索表 (FTS5)
 -- 以及向量检索表 (sqlite-vec)。
 --

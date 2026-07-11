@@ -1,4 +1,4 @@
-const LINK_WORLD_ENDPOINT = "http://127.0.0.1:17321/capture";
+const NODE_TIDE_ENDPOINT = "http://127.0.0.1:17321/capture";
 
 const saveButton = document.querySelector("#save");
 const statusElement = document.querySelector("#status");
@@ -17,7 +17,7 @@ async function saveCurrentPage() {
     }
 
     const payload = await collectPayload(tab.id, tab.url, tab.title);
-    const response = await fetch(LINK_WORLD_ENDPOINT, {
+    const response = await fetch(NODE_TIDE_ENDPOINT, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -27,7 +27,7 @@ async function saveCurrentPage() {
     const result = await response.json().catch(() => undefined);
 
     if (!response.ok || !result?.ok) {
-      throw new Error(result?.error ?? `Link World returned HTTP ${response.status}.`);
+      throw new Error(result?.error ?? `Node Tide returned HTTP ${response.status}.`);
     }
 
     setBusy(false, "Saved.");
@@ -59,7 +59,7 @@ async function collectPayload(tabId, fallbackUrl, fallbackTitle) {
 
 function sendCollectMessage(tabId) {
   return chrome.tabs.sendMessage(tabId, {
-    type: "LINK_WORLD_COLLECT_CURRENT_PAGE",
+    type: "NODE_TIDE_COLLECT_CURRENT_PAGE",
   });
 }
 

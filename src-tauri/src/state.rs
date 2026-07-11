@@ -16,7 +16,8 @@ use tauri::Manager;
 use uuid::Uuid;
 
 #[cfg(target_os = "windows")]
-const KEYRING_SERVICE: &str = "com.linkworld.app.model-provider";
+// Storage ABI retained from the former product identity; changing it would orphan saved API keys.
+const LEGACY_KEYRING_SERVICE: &str = "com.linkworld.app.model-provider";
 #[cfg(target_os = "windows")]
 const KEYRING_SECRET_PREFIX: &str = "keyring:model-provider:";
 
@@ -212,7 +213,7 @@ impl WindowsCredentialBackend {
             .strip_prefix(KEYRING_SECRET_PREFIX)
             .filter(|value| !value.is_empty())
             .ok_or(AppError::SecretStorage)?;
-        keyring::Entry::new(KEYRING_SERVICE, account).map_err(|_| AppError::SecretStorage)
+        keyring::Entry::new(LEGACY_KEYRING_SERVICE, account).map_err(|_| AppError::SecretStorage)
     }
 }
 
@@ -270,7 +271,7 @@ fn startup_issue_title(error: &AppError) -> &'static str {
     match error {
         AppError::DbMigration(_) => "Database migration needs recovery",
         AppError::RestoreInvalid(_) => "Restore did not complete safely",
-        AppError::RuntimeBusy => "Link World is already running",
+        AppError::RuntimeBusy => "Node Tide is already running",
         AppError::Database(_) => "Database could not be opened",
         AppError::Filesystem(_) => "Storage could not be opened",
         AppError::SecretStorage => "Credential storage is unavailable",
@@ -515,7 +516,7 @@ mod tests {
     #[tokio::test]
     async fn app_startup_recovers_interrupted_evaluation_and_cleans_artifacts() {
         let data_dir =
-            std::env::temp_dir().join(format!("link-world-startup-evaluation-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("node-tide-startup-evaluation-{}", Uuid::new_v4()));
         let database = Database::initialize(data_dir.clone())
             .await
             .expect("database should initialize");
@@ -642,7 +643,7 @@ mod tests {
     #[test]
     fn startup_recovery_status_redacts_data_dir_and_extracts_backup_id() {
         let backup_id = Uuid::new_v4().to_string();
-        let data_dir = PathBuf::from("C:/Users/example/AppData/Link World");
+        let data_dir = PathBuf::from("C:/Users/example/AppData/Node Tide");
         let state = StartupState::recovery(
             data_dir.clone(),
             AppError::DbMigration(format!(

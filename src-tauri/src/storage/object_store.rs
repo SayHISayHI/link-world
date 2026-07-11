@@ -189,7 +189,7 @@ mod tests {
 
     #[tokio::test]
     async fn writes_capture_snapshot_and_returns_stable_local_uri() {
-        let root = std::env::temp_dir().join(format!("link-world-test-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("node-tide-test-{}", uuid::Uuid::new_v4()));
         let store = ObjectStore::initialize(root).expect("object store should initialize");
 
         let stored = store
@@ -206,7 +206,7 @@ mod tests {
 
     #[tokio::test]
     async fn writes_evaluation_artifact_under_run_directory() {
-        let root = std::env::temp_dir().join(format!("link-world-test-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("node-tide-test-{}", uuid::Uuid::new_v4()));
         let store = ObjectStore::initialize(root).expect("object store should initialize");
 
         let stored = store

@@ -5,7 +5,7 @@ Date: 2026-06-16
 
 ## Context
 
-Link World uses AI to summarize, classify, evaluate and retrieve personal information assets. AI output can be wrong, costly, privacy-sensitive or vendor-dependent. Users must be able to trust what happened to their data and understand how conclusions were generated.
+Node Tide uses AI to summarize, classify, evaluate and retrieve personal information assets. AI output can be wrong, costly, privacy-sensitive or vendor-dependent. Users must be able to trust what happened to their data and understand how conclusions were generated.
 
 ## Decision
 

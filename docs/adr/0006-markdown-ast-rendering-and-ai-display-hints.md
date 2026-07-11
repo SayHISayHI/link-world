@@ -5,14 +5,14 @@ Date: 2026-06-23
 
 ## Context
 
-Link World must render articles captured either by pasted URL or by the browser extension with consistent structure and safe behavior. Plain-text rendering loses headings, lists, tables and code semantics. Persisting a renderer-specific AST would couple storage to frontend libraries, while allowing the extension or AI to rewrite presentation would create inconsistent capture paths and weaken security guarantees.
+Node Tide must render articles captured either by pasted URL or by the browser extension with consistent structure and safe behavior. Plain-text rendering loses headings, lists, tables and code semantics. Persisting a renderer-specific AST would couple storage to frontend libraries, while allowing the extension or AI to rewrite presentation would create inconsistent capture paths and weaken security guarantees.
 
 ## Decision
 
 - Rust parsers persist both `text_content` and `markdown_content`. Text remains the input for search and AI; Markdown is the stable reading format.
 - URL HTML and sanitized browser DOM use the same Rust document parser. The browser extension does not generate Markdown or implement site-specific layout rules.
 - The frontend derives an ephemeral MDAST from Markdown with the unified/remark ecosystem. AST data is memoized for rendering but is not stored in SQLite or global application state.
-- Rendering uses a fixed compile-time pipeline: GFM, sanitization, stable heading slugs and the trusted Link World Callout transform. Raw HTML and runtime-installed rendering plugins are not supported.
+- Rendering uses a fixed compile-time pipeline: GFM, sanitization, stable heading slugs and the trusted Node Tide Callout transform. Raw HTML and runtime-installed rendering plugins are not supported.
 - A deterministic AST summary selects one of `article`, `tutorial`, `reference` or `code-heavy`, so readable presentation never depends on AI availability.
 - AI analysis schema version 2 may store a nullable, versioned `display_hints_json` sidecar. A hint is applied only when it is valid, belongs to the current parsed document and has confidence of at least `0.75`.
 - AI display hints are advisory. They cannot edit Markdown or AST, choose arbitrary components, change URL handling, relax sanitization or alter image privacy attributes. Missing, malformed, low-confidence and stale hints are ignored without failing the main AI analysis.

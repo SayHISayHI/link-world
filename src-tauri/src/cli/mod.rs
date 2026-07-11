@@ -29,10 +29,10 @@ const MAX_LIMIT: i64 = 200;
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "link-world-cli",
+    name = "node-tide-cli",
     version,
-    about = "Automation interface for the Link World local application",
-    after_help = "Concurrency limitation: the desktop app and CLI cannot use the same Link World data directory at the same time. If another process owns it, the command exits with code 5 and ERR_RUNTIME_BUSY.",
+    about = "Automation interface for the Node Tide local application",
+    after_help = "Concurrency limitation: the desktop app and CLI cannot use the same Node Tide data directory at the same time. If another process owns it, the command exits with code 5 and ERR_RUNTIME_BUSY.",
     arg_required_else_help = true
 )]
 pub struct Cli {
@@ -403,7 +403,7 @@ impl CliError {
             AppError::JobNotFound => ("ERR_JOB_NOT_FOUND", "Job was not found.", false, 3),
             AppError::RuntimeBusy => (
                 "ERR_RUNTIME_BUSY",
-                "Another Link World process is using the local data directory.",
+                "Another Node Tide process is using the local data directory.",
                 true,
                 5,
             ),
@@ -494,7 +494,7 @@ impl CliError {
             ),
             AppError::Unknown(_) => (
                 "ERR_UNKNOWN",
-                "An internal Link World operation failed.",
+                "An internal Node Tide operation failed.",
                 false,
                 10,
             ),
@@ -563,7 +563,7 @@ pub async fn run() -> i32 {
 
     if let Commands::Completion { shell } = cli.command {
         let mut command = Cli::command();
-        generate(shell, &mut command, "link-world-cli", &mut io::stdout());
+        generate(shell, &mut command, "node-tide-cli", &mut io::stdout());
         return 0;
     }
 
@@ -1450,11 +1450,13 @@ fn confirm_destructive(action: &str, yes: bool) -> Result<(), CliError> {
 
 fn resolve_data_dir() -> Result<PathBuf, CliError> {
     #[cfg(debug_assertions)]
-    if let Some(path) = env::var_os("LINK_WORLD_DATA_DIR") {
+    if let Some(path) =
+        env::var_os("NODE_TIDE_DATA_DIR").or_else(|| env::var_os("LINK_WORLD_DATA_DIR"))
+    {
         let path = PathBuf::from(path);
         if !path.is_absolute() {
             return Err(CliError::invalid(
-                "LINK_WORLD_DATA_DIR must be an absolute path in development builds",
+                "NODE_TIDE_DATA_DIR must be an absolute path in development builds",
             ));
         }
         return Ok(path);
@@ -1509,14 +1511,14 @@ mod tests {
         Cli::command().debug_assert();
 
         let help = Cli::command().render_long_help().to_string();
-        assert!(help.contains("cannot use the same Link World data directory"));
+        assert!(help.contains("cannot use the same Node Tide data directory"));
         assert!(help.contains("ERR_RUNTIME_BUSY"));
     }
 
     #[test]
     fn parses_machine_output_and_nested_command() {
         let cli = Cli::try_parse_from([
-            "link-world-cli",
+            "node-tide-cli",
             "--output",
             "json",
             "object",
@@ -1577,13 +1579,13 @@ mod tests {
                 .expect("response should write");
         });
 
-        let data_dir = std::env::temp_dir().join(format!("链界-cli-flow-{}", Uuid::new_v4()));
+        let data_dir = std::env::temp_dir().join(format!("拾海-cli-flow-{}", Uuid::new_v4()));
         let state = AppState::initialize_from_data_dir(data_dir.clone())
             .await
             .expect("application state should initialize");
         let request_id = Uuid::new_v4().to_string();
         let capture_cli = Cli::try_parse_from([
-            "link-world-cli",
+            "node-tide-cli",
             "--output",
             "json",
             "capture",
@@ -1607,14 +1609,14 @@ mod tests {
             .to_string();
 
         let search_cli =
-            Cli::try_parse_from(["link-world-cli", "search", "durable command-line capture"])
+            Cli::try_parse_from(["node-tide-cli", "search", "durable command-line capture"])
                 .expect("search command should parse");
         let searched = execute(&search_cli, &state, &data_dir)
             .await
             .expect("search command should succeed");
         assert_eq!(searched.data[0]["object"]["id"], object_id);
 
-        let show_cli = Cli::try_parse_from(["link-world-cli", "object", "show", &object_id])
+        let show_cli = Cli::try_parse_from(["node-tide-cli", "object", "show", &object_id])
             .expect("show command should parse");
         let shown = execute(&show_cli, &state, &data_dir)
             .await
@@ -1624,7 +1626,7 @@ mod tests {
 
         let analysis_request_id = Uuid::new_v4().to_string();
         let analysis_cli = Cli::try_parse_from([
-            "link-world-cli",
+            "node-tide-cli",
             "analysis",
             "run",
             &object_id,
@@ -1645,7 +1647,7 @@ mod tests {
         );
 
         let delete_cli =
-            Cli::try_parse_from(["link-world-cli", "object", "delete", &object_id, "--yes"])
+            Cli::try_parse_from(["node-tide-cli", "object", "delete", &object_id, "--yes"])
                 .expect("delete command should parse");
         execute(&delete_cli, &state, &data_dir)
             .await
@@ -1657,7 +1659,7 @@ mod tests {
 
     #[tokio::test]
     async fn recovery_mode_keeps_backup_list_and_verify_available() {
-        let data_dir = std::env::temp_dir().join(format!("链界-cli-recovery-{}", Uuid::new_v4()));
+        let data_dir = std::env::temp_dir().join(format!("拾海-cli-recovery-{}", Uuid::new_v4()));
         let state = AppState::initialize_from_data_dir(data_dir.clone())
             .await
             .expect("application state should initialize");
@@ -1677,7 +1679,7 @@ mod tests {
             .expect_err("malformed guard should force startup recovery");
         assert!(matches!(startup_error, AppError::DbMigration(_)));
 
-        let list_cli = Cli::try_parse_from(["link-world-cli", "backup", "list"])
+        let list_cli = Cli::try_parse_from(["node-tide-cli", "backup", "list"])
             .expect("backup list should parse");
         let listed = execute_recovery_backup(&list_cli, &data_dir)
             .await
@@ -1689,7 +1691,7 @@ mod tests {
         }));
 
         let verify_cli =
-            Cli::try_parse_from(["link-world-cli", "backup", "verify", &backup.backup_id])
+            Cli::try_parse_from(["node-tide-cli", "backup", "verify", &backup.backup_id])
                 .expect("backup verify should parse");
         let verified = execute_recovery_backup(&verify_cli, &data_dir)
             .await

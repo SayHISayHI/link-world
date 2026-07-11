@@ -102,7 +102,7 @@ $script:ReadinessRedactions = @(
 
 if (-not $OutputPath) {
   $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss')
-  $OutputPath = Join-Path ([System.IO.Path]::GetTempPath()) "link-world-alpha-readiness-$stamp.json"
+  $OutputPath = Join-Path ([System.IO.Path]::GetTempPath()) "node-tide-alpha-readiness-$stamp.json"
 }
 
 $packageJson = Read-JsonFile (Join-Path $repo 'package.json')

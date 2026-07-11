@@ -242,7 +242,7 @@ function PrivacyBoundary({
     <section className="rounded-xl border border-border bg-surface p-5">
       <h3 className="text-sm font-semibold">Support bundle</h3>
       <p className="mt-2 text-sm leading-6 text-muted-foreground">
-        Export a local JSON file with operational metadata only. Link World never uploads the file
+        Export a local JSON file with operational metadata only. Node Tide never uploads the file
         automatically, and the export does not read object bodies.
       </p>
       <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-muted-foreground">

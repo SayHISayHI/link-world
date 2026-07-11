@@ -1,8 +1,8 @@
-# Link World 插件开发规范 (MVP 阶段)
+# Node Tide 插件开发规范 (MVP 阶段)
 
 终态架构希望 Connector、Parser、Evaluator、ModelProvider 和 SyncProvider 都可以通过外部动态加载机制扩展。MVP 阶段为了避免过早引入跨进程通信复杂度，插件先实现为编译进 Rust 的内部 Trait 实现，但接口边界必须保持终态兼容。
 
-本指南用于指导 AI 如何为 Link World 增加新的内容采集、解析或评估能力。
+本指南用于指导 AI 如何为 Node Tide 增加新的内容采集、解析或评估能力。
 
 ## 1. 概念与生命周期
 

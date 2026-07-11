@@ -733,7 +733,7 @@ mod tests {
     #[tokio::test]
     async fn creates_lists_and_verifies_atomic_backup() {
         let data_root =
-            std::env::temp_dir().join(format!("link-world-backup-test-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("node-tide-backup-test-{}", Uuid::new_v4()));
         let backup_root = data_root.join("backups");
         let database = Database::initialize(data_root.clone())
             .await
@@ -777,7 +777,7 @@ mod tests {
     #[tokio::test]
     async fn detects_tampered_object_file() {
         let data_root =
-            std::env::temp_dir().join(format!("link-world-backup-test-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("node-tide-backup-test-{}", Uuid::new_v4()));
         let backup_root = data_root.join("backups");
         let database = Database::initialize(data_root.clone())
             .await
@@ -822,7 +822,7 @@ mod tests {
     #[tokio::test]
     async fn removes_staging_directory_when_object_copy_fails() {
         let data_root =
-            std::env::temp_dir().join(format!("link-world-backup-test-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("node-tide-backup-test-{}", Uuid::new_v4()));
         let backup_root = data_root.join("backups");
         let invalid_object_root = data_root.join("objects-as-file");
         let database = Database::initialize(data_root.clone())

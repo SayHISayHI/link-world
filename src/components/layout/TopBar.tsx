@@ -4,6 +4,7 @@ import type { RefObject } from "react";
 import { useUiStore } from "../../store/uiStore";
 import { formatCaptureFailureReason } from "../../lib/captureFailures";
 import type { AppUiError } from "../../lib/errors";
+import { PRODUCT_DISPLAY_NAME } from "../../config/brand";
 
 interface TopBarProps {
   // Search Props
@@ -92,18 +93,20 @@ export function TopBar({
     onClearSearch();
   };
 
-  const sidebarCollapsed = useUiStore((s) => s.sidebarCollapsed);
   const paneWidths = useUiStore((s) => s.paneWidths);
   const sidebarHeaderWidth = paneWidths.sidebar;
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-border/60 bg-surface pr-4">
       {/* Left: Brand / Title */}
-      <div 
-        className="flex shrink-0 items-center px-4" 
+      <div
+        data-testid="topbar-sidebar-slot"
+        className="flex shrink-0 items-center px-4"
         style={{ width: sidebarHeaderWidth }}
       >
-        <h1 className="text-sm font-semibold tracking-normal text-foreground truncate mr-2">Link World</h1>
+        <h1 className="mr-2 truncate text-sm font-semibold tracking-normal text-foreground">
+          {PRODUCT_DISPLAY_NAME}
+        </h1>
       </div>
 
       {/* Middle: Omnibox (Search & Capture) */}
@@ -152,6 +155,7 @@ export function TopBar({
             ) : searchActive ? (
               <button
                 type="button"
+                aria-label="Clear search"
                 onClick={handleClear}
                 className="rounded-sm p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
               >

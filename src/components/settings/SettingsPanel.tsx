@@ -50,7 +50,7 @@ const emptyDraft: ModelProviderConfig = {
 
 export function SettingsPanel({ panel, onPanelChange, onOpenObject }: SettingsPanelProps) {
   return (
-    <div className="flex h-screen min-w-0 bg-background">
+    <div data-testid="settings-panel" className="flex h-full min-h-0 min-w-0 bg-background">
       <aside className="w-52 shrink-0 border-r border-border bg-surface p-4">
         <h1 className="px-2 text-base font-semibold">Settings</h1>
         <nav className="mt-5 space-y-1" aria-label="Settings sections">
@@ -66,7 +66,10 @@ export function SettingsPanel({ panel, onPanelChange, onOpenObject }: SettingsPa
           ))}
         </nav>
       </aside>
-      <main className="min-w-0 flex-1 overflow-y-auto">
+      <main
+        data-testid="settings-scroll-region"
+        className="min-h-0 min-w-0 flex-1 overflow-y-auto"
+      >
         {panel === "models" ? (
           <ModelSettings />
         ) : panel === "storage" ? (

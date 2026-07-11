@@ -1,11 +1,11 @@
-# Link World 状态机规范
+# Node Tide 状态机规范
 
 状态: Draft  
 适用范围: Knowledge Object、Triage、Tag Suggestion、Background Job、AI Analysis、Evaluation、Deletion、Sync
 
 ## 1. Purpose
 
-本文档定义 Link World 的核心状态流转。任何实现不得用散落的字符串判断替代状态机。状态变化必须由 service 层执行，并在需要时写入 `domain_events`、`background_jobs` 和 `audit_logs`。跨 background job 的同一次关键操作必须保持同一 correlation id；事件 payload 不得复制完整 URL/query/fragment 或正文。
+本文档定义 Node Tide 的核心状态流转。任何实现不得用散落的字符串判断替代状态机。状态变化必须由 service 层执行，并在需要时写入 `domain_events`、`background_jobs` 和 `audit_logs`。跨 background job 的同一次关键操作必须保持同一 correlation id；事件 payload 不得复制完整 URL/query/fragment 或正文。
 
 ## 2. Knowledge Object Lifecycle
 

@@ -1,7 +1,7 @@
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
-  [string]$SourcePath = (Join-Path $PSScriptRoot 'link-world-cli.exe'),
-  [string]$InstallDirectory = (Join-Path $env:LOCALAPPDATA 'LinkWorld\cli'),
+  [string]$SourcePath = (Join-Path $PSScriptRoot 'node-tide-cli.exe'),
+  [string]$InstallDirectory = (Join-Path $env:LOCALAPPDATA 'NodeTide\cli'),
   [switch]$AddToPath,
   [switch]$Remove
 )
@@ -42,10 +42,10 @@ function Update-UserPath {
 }
 
 $installRoot = Get-NormalizedPathEntry $InstallDirectory
-$destination = Join-Path $installRoot 'link-world-cli.exe'
+$destination = Join-Path $installRoot 'node-tide-cli.exe'
 
 if ($Remove) {
-  if (-not $PSCmdlet.ShouldProcess($destination, 'Remove Link World CLI')) {
+  if (-not $PSCmdlet.ShouldProcess($destination, 'Remove Node Tide CLI')) {
     exit 0
   }
   if (Test-Path -LiteralPath $destination -PathType Leaf) {
@@ -58,7 +58,7 @@ if ($Remove) {
       Remove-Item -LiteralPath $installRoot -Force
     }
   }
-  Write-Output "Link World CLI removed from: $destination"
+  Write-Output "Node Tide CLI removed from: $destination"
   Write-Output 'Open a new terminal for PATH changes to take effect.'
   exit 0
 }
@@ -67,11 +67,11 @@ $source = [System.IO.Path]::GetFullPath($SourcePath)
 if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
   throw "CLI executable does not exist: $source"
 }
-if ([System.IO.Path]::GetFileName($source) -ne 'link-world-cli.exe') {
-  throw 'SourcePath must point to link-world-cli.exe.'
+if ([System.IO.Path]::GetFileName($source) -ne 'node-tide-cli.exe') {
+  throw 'SourcePath must point to node-tide-cli.exe.'
 }
 
-if (-not $PSCmdlet.ShouldProcess($destination, 'Install Link World CLI')) {
+if (-not $PSCmdlet.ShouldProcess($destination, 'Install Node Tide CLI')) {
   exit 0
 }
 New-Item -ItemType Directory -Path $installRoot -Force | Out-Null
@@ -81,10 +81,10 @@ if ($AddToPath) {
 }
 
 $hash = Get-FileHash -Algorithm SHA256 -LiteralPath $destination
-Write-Output "Link World CLI installed: $destination"
+Write-Output "Node Tide CLI installed: $destination"
 Write-Output "SHA-256: $($hash.Hash)"
 if ($AddToPath) {
-  Write-Output 'User PATH updated. Open a new terminal before running link-world-cli.'
+  Write-Output 'User PATH updated. Open a new terminal before running node-tide-cli.'
 } else {
   Write-Output 'PATH was not changed. Re-run with -AddToPath to enable command discovery.'
 }

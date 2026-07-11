@@ -5,11 +5,11 @@ Date: 2026-06-16
 
 ## Context
 
-Link World stores personal information assets: saved links, parsed content, AI summaries, evaluations, private notes, prompts and future sync metadata. Users need privacy, offline access and control over model providers. A cloud-only architecture would simplify product development, but it would weaken trust, increase compliance burden and make the product dependent on third-party service availability.
+Node Tide stores personal information assets: saved links, parsed content, AI summaries, evaluations, private notes, prompts and future sync metadata. Users need privacy, offline access and control over model providers. A cloud-only architecture would simplify product development, but it would weaken trust, increase compliance burden and make the product dependent on third-party service availability.
 
 ## Decision
 
-Link World will be Local-first. The local application must be able to save, parse, browse, search and manage already processed content without a cloud account. Cloud and hybrid features are optional enhancements.
+Node Tide will be Local-first. The local application must be able to save, parse, browse, search and manage already processed content without a cloud account. Cloud and hybrid features are optional enhancements.
 
 ## Consequences
 

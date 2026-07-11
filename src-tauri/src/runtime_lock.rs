@@ -3,6 +3,7 @@ use std::fs::{self, File, OpenOptions};
 use std::path::{Path, PathBuf};
 
 const RUNTIME_DIR_NAME: &str = "runtime";
+// Legacy storage ABI shared with pre-rename desktop and CLI builds.
 const RUNTIME_LOCK_FILE_NAME: &str = "link-world.lock";
 
 #[derive(Debug)]
@@ -49,7 +50,7 @@ fn open_exclusive(path: &Path) -> AppResult<File> {
 
 #[cfg(not(windows))]
 fn open_exclusive(path: &Path) -> AppResult<File> {
-    // Link World currently ships on Windows. This fallback preserves single-process
+    // Node Tide currently ships on Windows. This fallback preserves single-process
     // behavior for development builds on other targets, but is not a release gate.
     OpenOptions::new()
         .read(true)
@@ -81,7 +82,7 @@ mod tests {
     #[test]
     fn rejects_a_second_runtime_for_the_same_data_directory() {
         let data_dir =
-            std::env::temp_dir().join(format!("link-world-runtime-lock-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("node-tide-runtime-lock-{}", Uuid::new_v4()));
         let first = RuntimeLock::acquire(&data_dir).expect("first runtime should acquire lock");
         let error = RuntimeLock::acquire(&data_dir).expect_err("second runtime should be rejected");
 

@@ -35,7 +35,7 @@ npm run readiness:sprint3
 可选参数：
 
 ```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/sprint3-readiness.ps1 -OutputPath C:\tmp\link-world-sprint3-readiness.json
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/sprint3-readiness.ps1 -OutputPath C:\tmp\node-tide-sprint3-readiness.json
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/sprint3-readiness.ps1 -IncludeFrontend
 ```
 
@@ -65,7 +65,7 @@ fixture 日志只记录路径、状态码、耗时和 request id，不记录 hea
 | --- | --- | --- | --- |
 | W3-01 | 离线启动 | 联网保存 3 个对象，完全断网后重启应用 | Library、详情和 FTS 可用；启动不依赖模型或 URL 服务 |
 | W3-02 | 真实断网 capture | 断网后保存一个新的 HTTPS URL | 对象保留且最终为 failed；原因是稳定 `capture.network_unreachable` 或 `capture.timeout`；其他本地操作可继续 |
-| W3-03 | DNS 不存在 | 保存 `https://link-world-readiness.invalid/article` | 最终状态稳定且可重试；失败原因不含 resolver 原始 payload、本机 DNS 配置或完整错误链 |
+| W3-03 | DNS 不存在 | 保存 `https://node-tide-readiness.invalid/article` | 最终状态稳定且可重试；失败原因不含 resolver 原始 payload、本机 DNS 配置或完整错误链 |
 | W3-04 | HTTP 拒绝访问 | 保存受控 `/forbidden` | 对象为 failed；显示 `capture.http_forbidden` 对应动作并建议浏览器扩展；不自动循环重试 |
 | W3-05 | fetch timeout | 保存受控 `/slow` 并等待超过 20 秒 | 得到 `capture.timeout`；应用 UI 和后续任务不被冻结 |
 | W3-06 | 空正文 | 保存受控 `/empty` | 得到 `capture.no_readable_text`；不创建 parsed document；提供 selection/扩展回退 |

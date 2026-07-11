@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import type { ReactNode } from "react";
 import { useUiStore } from "../../store/uiStore";
 import { Resizer } from "./Resizer";
+import { COLLAPSED_SIDEBAR_WIDTH } from "./layoutConstants";
 
 interface ThreePaneLayoutProps {
   topBar?: ReactNode;
@@ -53,9 +54,10 @@ export function ThreePaneLayout({ topBar, sidebar, list, detail }: ThreePaneLayo
     <div className="flex h-screen w-full flex-col overflow-hidden">
       {topBar}
       <div className="flex min-h-0 flex-1 border-border">
-        <aside 
+        <aside
+          data-testid="three-pane-sidebar"
           className="relative shrink-0 border-r border-border bg-surface"
-          style={{ width: sidebarCollapsed ? 56 : sidebarWidth }}
+          style={{ width: sidebarCollapsed ? COLLAPSED_SIDEBAR_WIDTH : sidebarWidth }}
         >
           {sidebar}
           {!sidebarCollapsed && (

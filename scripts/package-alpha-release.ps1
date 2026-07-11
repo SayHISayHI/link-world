@@ -44,9 +44,9 @@ if ($isDirty -and -not $AllowDirty) {
 $bundleRoot = Join-Path $repo 'src-tauri/target/release/bundle'
 $msiCandidates = @(Get-ChildItem -LiteralPath (Join-Path $bundleRoot 'msi') -Filter '*.msi' -File -ErrorAction SilentlyContinue)
 $nsisCandidates = @(Get-ChildItem -LiteralPath (Join-Path $bundleRoot 'nsis') -Filter '*-setup.exe' -File -ErrorAction SilentlyContinue)
-$cliCandidate = Join-Path $repo 'src-tauri/target/release/link-world-cli.exe'
-$cliBuildMetadataPath = Join-Path $repo 'src-tauri/target/release/link-world-cli.build.json'
-$cliInstallerScript = Join-Path $repo 'scripts/install-link-world-cli.ps1'
+$cliCandidate = Join-Path $repo 'src-tauri/target/release/node-tide-cli.exe'
+$cliBuildMetadataPath = Join-Path $repo 'src-tauri/target/release/node-tide-cli.build.json'
+$cliInstallerScript = Join-Path $repo 'scripts/install-node-tide-cli.ps1'
 if ($msiCandidates.Count -ne 1 -or $nsisCandidates.Count -ne 1) {
   throw "Expected exactly one MSI and one NSIS artifact; found $($msiCandidates.Count) MSI and $($nsisCandidates.Count) NSIS files."
 }
@@ -59,22 +59,22 @@ $sourceArtifacts = @(
   @{
     packageType = 'msi'
     path = $msiCandidates[0].FullName
-    fileName = "link-world-$($tauriConfig.version)-windows-x64-$shortCommit.msi"
+    fileName = "node-tide-$($tauriConfig.version)-windows-x64-$shortCommit.msi"
   },
   @{
     packageType = 'nsis'
     path = $nsisCandidates[0].FullName
-    fileName = "link-world-$($tauriConfig.version)-windows-x64-$shortCommit-setup.exe"
+    fileName = "node-tide-$($tauriConfig.version)-windows-x64-$shortCommit-setup.exe"
   },
   @{
     packageType = 'cli'
     path = $cliCandidate
-    fileName = 'link-world-cli.exe'
+    fileName = 'node-tide-cli.exe'
   },
   @{
     packageType = 'cli-installer'
     path = $cliInstallerScript
-    fileName = 'install-link-world-cli.ps1'
+    fileName = 'install-node-tide-cli.ps1'
   }
 )
 
@@ -104,7 +104,7 @@ if ([int64]$cliBuildMetadata.bytes -ne (Get-Item -LiteralPath $cliCandidate).Len
 
 if (-not $OutputDirectory) {
   $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss')
-  $OutputDirectory = Join-Path ([System.IO.Path]::GetTempPath()) "link-world-alpha-$($tauriConfig.version)-$shortCommit-$stamp"
+  $OutputDirectory = Join-Path ([System.IO.Path]::GetTempPath()) "node-tide-alpha-$($tauriConfig.version)-$shortCommit-$stamp"
 }
 
 $outputFullPath = [System.IO.Path]::GetFullPath($OutputDirectory)

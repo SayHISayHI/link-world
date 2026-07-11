@@ -7,11 +7,11 @@ Date: 2026-06-23
 
 AI enrichment originally called an OpenAI-compatible `chat/completions` endpoint directly. Adding Anthropic, Gemini, OpenAI Responses or local Ollama would therefore duplicate authentication, payload, response, timeout and error handling inside business services. Adopting a hosted gateway as the only abstraction would also weaken Local-first and BYO API requirements.
 
-OpenClaw demonstrates the useful architectural boundary: provider selection, model metadata and runtime execution are separate from agent/business logic. Link World needs the same boundary, but its stable contract must remain owned by the project so a third-party SDK does not become a domain API.
+OpenClaw demonstrates the useful architectural boundary: provider selection, model metadata and runtime execution are separate from agent/business logic. Node Tide needs the same boundary, but its stable contract must remain owned by the project so a third-party SDK does not become a domain API.
 
 ## Decision
 
-- Link World owns capability-specific provider contracts and `ModelProviderRegistry`.
+- Node Tide owns capability-specific provider contracts and `ModelProviderRegistry`.
 - `provider` identifies the configured supplier; `api_family` identifies the wire protocol. They are stored and versioned separately.
 - The first `TextGenerationProvider` implementation wraps Rust `genai` for OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, Google Generative AI and Ollama.
 - Known OpenAI-compatible suppliers may select specialized `genai` adapters, while unknown compatible suppliers fall back to the OpenAI adapter with an explicit base URL.
@@ -25,7 +25,7 @@ OpenClaw demonstrates the useful architectural boundary: provider selection, mod
 
 - Adding a provider that uses an existing protocol is configuration work rather than a new business-service branch.
 - Protocol-specific fixes, retries and error mapping are centralized and testable.
-- The `genai` dependency is replaceable because its types do not cross the Link World runtime contract.
+- The `genai` dependency is replaceable because its types do not cross the Node Tide runtime contract.
 - New native protocols still require an adapter implementation and capability tests.
 - `api_family` requires an additive database migration; old configurations default to OpenAI Chat Completions.
 - Legacy single-provider rows remain readable. On first save they can be updated in place, while new configurations receive UUID ids and an explicit default selection.

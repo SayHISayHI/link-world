@@ -761,12 +761,17 @@ fn normalized_provider_id(provider: &str) -> String {
 
 fn provider_env_keys(provider: &str) -> Vec<String> {
     let provider_key = normalized_provider_id(provider).to_ascii_uppercase();
-    let mut keys = vec![format!("LINK_WORLD_{provider_key}_API_KEY")];
+    let mut keys = vec![
+        format!("NODE_TIDE_{provider_key}_API_KEY"),
+        format!("LINK_WORLD_{provider_key}_API_KEY"),
+    ];
     if matches!(provider_key.as_str(), "OPENAI" | "OPENAI_COMPATIBLE") {
-        keys.push("LINK_WORLD_OPENAI_API_KEY".to_string());
+        for key in ["NODE_TIDE_OPENAI_API_KEY", "LINK_WORLD_OPENAI_API_KEY"] {
+            if !keys.iter().any(|existing| existing == key) {
+                keys.push(key.to_string());
+            }
+        }
     }
-    keys.sort();
-    keys.dedup();
     keys
 }
 
@@ -844,11 +849,11 @@ fn ai_failure_reason(error: &AppError) -> String {
             "ai.model_not_found: The configured model or provider endpoint was not found. Check the model name and base URL in Settings.".to_string()
         }
         AppError::ModelOutputSchema(_) => {
-            "ai.output_schema: The model returned a response that did not match Link World's analysis schema. Retry with the same provider or choose a stronger JSON-capable model.".to_string()
+            "ai.output_schema: The model returned a response that did not match Node Tide's analysis schema. Retry with the same provider or choose a stronger JSON-capable model.".to_string()
         }
         AppError::PolicyDenied(message) => ai_policy_failure_reason(message),
         AppError::SecretStorage => {
-            "ai.secret_storage: Link World could not read the saved model credential. Re-save the provider API key in Settings.".to_string()
+            "ai.secret_storage: Node Tide could not read the saved model credential. Re-save the provider API key in Settings.".to_string()
         }
         AppError::ObjectNotFound => {
             "ai.input_unavailable: The selected object or parsed document is no longer available for AI analysis.".to_string()
@@ -880,7 +885,7 @@ fn ai_policy_failure_reason(message: &str) -> String {
         return "ai.policy_denied: This object's privacy level blocks non-local AI analysis. Use a local model provider or change the object's privacy boundary before retrying.".to_string();
     }
 
-    "ai.policy_denied: Link World policy blocked AI analysis for this object or provider configuration.".to_string()
+    "ai.policy_denied: Node Tide policy blocked AI analysis for this object or provider configuration.".to_string()
 }
 
 fn looks_like_retryable_provider_failure(message: &str) -> bool {
@@ -1040,8 +1045,8 @@ fn truncate_chars(text: &str, max_chars: usize) -> String {
 mod tests {
     use super::{
         ai_failure_code, ai_failure_reason, build_general_enrichment_prompt,
-        normalize_display_hints, parse_analysis_output, validate_model_provider_config,
-        AIEnrichmentService,
+        normalize_display_hints, parse_analysis_output, provider_env_keys,
+        validate_model_provider_config, AIEnrichmentService,
     };
     use crate::domain::ai::{AIEnrichmentInput, ModelApiFamily, ModelProviderConfig};
     use crate::errors::{AppError, AppResult};
@@ -1056,6 +1061,26 @@ mod tests {
     use std::pin::Pin;
     use std::sync::Arc;
     use uuid::Uuid;
+
+    #[test]
+    fn provider_env_keys_prefer_node_tide_and_keep_legacy_fallbacks() {
+        assert_eq!(
+            provider_env_keys("openai-compatible"),
+            vec![
+                "NODE_TIDE_OPENAI_COMPATIBLE_API_KEY",
+                "LINK_WORLD_OPENAI_COMPATIBLE_API_KEY",
+                "NODE_TIDE_OPENAI_API_KEY",
+                "LINK_WORLD_OPENAI_API_KEY",
+            ]
+        );
+        assert_eq!(
+            provider_env_keys("anthropic"),
+            vec![
+                "NODE_TIDE_ANTHROPIC_API_KEY",
+                "LINK_WORLD_ANTHROPIC_API_KEY",
+            ]
+        );
+    }
 
     struct SuccessfulTextGenerationProvider;
 
@@ -1239,7 +1264,7 @@ mod tests {
         .expect("parsed document should insert");
 
         let telemetry_dir =
-            std::env::temp_dir().join(format!("link-world-ai-telemetry-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("node-tide-ai-telemetry-{}", Uuid::new_v4()));
         let service = AIEnrichmentService::new(database.pool().clone(), SecretStore::default())
             .expect("AI service should initialize")
             .with_model_registry(ModelProviderRegistry::from_text_generation_provider(
@@ -1393,7 +1418,7 @@ mod tests {
         .await
         .expect("fixture object should insert");
         let telemetry_dir =
-            std::env::temp_dir().join(format!("link-world-ai-failure-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("node-tide-ai-failure-{}", Uuid::new_v4()));
         let service = AIEnrichmentService::new(database.pool().clone(), SecretStore::default())
             .expect("AI service should initialize")
             .with_structured_logger(StructuredLogger::new(&telemetry_dir));

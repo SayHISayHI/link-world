@@ -26,7 +26,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/alpha-readiness.ps1 -Inclu
 
 ## 3. RSA waiver 边界
 
-`rsa 0.9.10` 没有上游修复版本。当前项目只启用 SQLx SQLite，不实现 MySQL、RSA 私钥操作、TLS 终止或服务端签名。该 crate 存在于 lockfile 的 SQLx 可选依赖集合，但不存在于当前 Windows 活跃依赖图，因此不进入 Link World Windows Alpha 运行时。
+`rsa 0.9.10` 没有上游修复版本。当前项目只启用 SQLx SQLite，不实现 MySQL、RSA 私钥操作、TLS 终止或服务端签名。该 crate 存在于 lockfile 的 SQLx 可选依赖集合，但不存在于当前 Windows 活跃依赖图，因此不进入 Node Tide Windows Alpha 运行时。
 
 此 waiver 仅在以下条件同时成立时有效：
 

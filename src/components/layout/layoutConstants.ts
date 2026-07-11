@@ -1,0 +1,1 @@
+export const COLLAPSED_SIDEBAR_WIDTH = 56;

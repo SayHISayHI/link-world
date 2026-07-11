@@ -1,19 +1,19 @@
 [package]
-name = "link-world"
+name = "node-tide"
 version = "0.1.0"
 description = "Local-first personal information asset system"
-authors = ["Link World"]
+authors = ["Node Tide"]
 edition = "2021"
 rust-version = "1.85"
-default-run = "link-world"
+default-run = "node-tide"
 
 [lib]
-name = "link_world_lib"
+name = "node_tide_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [[bin]]
-name = "link-world-cli"
-path = "src/bin/link-world-cli.rs"
+name = "node-tide-cli"
+path = "src/bin/node-tide-cli.rs"
 
 [build-dependencies]
 tauri-build = { version = "2.4.0", features = [] }

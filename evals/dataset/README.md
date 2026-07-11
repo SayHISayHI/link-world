@@ -1,4 +1,4 @@
-# Link World Evaluation Dataset
+# Node Tide Evaluation Dataset
 
 This directory contains deterministic benchmark samples for prompt and evaluator quality.
 

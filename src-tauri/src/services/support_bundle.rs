@@ -463,7 +463,7 @@ mod tests {
     #[tokio::test]
     async fn support_bundle_requires_explicit_confirmation() {
         let data_dir =
-            std::env::temp_dir().join(format!("link-world-support-confirm-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("node-tide-support-confirm-{}", Uuid::new_v4()));
         let database = Database::initialize(data_dir.clone())
             .await
             .expect("database should initialize");
@@ -486,7 +486,7 @@ mod tests {
     #[tokio::test]
     async fn support_bundle_exports_only_sanitized_operational_metadata() {
         let data_dir =
-            std::env::temp_dir().join(format!("link-world-support-export-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("node-tide-support-export-{}", Uuid::new_v4()));
         let database = Database::initialize(data_dir.clone())
             .await
             .expect("database should initialize");

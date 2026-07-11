@@ -6,18 +6,18 @@ import remarkGfm from "remark-gfm";
 import type { PluggableList, Transformer } from "unified";
 import { visit } from "unist-util-visit";
 
-export type LinkWorldCalloutKind = "note" | "tip" | "important" | "warning" | "caution";
+export type NodeTideCalloutKind = "note" | "tip" | "important" | "warning" | "caution";
 
 const CALLOUT_PATTERN = /^\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*(?:\r?\n)?/i;
 
-export const linkWorldRemarkPlugins: PluggableList = [remarkGfm];
-export const linkWorldRehypePlugins: PluggableList = [
+export const nodeTideRemarkPlugins: PluggableList = [remarkGfm];
+export const nodeTideRehypePlugins: PluggableList = [
   [rehypeSanitize, defaultSchema],
   rehypeSlug,
-  rehypeLinkWorldCallouts,
+  rehypeNodeTideCallouts,
 ];
 
-export function rehypeLinkWorldCallouts(): Transformer<Root> {
+export function rehypeNodeTideCallouts(): Transformer<Root> {
   return (tree) => {
     visit(tree, "element", (node: Element) => {
       if (node.tagName !== "blockquote") {
@@ -34,7 +34,7 @@ export function rehypeLinkWorldCallouts(): Transformer<Root> {
         return;
       }
 
-      const kind = match[1].toLowerCase() as LinkWorldCalloutKind;
+      const kind = match[1].toLowerCase() as NodeTideCalloutKind;
       firstText.value = firstText.value.slice(match[0].length);
       node.properties ??= {};
       node.properties["data-lw-callout"] = kind;

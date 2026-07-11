@@ -20,9 +20,9 @@ import {
   type DocumentTocItem,
 } from "./markdownDocument";
 import {
-  linkWorldRehypePlugins,
-  linkWorldRemarkPlugins,
-  type LinkWorldCalloutKind,
+  nodeTideRehypePlugins,
+  nodeTideRemarkPlugins,
+  type NodeTideCalloutKind,
 } from "./markdownPlugins";
 
 interface MarkdownDocumentViewProps {
@@ -35,7 +35,7 @@ interface MarkdownDocumentViewProps {
 
 const DEFAULT_RENDER_POLICY = getDocumentRenderPolicy("article");
 const DocumentRenderContext = createContext<DocumentRenderPolicy>(DEFAULT_RENDER_POLICY);
-const CALLOUT_STYLES: Record<LinkWorldCalloutKind, { label: string; className: string }> = {
+const CALLOUT_STYLES: Record<NodeTideCalloutKind, { label: string; className: string }> = {
   note: { label: "Note", className: "border-blue-500 bg-blue-50 text-blue-950" },
   tip: { label: "Tip", className: "border-emerald-500 bg-emerald-50 text-emerald-950" },
   important: { label: "Important", className: "border-violet-500 bg-violet-50 text-violet-950" },
@@ -124,7 +124,7 @@ function CodeBlock({ children }: { children: ReactNode }) {
 
 function Callout({ node, children }: ComponentPropsWithoutRef<"blockquote"> & ExtraProps) {
   const property = node?.properties?.["data-lw-callout"];
-  const kind = typeof property === "string" && property in CALLOUT_STYLES ? (property as LinkWorldCalloutKind) : undefined;
+  const kind = typeof property === "string" && property in CALLOUT_STYLES ? (property as NodeTideCalloutKind) : undefined;
 
   if (!kind) {
     return (
@@ -259,8 +259,8 @@ export const MarkdownDocumentView = memo(function MarkdownDocumentView({
         {summary.toc.length >= 3 ? <DocumentToc items={summary.toc} defaultOpen={policy.tocExpanded} /> : null}
         <ReactMarkdown
           key={`${documentId}:${policy.mode}`}
-          remarkPlugins={linkWorldRemarkPlugins}
-          rehypePlugins={linkWorldRehypePlugins}
+          remarkPlugins={nodeTideRemarkPlugins}
+          rehypePlugins={nodeTideRehypePlugins}
           components={components}
           skipHtml
           urlTransform={urlTransform}

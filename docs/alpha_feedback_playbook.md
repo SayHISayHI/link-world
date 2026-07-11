@@ -1,11 +1,11 @@
 # Week 10 邀请制 Alpha 与反馈闭环
 
 状态: Draft，邀请、反馈、缺陷响应和决策模板已建立；真实 5-15 名目标用户观察与下一阶段决策证据仍需执行。
-适用范围: Link World Windows Local Alpha 的邀请制测试、反馈采集、数据处理、P0/P1 响应、核心漏斗观察和下一阶段决策。
+适用范围: Node Tide Windows Local Alpha 的邀请制测试、反馈采集、数据处理、P0/P1 响应、核心漏斗观察和下一阶段决策。
 
 ## 1. 目标与边界
 
-Week 10 的目标是用少量真实任务验证 Link World 是否能让目标用户完成“保存、理解、检索和评估”的核心闭环，并据此决定下一阶段优先扩展 Evaluation、采集覆盖或数据安全。
+Week 10 的目标是用少量真实任务验证 Node Tide 是否能让目标用户完成“保存、理解、检索和评估”的核心闭环，并据此决定下一阶段优先扩展 Evaluation、采集覆盖或数据安全。
 
 本阶段不扩大产品范围:
 
@@ -40,11 +40,11 @@ Week 10 的目标是用少量真实任务验证 Link World 是否能让目标用
 ## 3. 邀请文案模板
 
 ```text
-Subject: Link World Windows Alpha invitation
+Subject: Node Tide Windows Alpha invitation
 
 Hi <name>,
 
-I am running a small Windows Alpha for Link World, a local-first desktop app for saving, searching and evaluating articles, GitHub repos and prompts.
+I am running a small Windows Alpha for Node Tide, a local-first desktop app for saving, searching and evaluating articles, GitHub repos and prompts.
 
 This Alpha is intentionally small:
 - It runs locally on Windows.

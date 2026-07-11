@@ -36,7 +36,7 @@ npm run readiness:sprint2
 可选参数：
 
 ```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/sprint2-readiness.ps1 -OutputPath C:\tmp\link-world-sprint2-readiness.json
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/sprint2-readiness.ps1 -OutputPath C:\tmp\node-tide-sprint2-readiness.json
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/sprint2-readiness.ps1 -IncludeFrontend
 ```
 

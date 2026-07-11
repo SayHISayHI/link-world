@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Link World",
+  "productName": "Node Tide",
   "version": "0.1.0",
   "identifier": "com.linkworld.app",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Link World",
+        "title": "拾海 · Node Tide",
         "width": 1280,
         "height": 820,
         "minWidth": 960,

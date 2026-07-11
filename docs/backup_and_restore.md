@@ -68,7 +68,7 @@ manifest.json 包含：
 | --- | --- |
 | schemaVersion | 当前固定为 1 |
 | backupId | 与父目录一致的 UUID |
-| appVersion | 创建备份的 Link World 版本 |
+| appVersion | 创建备份的 Node Tide 版本 |
 | createdAt | RFC 3339 时间 |
 | database | SQLite 相对路径、字节数和 SHA-256 |
 | objects | 排序后的对象文件相对路径、字节数和 SHA-256 |

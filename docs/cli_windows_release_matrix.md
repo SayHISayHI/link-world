@@ -1,7 +1,7 @@
-# Link World CLI Windows 发布验收矩阵
+# Node Tide CLI Windows 发布验收矩阵
 
-状态：代码与自动化门禁已实现；最终签名、Defender、代理/防火墙和用户 PATH 会话验证待发布候选执行
-适用范围：`link-world-cli.exe`、`install-link-world-cli.ps1`、共享 Local Edition 数据目录
+状态：CLI 代码已更名为 Node Tide；2026-07-04 former Link World 证据仅作历史记录，当前 `node-tide-cli.exe` 的完整 readiness/build/package、签名、Defender、代理/防火墙和用户 PATH 会话验证待重新执行
+适用范围：`node-tide-cli.exe`、`install-node-tide-cli.ps1`、共享 Local Edition 数据目录
 
 ## 1. 自动化入口
 
@@ -12,14 +12,14 @@ npm run build:cli
 
 `readiness:cli` 使用中文临时目录，覆盖 rustfmt/check/clippy、参数与 completion、单 JSON document、稳定退出码、路径脱敏、破坏性操作显式确认、实时 runtime lock 竞争、capture/AI request-id identity、共享 service capture→search→show→delete、便携导出、backup create/list/verify 以及安装/卸载脚本，并原子写出 JSON report。
 
-## 2. 2026-07-04 本地证据
+## 2. 2026-07-04 former Link World 本地历史证据
 
 | 项目 | 结果 |
 | --- | --- |
 | Debug CLI readiness | 通过；16/16 个编译、测试和真实进程步骤 passed，未跳过 clippy |
 | Readiness report SHA-256 | `00354CD94EB2B41A24DADC25D1190963C2E3D71E25EF3E2408D75B5926140B75` |
 | `cargo clippy --all-targets -- -D warnings` | 通过 |
-| Release build | 通过，`link-world-cli.exe` 17,933,312 bytes；build stamp 与二进制 hash 一致 |
+| Release build | 历史通过，`link-world-cli.exe` 17,933,312 bytes；build stamp 与二进制 hash 一致 |
 | Release SHA-256 | `7D7395742BFBFF41A6E9617A2E989F28694666116E6E5F90706ED0BD7B175C22` |
 | Release 签名 | `NotSigned`；Alpha 可留证分发，公开发布前阻断 |
 | Release version/JSON | 通过，schema v1 单 JSON document |
@@ -27,7 +27,7 @@ npm run build:cli
 | 用户级安装/卸载（不修改 PATH） | Debug 和 Release 均通过 |
 | Alpha package rehearsal | 通过；MSI、NSIS、CLI、CLI installer、readiness report、manifest 与 SHA256SUMS 同包 |
 
-上述 hash 只对应当前工作树构建，不替代最终干净 commit 的 release evidence。
+上述 hash 对应 former Link World 工件，不适用于 `node-tide-cli.exe`，也不替代最终干净 commit 的 release evidence。
 
 ## 3. 发布候选矩阵
 
@@ -53,7 +53,7 @@ npm run build:cli
 - JSON 模式混入 banner、spinner、warning 或多份 document。
 - 参数、错误、日志、支持包出现 API Key、cookie、session、正文、raw provider/SQLite error 或本机绝对路径。
 - request ID 跨对象/跨操作复用未 fail closed。
-- 安装脚本修改 Machine PATH、要求管理员或删除非 Link World 文件。
+- 安装脚本修改 Machine PATH、要求管理员或删除非 Node Tide 文件。
 - release manifest/checksum 不包含 CLI，或签名/来源状态与实际不符。
 - public/commercial 分发时 CLI/安装脚本未签名。
 

@@ -6,7 +6,7 @@ use std::time::Duration;
 
 const GITHUB_API_BASE_URL: &str = "https://api.github.com/";
 const GITHUB_API_VERSION: &str = "2022-11-28";
-const GITHUB_USER_AGENT: &str = "Link-World/0.1.0";
+const GITHUB_USER_AGENT: &str = "Node-Tide/0.1.0";
 const GITHUB_REQUEST_TIMEOUT: Duration = Duration::from_secs(12);
 const MAX_JSON_RESPONSE_BYTES: usize = 512 * 1024;
 const MAX_README_BYTES: usize = 256 * 1024;

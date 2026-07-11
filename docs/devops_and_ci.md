@@ -1,11 +1,11 @@
-# Link World DevOps、CI 与打包分发规范
+# Node Tide DevOps、CI 与打包分发规范
 
 状态: Draft  
 适用范围: Tauri desktop app / Rust backend / React frontend
 
 ## 1. Purpose
 
-本文档定义 Link World 的自动化测试、构建、打包、签名、发布和回滚标准。MVP 可以先只做 Windows 本地开发，但工程设计必须为跨平台和商业发布预留清晰路径。
+本文档定义 Node Tide 的自动化测试、构建、打包、签名、发布和回滚标准。MVP 可以先只做 Windows 本地开发，但工程设计必须为跨平台和商业发布预留清晰路径。
 
 目标：
 
@@ -193,7 +193,7 @@ Windows:
 - Build `.msi` or `.exe` installer。
 - Ensure uninstall does not delete user data by default。
 - Provide explicit “remove local data” option later。
-- Build `link-world-cli.exe` separately with `npm run build:cli` after the Tauri build. This writes commit/version/bytes/SHA-256 metadata; packaging fails if a later build changes the binary. Include the CLI, `install-link-world-cli.ps1`, Authenticode status and SHA-256 in the release manifest。
+- Build `node-tide-cli.exe` separately with `npm run build:cli` after the Tauri build. This writes commit/version/bytes/SHA-256 metadata; packaging fails if a later build changes the binary. Include the CLI, `install-node-tide-cli.ps1`, Authenticode status and SHA-256 in the release manifest。
 - CLI installation is opt-in. The install script may modify only User PATH after explicit `-AddToPath`; desktop installers must not silently modify PATH。
 
 macOS:
@@ -272,7 +272,7 @@ Before release:
 - Diagnostics package is redacted。
 - Week 9 Windows Alpha matrix records install, upgrade, uninstall/data retention, Credential Manager, proxy/firewall/offline, non-ASCII profile and security/dependency review results.
 - Week 10 Alpha playbook records invitations, feedback, P0/P1 state, core funnel observations and next-stage decision.
-- Release package contains `link-world-cli.exe` and `install-link-world-cli.ps1`; manifest/checksum entries match the shipped bytes.
+- Release package contains `node-tide-cli.exe` and `install-node-tide-cli.ps1`; manifest/checksum entries match the shipped bytes.
 - Release notes include migration risk。
 
 ## 10. Rollback Strategy

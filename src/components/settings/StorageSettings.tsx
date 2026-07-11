@@ -49,7 +49,7 @@ export function StorageSettings({ mode = "settings", startupIssue }: StorageSett
           </h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
             {isStartupRecovery
-              ? "Link World is running in restricted recovery mode. Choose a verified local restore point to recover the library; ordinary library features stay disabled until restart succeeds."
+              ? "Node Tide is running in restricted recovery mode. Choose a verified local restore point to recover the library; ordinary library features stay disabled until restart succeeds."
               : "Create a local restore point containing a consistent SQLite snapshot and the object store. Every payload file is recorded in a versioned SHA-256 manifest."}
           </p>
         </div>
@@ -240,7 +240,7 @@ function BackupRow({
           </p>
           {backup.appVersion ? (
             <p className="mt-1 text-[11px] text-muted-foreground">
-              Link World {backup.appVersion}
+              Node Tide {backup.appVersion}
             </p>
           ) : null}
         </div>
@@ -286,9 +286,9 @@ function BackupRow({
           role="group"
           aria-label="Confirm restore"
         >
-          <p className="font-semibold">Restore this point and restart Link World?</p>
+          <p className="font-semibold">Restore this point and restart Node Tide?</p>
           <p className="mt-1 leading-5">
-            The current database and object store will be replaced. Before shutdown, Link World
+            The current database and object store will be replaced. Before shutdown, Node Tide
             re-verifies this backup, migrates a private candidate, and creates a separate safety
             backup for automatic rollback.
           </p>

@@ -25,7 +25,7 @@ fn migrator_through(version: i64) -> Migrator {
 
 async fn historical_database(version: i64) -> (PathBuf, SqlitePool) {
     let data_dir =
-        std::env::temp_dir().join(format!("link-world-migration-test-{}", Uuid::new_v4()));
+        std::env::temp_dir().join(format!("node-tide-migration-test-{}", Uuid::new_v4()));
     fs::create_dir_all(&data_dir).expect("migration fixture directory should create");
     let pool = SqlitePoolOptions::new()
         .max_connections(1)

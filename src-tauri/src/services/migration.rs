@@ -550,7 +550,7 @@ mod tests {
 
     async fn v1_fixture() -> (PathBuf, Database, ObjectStore) {
         let data_dir =
-            std::env::temp_dir().join(format!("link-world-guard-test-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("node-tide-guard-test-{}", Uuid::new_v4()));
         fs::create_dir_all(&data_dir).expect("fixture directory should create");
         let path = data_dir.join(DATABASE_FILE_NAME);
         let pool = SqlitePoolOptions::new()
@@ -706,7 +706,7 @@ mod tests {
     #[tokio::test]
     async fn fresh_database_migrates_without_creating_backup() {
         let data_dir =
-            std::env::temp_dir().join(format!("link-world-fresh-test-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("node-tide-fresh-test-{}", Uuid::new_v4()));
         let object_store =
             ObjectStore::initialize(data_dir.clone()).expect("object store should initialize");
         let database = Database::connect_without_migrations(data_dir.clone())
@@ -806,7 +806,7 @@ mod tests {
     #[tokio::test]
     async fn malformed_guard_emits_only_stable_failure_evidence() {
         let data_dir =
-            std::env::temp_dir().join(format!("link-world-guard-invalid-test-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("node-tide-guard-invalid-test-{}", Uuid::new_v4()));
         let object_store =
             ObjectStore::initialize(data_dir.clone()).expect("object store should initialize");
         let database = Database::connect_without_migrations(data_dir.clone())

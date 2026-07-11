@@ -1,10 +1,10 @@
-const LINK_WORLD_MAX_SELECTED_TEXT_BYTES = 60 * 1024;
-const LINK_WORLD_MAX_TEXT_BYTES = 80 * 1024;
-const LINK_WORLD_MAX_HTML_BYTES = 280 * 1024;
-const LINK_WORLD_MAX_PAYLOAD_BYTES = 480 * 1024;
+const NODE_TIDE_MAX_SELECTED_TEXT_BYTES = 60 * 1024;
+const NODE_TIDE_MAX_TEXT_BYTES = 80 * 1024;
+const NODE_TIDE_MAX_HTML_BYTES = 280 * 1024;
+const NODE_TIDE_MAX_PAYLOAD_BYTES = 480 * 1024;
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message?.type !== "LINK_WORLD_COLLECT_CURRENT_PAGE") {
+  if (message?.type !== "NODE_TIDE_COLLECT_CURRENT_PAGE") {
     return false;
   }
 
@@ -35,10 +35,10 @@ function collectCurrentPage() {
     language: document.documentElement.lang || undefined,
     selectedText: truncateUtf8(
       normalizeText(String(window.getSelection?.() ?? "")),
-      LINK_WORLD_MAX_SELECTED_TEXT_BYTES,
+      NODE_TIDE_MAX_SELECTED_TEXT_BYTES,
     ),
-    domText: truncateUtf8(normalizeText(clone.textContent ?? ""), LINK_WORLD_MAX_TEXT_BYTES),
-    domHtml: truncateUtf8(clone.outerHTML, LINK_WORLD_MAX_HTML_BYTES),
+    domText: truncateUtf8(normalizeText(clone.textContent ?? ""), NODE_TIDE_MAX_TEXT_BYTES),
+    domHtml: truncateUtf8(clone.outerHTML, NODE_TIDE_MAX_HTML_BYTES),
     sourcePlatform: window.location.hostname,
     capturedAt: new Date().toISOString(),
   });
@@ -163,7 +163,7 @@ function fitPayloadToBudget(payload) {
   const payloadBytes = () => encoder.encode(JSON.stringify(payload)).length;
   const reducibleFields = ["domHtml", "domText", "selectedText"];
 
-  for (let iteration = 0; iteration < 24 && payloadBytes() > LINK_WORLD_MAX_PAYLOAD_BYTES; iteration += 1) {
+  for (let iteration = 0; iteration < 24 && payloadBytes() > NODE_TIDE_MAX_PAYLOAD_BYTES; iteration += 1) {
     const field = reducibleFields.find(
       (name) => encoder.encode(payload[name] ?? "").length > 4096,
     );
@@ -172,7 +172,7 @@ function fitPayloadToBudget(payload) {
     }
 
     const currentBytes = encoder.encode(payload[field]).length;
-    const excessBytes = payloadBytes() - LINK_WORLD_MAX_PAYLOAD_BYTES;
+    const excessBytes = payloadBytes() - NODE_TIDE_MAX_PAYLOAD_BYTES;
     const reduction = Math.max(excessBytes + 2048, Math.ceil(currentBytes * 0.15));
     payload[field] = truncateUtf8(payload[field], Math.max(4096, currentBytes - reduction));
   }

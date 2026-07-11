@@ -8,7 +8,7 @@ pub enum AppError {
     BackupInvalid(String),
     #[error("restore invalid: {0}")]
     RestoreInvalid(String),
-    #[error("another Link World process is using this data directory")]
+    #[error("another Node Tide process is using this data directory")]
     RuntimeBusy,
     #[error("object not found")]
     ObjectNotFound,

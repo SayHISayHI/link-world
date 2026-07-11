@@ -1,6 +1,6 @@
-# Link World 文档索引
+# Node Tide（拾海）文档索引
 
-本目录是 Link World 的产品、架构和工程规范源。后续实现代码前，必须先确认对应文档没有冲突。
+本目录是 Node Tide（拾海）的产品、架构和工程规范源。后续实现代码前，必须先确认对应文档没有冲突。
 
 ## Reading Order
 
@@ -49,7 +49,7 @@
 22. [dependency_security_audit.md](./dependency_security_audit.md)
    - Windows Alpha 的 npm/RustSec 审计、漏洞处置、RSA waiver 失效条件和依赖面缩减记录。
 23. [release_evidence/alpha_0.1.0_98c9b0f.md](./release_evidence/alpha_0.1.0_98c9b0f.md)
-   - Alpha 0.1.0 RC 的干净 commit 门禁、MSI/NSIS、hash、签名状态和未执行真实机边界。
+   - Former Link World 品牌下的 Alpha 0.1.0 历史证据；不代表当前 Node Tide 发布候选。
 24. [alpha_feedback_playbook.md](./alpha_feedback_playbook.md)
    - Week 10 邀请制 Alpha 用户邀请、反馈、P0/P1 响应、核心漏斗和下一阶段决策模板。
 25. [plugins/plugin_development_guide.md](./plugins/plugin_development_guide.md)
@@ -96,6 +96,7 @@
 - 当前里程碑、周度范围与完成状态以 `post_mvp_roadmap.md` 为准。
 - CLI 的目标范围、命令契约、并发策略和阶段门禁以 `cli_development_plan.md` 为准。
 - CLI 的真实 Windows 进程、安装、PATH、签名与网络发布证据以 `cli_windows_release_matrix.md` 为准。
+- 产品身份、技术 slug 与 legacy 存储兼容以 `adr/0010-node-tide-product-identity.md` 为准。
 - 架构取舍的历史原因以 `adr/` 为准。
 
 ## Documentation Versioning Policy

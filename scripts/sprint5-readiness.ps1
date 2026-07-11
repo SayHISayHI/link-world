@@ -84,7 +84,7 @@ $script:ReadinessRedactions = @(
 
 if (-not $OutputPath) {
   $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss')
-  $OutputPath = Join-Path ([System.IO.Path]::GetTempPath()) "link-world-sprint5-readiness-$stamp.json"
+  $OutputPath = Join-Path ([System.IO.Path]::GetTempPath()) "node-tide-sprint5-readiness-$stamp.json"
 }
 
 $steps = @(

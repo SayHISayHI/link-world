@@ -1,11 +1,11 @@
-# Link World 安全、隐私与合规设计
+# Node Tide 安全、隐私与合规设计
 
 状态: Draft  
 适用范围: Local Edition、Cloud Edition、Hybrid Edition
 
 ## 1. Security Goals
 
-Link World 处理的是用户长期积累的信息资产，其中可能包含私密网页、内部链接、prompt、代码片段、聊天内容、API key 和账号相关页面。安全目标是：
+Node Tide 处理的是用户长期积累的信息资产，其中可能包含私密网页、内部链接、prompt、代码片段、聊天内容、API key 和账号相关页面。安全目标是：
 
 - 默认本地优先，用户不需要把数据交给云端。
 - 用户清楚知道哪些内容被保存、分析、同步和导出。

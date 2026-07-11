@@ -1,6 +1,6 @@
 # Week 9 Windows Alpha 发布工程化矩阵
 
-状态: Draft；commit `98c9b0f` 的完整自动化门禁、MSI/NSIS、manifest/checksum 和依赖审计已留证，真实 Windows 10/11 安装、升级、卸载与签名仍需执行。
+状态: Draft；commit `98c9b0f` 仅保留为 former Link World 品牌的历史证据。Node Tide 必须重新生成当前 commit 的自动化门禁、MSI/NSIS、CLI、manifest/checksum，并执行真实 Windows 10/11 安装、升级、卸载与签名矩阵。
 适用范围: Week 9 Windows Local Alpha 的打包、签名、安装、升级、卸载、数据保留、环境矩阵、凭据回归和依赖安全审计。
 
 ## 1. 目标与边界
@@ -27,7 +27,7 @@ npm run readiness:alpha
 发布候选环境应使用完整门禁:
 
 ```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/alpha-readiness.ps1 -IncludeSprintGates -IncludeTauriBuild -IncludeNetworkAudits -OutputPath C:\tmp\link-world-alpha-readiness.json
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/alpha-readiness.ps1 -IncludeSprintGates -IncludeTauriBuild -IncludeNetworkAudits -OutputPath C:\tmp\node-tide-alpha-readiness.json
 ```
 
 该脚本负责聚合:
@@ -64,7 +64,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/alpha-readiness.ps1 -Inclu
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/package-alpha-release.ps1 -ReadinessReport <alpha-readiness.json>
 ```
 
-该命令只接受通过且 commit 与当前 HEAD 相同的 readiness report，并默认拒绝脏工作区。输出包含规范化 MSI/NSIS、独立 `link-world-cli.exe`、CLI 安装脚本、`release-manifest.json`、Authenticode 状态和 `SHA256SUMS.txt`；它不能替代真实安装矩阵。CLI 专项见 `cli_windows_release_matrix.md`。
+该命令只接受通过且 commit 与当前 HEAD 相同的 readiness report，并默认拒绝脏工作区。输出包含规范化 MSI/NSIS、独立 `node-tide-cli.exe`、CLI 安装脚本、`release-manifest.json`、Authenticode 状态和 `SHA256SUMS.txt`；它不能替代真实安装矩阵。CLI 专项见 `cli_windows_release_matrix.md`。
 
 签名边界:
 

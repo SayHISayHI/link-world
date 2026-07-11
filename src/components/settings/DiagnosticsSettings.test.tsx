@@ -37,9 +37,9 @@ vi.mock("../../hooks/commands/useSupportBundleExport", () => ({
 
 const snapshot: LocalMetricsSnapshot = {
   appVersion: "0.1.0",
-  dataDir: "C:\\Users\\tester\\AppData\\LinkWorld",
-  databasePath: "C:\\Users\\tester\\AppData\\LinkWorld\\link-world.sqlite3",
-  objectStorePath: "C:\\Users\\tester\\AppData\\LinkWorld\\objects",
+  dataDir: "C:\\Users\\tester\\AppData\\NodeTide",
+  databasePath: "C:\\Users\\tester\\AppData\\NodeTide\\link-world.sqlite3",
+  objectStorePath: "C:\\Users\\tester\\AppData\\NodeTide\\objects",
   databaseHealth: {
     healthy: true,
     quickCheck: "ok",
@@ -90,7 +90,7 @@ describe("DiagnosticsSettings", () => {
     mocks.exportSupportBundle.mockResolvedValue({
       bundleId: "support-1",
       createdAt: "2026-06-29T00:00:00Z",
-      filePath: "C:/Users/tester/AppData/LinkWorld/support-bundles/support-1.json",
+      filePath: "C:/Users/tester/AppData/NodeTide/support-bundles/support-1.json",
       sizeBytes: 1024,
       sha256: "a".repeat(64),
       includedSections: [],

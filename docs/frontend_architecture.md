@@ -1,11 +1,11 @@
-# Link World 前端架构规范
+# Node Tide 前端架构规范
 
 状态: Draft
 适用范围: React 18+ / Vite / Tauri / TypeScript / Zustand / Tailwind / shadcn/ui
 
 ## 1. Purpose
 
-本文档规定 Link World 前端的状态、组件、路由、数据访问和交互架构。目标是让三栏知识库、AI Analysis、Evaluation、后台任务、设置、插件和搜索在长期迭代中保持清晰边界。
+本文档规定 Node Tide 前端的状态、组件、路由、数据访问和交互架构。目标是让三栏知识库、AI Analysis、Evaluation、后台任务、设置、插件和搜索在长期迭代中保持清晰边界。
 
 前端必须：
 
@@ -236,6 +236,8 @@ Rules:
 - 内容类型属于 `LibraryFilters.objectTypes`，不得重新混入一级导航；列表与 FTS 搜索必须提交同一 scope。
 - `Inbox` 只读取 `triage_status`，不能从 lifecycle 推断；AI enrich 不得自动改变 route 或 triage。
 - Settings 是与 Library 同级的正式 route；凭据表单不得嵌入对象详情。
+- `SettingsRouteLayout` 与 `ThreePaneLayout` 必须共享同一个折叠侧栏宽度；TopBar 品牌区保持展开宽度，侧栏折叠时仍显示完整 `拾海 · Node Tide` 品牌名。
+- `SettingsPanel` 填满 TopBar 下方的剩余高度，只有内部 main 区域允许纵向滚动；不得在 route shell 内再次使用 viewport height。
 
 ## 6. Container and Presentational Components
 
@@ -276,7 +278,7 @@ LibraryShellContainer
 Markdown
   -> unified + remark-parse + remark-gfm
   -> AST summary (TOC, structure metrics, inferred display mode)
-  -> rehype-sanitize -> rehype-slug -> trusted Link World Callout plugin
+  -> rehype-sanitize -> rehype-slug -> trusted Node Tide Callout plugin
   -> stable React component map
 ```
 
@@ -299,9 +301,11 @@ o-referrer`。
 布局要求：
 
 - 左侧 Sidebar 宽度稳定。
+- Sidebar 折叠宽度固定为 56px，并由共享 layout constant 驱动 Library、Settings 和 TopBar，禁止各 route 单独写 magic number。
 - 中间列表按 30 条、`(updated_at, id)` opaque cursor 分页并显式 Load more；append 必须按 object id 去重。
 - 右侧详情支持 loading、empty、failed、deleted。
 - 三栏区域不得出现嵌套卡片堆叠。
+- route shell 占满 viewport 且自身不滚动；Settings 等长内容页面在明确的内部 scroll region 滚动。
 - 工具按钮使用 lucide icons + tooltip。
 
 Desktop first breakpoints:
@@ -461,6 +465,8 @@ Minimum frontend tests:
 - `Sidebar` renders server navigation counts, active typed view, collection create/rename/archive and Smart View creation without hardcoded content categories。
 - `OrganizationPanel` covers triage, collection membership, user Topics, pending AI suggestion confidence/rationale, accept and reject。
 - `SettingsPanel` masks API key。
+- `SettingsPanel` fills the route remainder and owns the only vertical scroll region below TopBar。
+- `ThreePaneLayout` and `SettingsRouteLayout` use the same expanded/collapsed sidebar widths；TopBar keeps the full brand width while Omnibox tests distinguish text search, URL capture and clear behavior。
 - `DiagnosticsSettings` renders local health, sanitized failed job summaries and normal model-configuration degradation；support-bundle export is disabled until the inline confirmation is checked, then shows only path/size/SHA-256 and never loads bundle content into React state。
 - `PluginPermissionPanel` displays required vs optional permissions。
 - `DeleteObjectDialog` confirms destructive action。

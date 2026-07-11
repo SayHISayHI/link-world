@@ -259,7 +259,7 @@ impl CaptureService {
 
     pub async fn run_fetch_job(&self, job_id: &str) -> AppResult<Option<CaptureFetchJobRunResult>> {
         let now = Utc::now().to_rfc3339();
-        let locked_by = format!("link-world-{}", Uuid::new_v4());
+        let locked_by = format!("node-tide-{}", Uuid::new_v4());
         let mut tx = self.pool.begin().await?;
         let job =
             CaptureRepository::claim_fetch_job_by_id(&mut tx, job_id, &locked_by, &now).await?;
@@ -565,7 +565,7 @@ fn build_http_client() -> AppResult<reqwest::Client> {
         .timeout(Duration::from_secs(FETCH_TIMEOUT_SECONDS))
         .redirect(reqwest::redirect::Policy::limited(5))
         .user_agent(format!(
-            "LinkWorld/{} local-first capture",
+            "NodeTide/{} local-first capture",
             env!("CARGO_PKG_VERSION")
         ))
         .build()
@@ -615,14 +615,14 @@ fn capture_parse_failure_reason(message: &str) -> String {
     }
 
     if lower_message.contains("network connection failed") {
-        return "capture.network_unreachable: Link World could not connect to the host. Check network, DNS, VPN, or proxy settings, then retry.".to_string();
+        return "capture.network_unreachable: Node Tide could not connect to the host. Check network, DNS, VPN, or proxy settings, then retry.".to_string();
     }
 
     if lower_message.contains("could not be decoded") {
         return "capture.invalid_response: The server response could not be decoded as readable HTML. Try the browser extension capture path or save selected text manually.".to_string();
     }
 
-    "capture.parse_failed: Link World could not extract readable content from the fetched page. Try the browser extension capture path, selected text capture, or a different source URL.".to_string()
+    "capture.parse_failed: Node Tide could not extract readable content from the fetched page. Try the browser extension capture path, selected text capture, or a different source URL.".to_string()
 }
 
 fn capture_policy_failure_reason(message: &str) -> String {
@@ -640,7 +640,7 @@ fn capture_policy_failure_reason(message: &str) -> String {
 fn capture_http_status_failure_reason(status_code: u16) -> String {
     match status_code {
         401 | 403 => format!(
-            "capture.http_forbidden: The server returned HTTP {status_code}, so Link World cannot fetch the page without browser/session access. Open it in your browser and save it with the browser extension."
+            "capture.http_forbidden: The server returned HTTP {status_code}, so Node Tide cannot fetch the page without browser/session access. Open it in your browser and save it with the browser extension."
         ),
         404 | 410 => format!(
             "capture.http_not_found: The server returned HTTP {status_code}. Check whether the URL is still valid, or save a browser-visible copy if you can access it."
@@ -1636,7 +1636,7 @@ return answer;</code></pre>
             .expect("database should initialize");
         let object_store = test_object_store();
         let telemetry_dir =
-            std::env::temp_dir().join(format!("link-world-capture-log-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("node-tide-capture-log-{}", uuid::Uuid::new_v4()));
         let service = CaptureService::new(database.pool().clone(), object_store)
             .with_structured_logger(StructuredLogger::new(&telemetry_dir));
         let url = start_test_html_server(
@@ -2108,7 +2108,7 @@ return answer;</code></pre>
     }
 
     fn test_object_store() -> ObjectStore {
-        let root = std::env::temp_dir().join(format!("link-world-test-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("node-tide-test-{}", uuid::Uuid::new_v4()));
         ObjectStore::initialize(root).expect("object store should initialize")
     }
 

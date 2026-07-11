@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-ADR 用于记录 Link World 的关键架构决策。任何会影响长期架构、数据模型、安全边界、技术栈或部署形态的决定，都应新增或更新 ADR。
+ADR 用于记录 Node Tide 的关键架构决策。任何会影响长期架构、数据模型、安全边界、技术栈或部署形态的决定，都应新增或更新 ADR。
 
 ## Format
 
@@ -24,3 +24,4 @@ ADR 用于记录 Link World 的关键架构决策。任何会影响长期架构�
 - [0007 - Model provider runtime and protocol adapters](./0007-model-provider-runtime-and-protocol-adapters.md)
 - [0008 - Shared application core for desktop and CLI](./0008-shared-core-for-desktop-and-cli.md)
 - [0009 - Dynamic knowledge organization and user-owned taxonomy](./0009-dynamic-knowledge-organization.md)
+- [0010 - Node Tide product identity and legacy storage compatibility](./0010-node-tide-product-identity.md)

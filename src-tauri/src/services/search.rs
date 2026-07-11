@@ -343,7 +343,7 @@ mod tests {
             .expect("database should initialize");
         seed_searchable_object(&database).await;
         let telemetry_dir =
-            std::env::temp_dir().join(format!("link-world-search-rebuild-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("node-tide-search-rebuild-{}", Uuid::new_v4()));
         let service = SearchService::new(database.pool().clone())
             .with_structured_logger(StructuredLogger::new(&telemetry_dir));
 
@@ -395,7 +395,7 @@ mod tests {
             .await
             .expect("database should initialize");
         let telemetry_dir =
-            std::env::temp_dir().join(format!("link-world-search-cancel-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("node-tide-search-cancel-{}", Uuid::new_v4()));
         let service = SearchService::new(database.pool().clone())
             .with_structured_logger(StructuredLogger::new(&telemetry_dir));
 
@@ -444,7 +444,7 @@ mod tests {
             .expect("database should initialize");
         seed_searchable_object(&database).await;
         let telemetry_dir =
-            std::env::temp_dir().join(format!("link-world-search-reindex-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("node-tide-search-reindex-{}", Uuid::new_v4()));
         let service = SearchService::new(database.pool().clone())
             .with_structured_logger(StructuredLogger::new(&telemetry_dir));
 
@@ -488,7 +488,7 @@ mod tests {
             .expect("database should initialize");
         seed_searchable_object(&database).await;
         let telemetry_dir =
-            std::env::temp_dir().join(format!("link-world-search-failure-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("node-tide-search-failure-{}", Uuid::new_v4()));
         let service = SearchService::new(database.pool().clone())
             .with_structured_logger(StructuredLogger::new(&telemetry_dir));
 

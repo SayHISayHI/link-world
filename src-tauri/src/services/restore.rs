@@ -1129,7 +1129,7 @@ mod tests {
 
     #[test]
     fn restore_status_redacts_app_data_paths_and_bounds_messages() {
-        let data_dir = PathBuf::from("C:/Users/example/AppData/Link World");
+        let data_dir = PathBuf::from("C:/Users/example/AppData/Node Tide");
         let message = format!("failed at {} {}", data_dir.display(), "x".repeat(600));
         let sanitized = sanitize_status_message(&data_dir, &message);
         assert!(!sanitized.contains("C:/Users/example"));
@@ -1139,7 +1139,7 @@ mod tests {
     #[test]
     fn candidate_copy_rechecks_hash_after_source_verification() {
         let root =
-            std::env::temp_dir().join(format!("link-world-copy-race-test-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("node-tide-copy-race-test-{}", Uuid::new_v4()));
         let source_root = root.join("source");
         let destination_root = root.join("destination");
         fs::create_dir_all(source_root.join("objects")).expect("source directory should create");
@@ -1161,7 +1161,7 @@ mod tests {
     #[test]
     fn interrupted_live_move_preserves_an_unmoved_sqlite_sidecar() {
         let data_dir =
-            std::env::temp_dir().join(format!("link-world-sidecar-test-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("node-tide-sidecar-test-{}", Uuid::new_v4()));
         fs::create_dir_all(&data_dir).expect("test directory should create");
         let live_sidecar = data_dir.join("link-world.sqlite3-wal");
         let missing_rollback_sidecar = data_dir.join("rollback.sqlite3-wal");
@@ -1179,8 +1179,7 @@ mod tests {
 
     #[tokio::test]
     async fn startup_clears_a_stale_prepare_lock() {
-        let data_dir =
-            std::env::temp_dir().join(format!("link-world-lock-test-{}", Uuid::new_v4()));
+        let data_dir = std::env::temp_dir().join(format!("node-tide-lock-test-{}", Uuid::new_v4()));
         let restore_dir = data_dir.join("restore");
         fs::create_dir_all(&restore_dir).expect("restore directory should create");
         let lock = restore_dir.join("prepare.lock");
@@ -1196,10 +1195,8 @@ mod tests {
 
     #[tokio::test]
     async fn malformed_restore_marker_emits_only_stable_failure_evidence() {
-        let data_dir = std::env::temp_dir().join(format!(
-            "link-world-restore-invalid-test-{}",
-            Uuid::new_v4()
-        ));
+        let data_dir =
+            std::env::temp_dir().join(format!("node-tide-restore-invalid-test-{}", Uuid::new_v4()));
         let restore_root = data_dir.join("restore");
         fs::create_dir_all(&restore_root).expect("restore directory should create");
         let canary = "restore-marker-secret-canary";
@@ -1238,7 +1235,7 @@ mod tests {
     }
     async fn fixture() -> (PathBuf, Database, ObjectStore, BackupService) {
         let data_dir =
-            std::env::temp_dir().join(format!("link-world-restore-test-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("node-tide-restore-test-{}", Uuid::new_v4()));
         let database = Database::initialize(data_dir.clone())
             .await
             .expect("database should initialize");

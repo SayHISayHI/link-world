@@ -361,7 +361,7 @@ mod tests {
     async fn local_metrics_snapshot_redacts_failed_job_errors_and_treats_missing_model_as_degraded()
     {
         let data_dir =
-            std::env::temp_dir().join(format!("link-world-diagnostics-test-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("node-tide-diagnostics-test-{}", Uuid::new_v4()));
         let database = Database::initialize(data_dir.clone())
             .await
             .expect("database should initialize");

@@ -101,5 +101,5 @@ pub fn run() {
             commands::search::reindex_object
         ])
         .run(tauri::generate_context!())
-        .expect("failed to run Link World");
+        .expect("failed to run Node Tide");
 }

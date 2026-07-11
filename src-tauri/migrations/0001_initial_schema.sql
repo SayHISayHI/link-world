@@ -1,4 +1,4 @@
--- Purpose: Create the local-first core schema for Link World MVP.
+-- Purpose: Create the local-first core schema for Node Tide MVP.
 -- Risk: Additive initial migration only. No user data exists before this migration.
 -- Rollback: For pre-release development, delete the local database after exporting test data.
 

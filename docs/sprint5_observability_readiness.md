@@ -39,7 +39,7 @@ npm run readiness:sprint5
 可选参数：
 
 ```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/sprint5-readiness.ps1 -OutputPath C:\tmp\link-world-sprint5-readiness.json
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/sprint5-readiness.ps1 -OutputPath C:\tmp\node-tide-sprint5-readiness.json
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/sprint5-readiness.ps1 -IncludeFrontend
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/sprint5-readiness.ps1 -SkipClippy
 ```
