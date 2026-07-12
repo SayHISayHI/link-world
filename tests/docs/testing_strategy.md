@@ -176,6 +176,16 @@ Interaction tests:
 
 ## 6. E2E Smoke Tests
 
+The committed Playwright smoke at `tests/e2e/library-smoke.spec.ts` is the deterministic CI subset. It starts the real Vite frontend in Chromium and injects a strict in-browser Tauri IPC fixture to verify:
+
+- clean-profile empty state;
+- first URL save;
+- title/body search and opening the result detail;
+- readable no-model degradation;
+- navigation into Model Settings.
+
+Run `npm run test:e2e:install` once per machine, then `npm run test:e2e`. The mock rejects unexpected commands so new frontend IPC dependencies fail visibly. This browser gate does not replace Rust service tests, installed Tauri verification, or the manual extension smoke below.
+
 MVP smoke tests:
 
 1. App starts on clean profile.

@@ -17,7 +17,7 @@
 
 工具链基线：
 
-- 前端构建支持 Node.js 18、20 或 22 及以上版本；CI 和发布候选推荐使用 Node.js 20 LTS。
+- 前端构建支持 Node.js 20.19+、22.13+ 或 24+；CI 固定使用 Node.js 20.19，发布候选必须满足 `package.json` 的同一引擎契约。
 - `package.json` 的 `engines.node` 是安装期契约，`readiness:alpha` 会在运行前执行同等版本检查并把 Node/npm 版本写入报告。
 - 不得把开发机 PATH 中的旧 Node 运行结果作为代码失败；发布证据必须记录实际工具链版本并在受支持运行时重新执行。
 
@@ -135,48 +135,15 @@ Test DB strategy:
   - `cargo test repositories::search::tests::search_benchmark_20k_objects_reports_budget -- --ignored --nocapture`
   - 5k budget: max single query <= 250ms; 20k budget: max single query <= 500ms.
 
-## 5. GitHub Actions Draft
+## 5. GitHub Actions（已实现）
 
-This is a design sketch, not a committed workflow.
+可执行工作流位于 `.github/workflows/quality.yml`：
 
-```yaml
-name: ci
+- Ubuntu frontend job：锁定依赖安装、ESLint、strict typecheck、Vitest、生产构建、Chromium Playwright smoke；
+- Windows Rust job：Rust 1.85、rustfmt、Clippy `-D warnings`、`--locked` 单线程全量测试；
+- Playwright HTML 报告保留 7 天；同一 ref 的旧运行自动取消；workflow 仅授予 `contents: read`。
 
-on:
-  pull_request:
-  push:
-    branches: [main]
-
-jobs:
-  frontend:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm run test
-      - run: npm run build
-
-  rust:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - run: cargo fmt --check
-        working-directory: src-tauri
-      - run: cargo clippy --all-targets -- -D warnings
-        working-directory: src-tauri
-      - run: cargo test
-        working-directory: src-tauri
-```
-
-The final workflow must be adjusted after project scaffold exists.
-
+单线程 Rust 测试是当前正式门禁，因为 restore interruption fixtures 共享进程级恢复状态；并行执行会产生测试间干扰，但相关用例单独和单线程全量均通过。发布打包、签名、真实安装升级和浏览器扩展仍属于 Windows RC 矩阵，不在普通提交 CI 中执行。
 ## 6. Packaging Strategy
 
 Tauri packaging requirements:
@@ -366,7 +333,7 @@ MVP immediate:
 
 Before first external alpha:
 
-- GitHub Actions CI。
+- GitHub Actions CI。（已实现）
 - Windows packaging。
 - diagnostic package。
 

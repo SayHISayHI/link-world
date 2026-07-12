@@ -126,8 +126,13 @@ $steps = @(
     Command = @(
       'node',
       '-e',
-      "const major = Number(process.versions.node.split('.')[0]); if (major < 18 || major === 19 || major === 21) { console.error('Node.js 18, 20, or >=22 is required; found ' + process.version); process.exit(1); }"
+      "const [major, minor] = process.versions.node.split('.').map(Number); const supported = (major === 20 && minor >= 19) || (major === 22 && minor >= 13) || major >= 24; if (!supported) { console.error('Node.js 20.19+, 22.13+, or >=24 is required; found ' + process.version); process.exit(1); }"
     )
+  },
+  @{
+    Name = 'frontend lint'
+    WorkingDirectory = $repo
+    Command = @('npm', 'run', 'lint')
   },
   @{
     Name = 'frontend typecheck'
@@ -145,6 +150,11 @@ $steps = @(
     Command = @('npm', 'run', 'build')
   },
   @{
+    Name = 'browser E2E smoke'
+    WorkingDirectory = $repo
+    Command = @('npm', 'run', 'test:e2e')
+  },
+  @{
     Name = 'rustfmt check'
     WorkingDirectory = $repo
     Command = @('cargo', 'fmt', '--manifest-path', $cargoManifest, '--', '--check')
@@ -157,7 +167,7 @@ $steps = @(
   @{
     Name = 'rust tests'
     WorkingDirectory = $repo
-    Command = @('cargo', 'test', '--manifest-path', $cargoManifest)
+    Command = @('cargo', 'test', '--manifest-path', $cargoManifest, '--', '--test-threads=1')
   }
 )
 

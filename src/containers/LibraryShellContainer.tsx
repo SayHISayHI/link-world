@@ -433,8 +433,6 @@ export function LibraryShellContainer() {
   }, [
     loadObjectDetail,
     loadObjectJobs,
-    loadObjectOrganization,
-    loadNavigation,
     refreshRecentObjects,
     refreshSearchResults,
     retryBackgroundJob,
@@ -462,8 +460,6 @@ export function LibraryShellContainer() {
   }, [
     loadObjectDetail,
     loadObjectJobs,
-    loadObjectOrganization,
-    loadNavigation,
     refreshRecentObjects,
     refreshSearchResults,
     selectedObjectId,
@@ -518,8 +514,6 @@ export function LibraryShellContainer() {
   }, [
     loadObjectDetail,
     loadObjectJobs,
-    loadObjectOrganization,
-    loadNavigation,
     refreshRecentObjects,
     refreshSearchResults,
     reindexObject,
@@ -556,8 +550,6 @@ export function LibraryShellContainer() {
   }, [
     loadObjectDetail,
     loadObjectJobs,
-    loadObjectOrganization,
-    loadNavigation,
     refreshRecentObjects,
     refreshSearchResults,
     resetRetryEvaluation,
