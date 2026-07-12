@@ -1,6 +1,6 @@
 # Alpha 运行时依赖安全审计
 
-状态: 2026-07-02 自动化处置已完成；真实发布候选仍需在最终干净 commit 上重新生成报告。
+状态: 2026-07-12 自动化处置已完成；真实发布候选仍需在最终干净 commit 上重新生成报告。
 
 适用范围: Windows Local Alpha 的 npm 生产依赖、Rust `Cargo.lock`、当前 Windows 活跃依赖图与 Tauri 发布二进制。
 
@@ -21,6 +21,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/alpha-readiness.ps1 -Inclu
 | npm production dependencies | 官方 npm registry 审计返回 0 vulnerabilities | 通过 |
 | `RUSTSEC-2026-0185` / `quinn-proto` | 从 0.11.14 升级到已修复的 0.11.15 及以上锁定版本 | 已修复 |
 | `RUSTSEC-2026-0190` / `anyhow` | 从 1.0.102 升级到已修复的 1.0.103 及以上锁定版本 | 已修复 |
+| `RUSTSEC-2026-0194`、`RUSTSEC-2026-0195` / `quick-xml` | 经 `plist 1.10.0` 将 `quick-xml` 从 0.39.4 升级到修复版本 0.41.0；两项 CVSS 7.5 CPU/内存 DoS 均由 RustSec 要求 `>=0.41.0` | 已修复 |
 | `RUSTSEC-2023-0071` / `rsa` | SQLx macro 的 lockfile-only 可选依赖；`cargo tree -i rsa` 证明不在当前 Windows 活跃依赖图 | 有条件 waiver |
 | RustSec informational warnings | 主要来自非 Windows GTK 依赖或构建/宏依赖；不以 warning 冒充无风险，后续 Tauri/SQLx 升级时复核 | Alpha 接受，持续跟踪 |
 
@@ -47,3 +48,4 @@ SQLx 已设置 `default-features = false`，只保留 Tokio runtime、SQLite、c
 - 自动化不能替代安装包签名、Defender、代理/防火墙与真实 Windows 10/11 验证。
 - lockfile 扫描会覆盖跨平台和可选依赖；发布判断必须同时参考当前 Windows 活跃依赖图和真实发布二进制。
 - Public/commercial distribution 前必须再次审计并处理所有 high/critical，且完成签名来源验证。
+- `cargo audit` 是强制发布门禁；仅 `RUSTSEC-2023-0071` 受上文脚本化 waiver 约束。新增 vulnerability 不得降级为 optional warning，必须修复或形成新的、可机器验证的边界 waiver。

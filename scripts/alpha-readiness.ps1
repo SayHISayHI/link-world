@@ -257,7 +257,6 @@ if ($IncludeNetworkAudits) {
     Name = 'cargo audit runtime dependencies'
     WorkingDirectory = (Join-Path $repo 'src-tauri')
     Command = @('cargo', 'audit', '--ignore', 'RUSTSEC-2023-0071')
-    Optional = $true
   }
 }
 
