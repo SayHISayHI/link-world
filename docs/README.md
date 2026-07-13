@@ -51,24 +51,26 @@
 23. [release_evidence/alpha_0.1.0_98c9b0f.md](./release_evidence/alpha_0.1.0_98c9b0f.md)
    - Former Link World 品牌下的 Alpha 0.1.0 历史证据；不代表当前 Node Tide 发布候选。
 24. [release_evidence/alpha_0.1.0_ba3a45a.md](./release_evidence/alpha_0.1.0_ba3a45a.md)
-   - Node Tide 0.1.0 的 21/21 自动门禁、commit-bound 工件和 SHA-256 证据。
-25. [alpha_feedback_playbook.md](./alpha_feedback_playbook.md)
+   - Node Tide 0.1.0 在 P3/P4 前的 21/21 自动门禁和工件历史证据。
+25. [release_evidence/alpha_0.1.0_c472b7a8.md](./release_evidence/alpha_0.1.0_c472b7a8.md)
+   - 当前 Node Tide 0.1.0 的 22/22 自动门禁、P3/P4、commit-bound 工件和 SHA-256 证据。
+26. [alpha_feedback_playbook.md](./alpha_feedback_playbook.md)
    - Week 10 邀请制 Alpha 用户邀请、反馈、P0/P1 响应、核心漏斗、脱敏证据契约和下一阶段决策门禁。
-26. [plugins/plugin_development_guide.md](./plugins/plugin_development_guide.md)
+27. [plugins/plugin_development_guide.md](./plugins/plugin_development_guide.md)
    - Connector、Parser、Evaluator、Prompt 资源和 Registry 规范。
-27. [github_repo_evaluator.md](./github_repo_evaluator.md)
+28. [github_repo_evaluator.md](./github_repo_evaluator.md)
    - GitHub 公共 metadata adapter、限流/私有边界、隐私策略、评分上限和 Week 7 验收证据。
-28. [prompt_evaluator.md](./prompt_evaluator.md)
+29. [prompt_evaluator.md](./prompt_evaluator.md)
    - Prompt 抽取、rubric、结构化 diff、synthetic tests、注入与 secret 边界和 Week 8 验收证据。
-29. [post_mvp_roadmap.md](./post_mvp_roadmap.md)
+30. [post_mvp_roadmap.md](./post_mvp_roadmap.md)
    - MVP 后 10 周执行范围、周度交付、验收门槛、当前状态和明确排除项。
-30. [cli_development_plan.md](./cli_development_plan.md)
+31. [cli_development_plan.md](./cli_development_plan.md)
    - CLI 的共享核心、命令范围、机器输出、并发安全、交付状态和发布门禁。
-31. [cli_windows_release_matrix.md](./cli_windows_release_matrix.md)
+32. [cli_windows_release_matrix.md](./cli_windows_release_matrix.md)
    - CLI 在 Windows 的进程锁、隐私、安装/PATH、签名、网络和发布候选验收矩阵。
-32. [../tests/docs/testing_strategy.md](../tests/docs/testing_strategy.md)
+33. [../tests/docs/testing_strategy.md](../tests/docs/testing_strategy.md)
    - 测试分层、fixtures、AI evals、回归测试和发布测试清单。
-33. [adr/README.md](./adr/README.md)
+34. [adr/README.md](./adr/README.md)
    - 架构决策记录，解释关键技术和产品架构取舍，包括 Markdown/AST 渲染与 AI 展示提示边界。
 
 ## Source of Truth

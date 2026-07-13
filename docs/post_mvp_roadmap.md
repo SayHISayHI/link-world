@@ -52,7 +52,7 @@
 | Sprint 4 搜索质量 | 已完成 | FTS 字段权重、secret snippet 抑制、Library filter 组合搜索、索引一致性检查、可重复大库搜索基准、搜索空态/失败态、重建进度和取消边界已实现；5k/20k benchmark 已实测通过 |
 | Sprint 5 可观测性 | 执行中 | Diagnostics、失败 job 操作、脱敏支持包、插件指纹/audit/domain correlation 摘要、size/SHA-256 已实现；capture submit/fetch、AI enrichment、search rebuild/reindex、startup migration 与 restore 已接入 2 MiB 有界 JSONL 和持久化 correlation UUID，migration/restore UUID 另写入跨启动 control/result；计划内关键流程的代码级日志覆盖已完成，readiness 自动化与 W5-01 至 W5-14 发布候选矩阵已建立，完整前端门禁和真实 Windows/轮转/支持交接证据仍待完成 |
 | Sprint 6-8 Evaluation | 执行中 | Week 6 已建立 capability/plan/input/output/trace v1、UUID request idempotency、planned/running/passed/failed run+job+trace 事务、2 秒执行 timeout、跨版本启动中断 recovery、artifact cleanup、稳定失败码、结构化 correlation 日志，以及 UI inference/evidence/trace 详情（定向 TypeScript 编译通过，rendered QA 待完成）；Prompt evaluator 保持无模型/无 sandbox 的本地确定性执行，GitHub evaluator 已升级为可降级的 `network_optional` 执行；不可变历史 retry 已通过 0006 lineage 实现；Week 7 已加入无 token 公共 GitHub metadata/README/release adapter、隐私与限流降级、六维评分和 stars 非决定性测试，真实 GitHub API/Windows 矩阵尚未完成；Week 8 Prompt 的纯评分抽取、rubric、diff、synthetic tests、注入和 secret 边界已完成 |
-| Sprint 9-10 Alpha 发布 | 自动化与运营基础完成，真实 Alpha 待执行 | Node Tide commit `ba3a45a` 已完成 21/21 自动门禁并生成 commit-bound MSI/NSIS/CLI、manifest 和 SHA-256；首轮三步引导、用户 README、邀请/反馈模板与 fail-closed 脱敏证据门禁已建立；真实 Windows 安装升级卸载、签名和 5-15 名用户观察仍待执行 |
+| Sprint 9-10 Alpha 发布 | 自动化与运营基础完成，真实 Alpha 待执行 | Node Tide commit `c472b7a8` 已完成 22/22 自动门禁并生成 commit-bound MSI/NSIS/CLI、manifest 和 SHA-256；首轮三步引导、用户 README、邀请/反馈模板与 fail-closed 脱敏证据门禁已建立；真实 Windows 安装升级卸载、签名和 5-15 名用户观察仍待执行 |
 | CLI 自动化界面 | 已实现，待最终 RC 矩阵 | 独立 `node-tide-cli.exe`、共享 service、OS runtime lock、schema v1 JSON/退出码、capture/AI/Evaluation idempotency、export/backup/search maintenance、completion、用户级安装脚本和 `readiness:cli` 已实现；签名、Defender、代理与用户 PATH 会话仍待发布候选实测 |
 | Knowledge Organization | 已实现，待完整 UI 回归 | 独立 triage；用户 collection/topic；AI pending topic suggestions；后端计数；list/search 同 scope；revision 与 audit 边界 |
 
@@ -201,7 +201,7 @@
 - Windows 10/11 真实机矩阵。（W9-01 至 W9-14 已定义；真实执行待完成）
 - Credential Manager、代理、防火墙、长路径和非 ASCII 用户目录回归。（真实执行待完成）
 - 安全审计与第三方依赖清单。（2026-07-02 npm production audit 为 0；`quinn-proto` 与 `anyhow` 已升级到修复版本；inactive RSA waiver 由 fail-closed 活跃依赖检查保护，详见 `docs/dependency_security_audit.md`）
-- Alpha 聚合门禁：former Link World commit `98c9b0f` 的 17/17 steps 仅作历史证据；Node Tide commit `ba3a45a` 已完成 21/21 steps，见 `docs/release_evidence/alpha_0.1.0_ba3a45a.md`。
+- Alpha 聚合门禁：former Link World commit `98c9b0f` 的 17/17 steps 仅作历史证据；Node Tide commit `c472b7a8` 已完成 22/22 steps，见 `docs/release_evidence/alpha_0.1.0_c472b7a8.md`。
 - 发布候选组装：Node Tide 的 commit-bound MSI/NSIS/CLI、`unsigned_alpha` manifest 与 SHA-256 清单已生成并独立复算；真实安装、签名和第二台机器复算仍待完成。
 
 验收：
