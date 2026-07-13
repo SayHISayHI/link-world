@@ -25,6 +25,7 @@ interface ObjectListProps {
   onCancelSearchIndexRebuild?: () => void;
   onCheckSearchIndex?: () => void;
   onRebuildSearchIndex?: () => void;
+  onOpenModelSettings?: () => void;
   onLoadMore: () => void;
   onSelectObject: (objectId: string) => void;
 }
@@ -48,6 +49,7 @@ export function ObjectList({
   onCancelSearchIndexRebuild = noop,
   onCheckSearchIndex = noop,
   onRebuildSearchIndex = noop,
+  onOpenModelSettings = noop,
   onLoadMore,
   onSelectObject,
 }: ObjectListProps) {
@@ -247,7 +249,23 @@ export function ObjectList({
 
       {!activeSearch && !loading && !error && objects.length === 0 ? (
         <div className="mx-4 my-2 rounded-md border border-dashed border-border bg-surface p-4 text-xs leading-5 text-muted-foreground">
-          No captured objects yet. The local database is ready for the first browser-extension or manual capture.
+          <p className="text-sm font-semibold text-foreground">Your first useful loop</p>
+          <p className="mt-1">AI is optional. Saving and searching work locally without a model.</p>
+          <ol className="mt-3 space-y-2" aria-label="Getting started">
+            <li><span className="font-medium text-foreground">1. Save a URL.</span> Paste it into the bar above and press Enter.</li>
+            <li><span className="font-medium text-foreground">2. Search your library.</span> Find it again by title or body text.</li>
+            <li><span className="font-medium text-foreground">3. Run an Evaluation.</span> Open the result and evaluate it when you are ready.</li>
+          </ol>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+            <p>No captured objects yet. The local database is ready for your first capture.</p>
+            <button
+              className="rounded-md border border-border px-2.5 py-1.5 text-[11px] font-medium text-foreground hover:bg-muted"
+              onClick={onOpenModelSettings}
+              type="button"
+            >
+              Configure AI (optional)
+            </button>
+          </div>
         </div>
       ) : null}
 

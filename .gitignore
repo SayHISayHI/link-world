@@ -14,3 +14,7 @@ sprint2-readiness*.json
 sprint3-readiness*.json
 sprint5-readiness*.json
 .agents/
+
+# Real invited-Alpha records stay local and redacted; only synthetic fixtures are versioned.
+alpha-evidence/
+alpha-feedback-readiness*.json

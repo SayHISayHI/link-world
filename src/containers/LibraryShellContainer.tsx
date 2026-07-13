@@ -754,6 +754,7 @@ export function LibraryShellContainer() {
         sidebar={sidebar}
         list={
           <ObjectList
+            onOpenModelSettings={() => setRoute({ name: "settings", panel: "models" })}
             objects={objects}
             heading={libraryHeading(route, navigation)}
             hasMore={Boolean(nextCursor)}

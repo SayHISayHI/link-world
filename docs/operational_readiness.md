@@ -14,6 +14,9 @@
 - 配置模型后，AI enrich 可以成功并写入 trace。
 - 删除对象后，FTS、vector、object store 和 AI 派生产物被清理。
 - Windows 安装包可以安装、启动、卸载。
+- 邀请制 Alpha 证据通过 `scripts/alpha-feedback-readiness.ps1`；synthetic fixture 只能验证契约，不能满足真实发布门禁。
+
+自动化基线（2026-07-12）：Node Tide commit `ba3a45a` 的 21/21 RC 门禁通过，commit-bound MSI、NSIS、CLI 和 SHA-256 已生成；详情见 `docs/release_evidence/alpha_0.1.0_ba3a45a.md`。真实 Windows 10/11 安装矩阵、签名和邀请用户证据仍是外部门槛。
 
 ## 2. Environment Matrix
 
@@ -207,7 +210,7 @@ Week 8 代码级验收已完成；真实模型 A/B、sandbox test execution、�
 - Sprint 3 真实网络/进程矩阵：按 `docs/sprint3_capture_fault_matrix.md` 执行 W3-01 至 W3-16。
 - Sprint 5 本地可观测性自动化门禁：`npm run readiness:sprint5`，保存 JSON report。
 - Sprint 5 真实 Windows/支持矩阵：按 `docs/sprint5_observability_readiness.md` 执行 W5-01 至 W5-14。
-- Week 9/10 Alpha 聚合自动化门禁：`npm run readiness:alpha`，保存 JSON report；发布候选使用 `scripts/alpha-readiness.ps1 -IncludeSprintGates -IncludeTauriBuild -IncludeNetworkAudits`。2026-07-02 commit `98c9b0f` 的 17/17 steps、MSI/NSIS、npm/RustSec、manifest/checksum 已通过并记录在 `docs/release_evidence/alpha_0.1.0_98c9b0f.md`；工件仍为 unsigned Alpha，真实 Windows 安装/升级/卸载矩阵未完成。
+- Week 9/10 Alpha 聚合自动化门禁：`npm run readiness:alpha`，保存 JSON report；发布候选使用 `scripts/alpha-readiness.ps1 -IncludeSprintGates -IncludeTauriBuild -IncludeNetworkAudits`。2026-07-12 Node Tide commit `ba3a45a` 的 21/21 steps、MSI/NSIS/CLI、npm/RustSec、manifest/checksum 已通过并记录在 `docs/release_evidence/alpha_0.1.0_ba3a45a.md`；工件仍为 unsigned Alpha，真实 Windows 安装/升级/卸载矩阵未完成。
 - Week 9 Windows Alpha 发布矩阵：按 `docs/windows_alpha_release_matrix.md` 执行 W9-01 至 W9-14。
 - Week 10 邀请制 Alpha 反馈闭环：按 `docs/alpha_feedback_playbook.md` 留存邀请、核心漏斗、P0/P1 和下一阶段决策证据。
 - 1000 个对象列表和搜索。

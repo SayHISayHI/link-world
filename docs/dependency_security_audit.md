@@ -1,6 +1,6 @@
 # Alpha 运行时依赖安全审计
 
-状态: 2026-07-12 自动化处置已完成；真实发布候选仍需在最终干净 commit 上重新生成报告。
+状态: 2026-07-12 自动化处置完成，并已在干净 Node Tide commit `ba3a45a` 的完整 RC 门禁中复核；后续候选 commit 仍须重新审计。
 
 适用范围: Windows Local Alpha 的 npm 生产依赖、Rust `Cargo.lock`、当前 Windows 活跃依赖图与 Tauri 发布二进制。
 

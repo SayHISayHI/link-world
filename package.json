@@ -12,6 +12,7 @@
     "preview": "vite preview --host 127.0.0.1 --port 1420",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:alpha-feedback-contract": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/alpha-feedback-contract-test.ps1",
     "readiness:sprint2": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/sprint2-readiness.ps1",
     "readiness:sprint3": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/sprint3-readiness.ps1",
     "readiness:sprint5": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/sprint5-readiness.ps1",

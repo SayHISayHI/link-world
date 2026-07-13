@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "synthetic_contract_fixture",
+  "releaseCommit": "fixture-commit",
+  "records": [
+    {
+      "participantCode": "alpha-001",
+      "invited": true,
+      "consentConfirmed": true,
+      "completedObservation": true,
+      "observedOn": "2026-07-12",
+      "windowsVersion": "11",
+      "installResult": "passed",
+      "funnel": {
+        "start": "passed",
+        "save": "passed",
+        "search": "passed",
+        "ai": "not_configured",
+        "evaluation": "passed"
+      },
+      "privacyIncident": false
+    },
+    {
+      "participantCode": "alpha-002",
+      "invited": true,
+      "consentConfirmed": true,
+      "completedObservation": false,
+      "privacyIncident": false
+    },
+    {
+      "participantCode": "alpha-003",
+      "invited": true,
+      "consentConfirmed": true,
+      "completedObservation": false,
+      "privacyIncident": false
+    },
+    {
+      "participantCode": "alpha-004",
+      "invited": true,
+      "consentConfirmed": true,
+      "completedObservation": false,
+      "privacyIncident": false
+    },
+    {
+      "participantCode": "alpha-005",
+      "invited": true,
+      "consentConfirmed": true,
+      "completedObservation": false,
+      "privacyIncident": false
+    }
+  ]
+}

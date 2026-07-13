@@ -178,13 +178,15 @@ Interaction tests:
 
 The committed Playwright smoke at `tests/e2e/library-smoke.spec.ts` is the deterministic CI subset. It starts the real Vite frontend in Chromium and injects a strict in-browser Tauri IPC fixture to verify:
 
-- clean-profile empty state;
+- clean-profile three-step onboarding with optional AI setup;
 - first URL save;
 - title/body search and opening the result detail;
 - readable no-model degradation;
 - navigation into Model Settings.
 
 Run `npm run test:e2e:install` once per machine, then `npm run test:e2e`. The mock rejects unexpected commands so new frontend IPC dependencies fail visibly. This browser gate does not replace Rust service tests, installed Tauri verification, or the manual extension smoke below.
+
+The invited-Alpha evidence contract is tested separately with `npm run test:alpha-feedback-contract`. It proves that the synthetic ready fixture passes only with the test-only switch, while synthetic-as-real evidence, sensitive/unknown fields, cohorts below five, open P0s and open P1s without a due date fail closed. It does not substitute for real participant evidence.
 
 MVP smoke tests:
 
@@ -362,7 +364,8 @@ Before release:
 - Week 9/10 Alpha readiness gate passes through `npm run readiness:alpha` and its JSON report is retained.
 - CLI readiness gate passes and its JSON report is retained; the CLI Windows release matrix is recorded for the same candidate.
 - Week 9 Windows Alpha install/upgrade/uninstall/security matrix is recorded according to `docs/windows_alpha_release_matrix.md`.
-- Week 10 invited-user feedback, P0/P1 triage, core funnel and next-stage decision are recorded according to `docs/alpha_feedback_playbook.md`.
+- The Alpha feedback schema contract passes through `npm run test:alpha-feedback-contract`.
+- Week 10 invited-user feedback, P0/P1 triage, core funnel and next-stage decision pass `scripts/alpha-feedback-readiness.ps1` and are recorded according to `docs/alpha_feedback_playbook.md`.
 - E2E smoke pass.
 - direct URL and browser extension captures pass against the same synthetic structured article.
 - Markdown safety regression checks pass.

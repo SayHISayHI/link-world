@@ -1,6 +1,6 @@
 # Week 9 Windows Alpha 发布工程化矩阵
 
-状态: Draft；commit `98c9b0f` 仅保留为 former Link World 品牌的历史证据。Node Tide 必须重新生成当前 commit 的自动化门禁、MSI/NSIS、CLI、manifest/checksum，并执行真实 Windows 10/11 安装、升级、卸载与签名矩阵。
+状态: Automated RC ready；former Link World commit `98c9b0f` 仅保留为历史证据。Node Tide commit `ba3a45a` 已重新生成 21/21 自动门禁、MSI/NSIS、CLI、manifest/checksum；真实 Windows 10/11 安装、升级、卸载与签名矩阵仍待执行。
 适用范围: Week 9 Windows Local Alpha 的打包、签名、安装、升级、卸载、数据保留、环境矩阵、凭据回归和依赖安全审计。
 
 ## 1. 目标与边界

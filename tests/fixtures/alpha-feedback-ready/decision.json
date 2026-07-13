@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "releaseCommit": "fixture-commit",
+  "decisionDate": "2026-07-12",
+  "participantsCompleted": 1,
+  "primaryPriority": "capture_coverage",
+  "evidenceSummary": "Synthetic contract data proves aggregation shape only; it is not participant evidence.",
+  "explicitlyNotDoing": [
+    "cloud_sync",
+    "team_spaces"
+  ],
+  "owners": [
+    "alpha-owner"
+  ]
+}

@@ -39,6 +39,9 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      - name: Alpha feedback evidence contract
+        run: npm run test:alpha-feedback-contract
+
       - name: Production build
         run: npm run build
 

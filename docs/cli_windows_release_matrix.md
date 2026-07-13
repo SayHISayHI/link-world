@@ -1,6 +1,6 @@
 # Node Tide CLI Windows 发布验收矩阵
 
-状态：CLI 代码已更名为 Node Tide；2026-07-04 former Link World 证据仅作历史记录，当前 `node-tide-cli.exe` 的完整 readiness/build/package、签名、Defender、代理/防火墙和用户 PATH 会话验证待重新执行
+状态：Node Tide commit `ba3a45a` 的 CLI readiness/build/package 已通过并进入 commit-bound Alpha 候选；签名、Defender、代理/防火墙和用户 PATH 会话仍待真实 Windows 验证
 适用范围：`node-tide-cli.exe`、`install-node-tide-cli.ps1`、共享 Local Edition 数据目录
 
 ## 1. 自动化入口
@@ -27,7 +27,7 @@ npm run build:cli
 | 用户级安装/卸载（不修改 PATH） | Debug 和 Release 均通过 |
 | Alpha package rehearsal | 通过；MSI、NSIS、CLI、CLI installer、readiness report、manifest 与 SHA256SUMS 同包 |
 
-上述 hash 对应 former Link World 工件，不适用于 `node-tide-cli.exe`，也不替代最终干净 commit 的 release evidence。
+上述 hash 对应 former Link World 工件，不适用于 `node-tide-cli.exe`。当前 Node Tide 证据见 `docs/release_evidence/alpha_0.1.0_ba3a45a.md`：CLI readiness/build/package 已通过，`node-tide-cli.exe` SHA-256 为 `FE602B696C24615BD4F1305F9BCB507CE94FB7B9C3724288DAA45A9EABBCB9A7`，签名与真实环境矩阵仍未完成。
 
 ## 3. 发布候选矩阵
 

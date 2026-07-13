@@ -41,6 +41,24 @@ function renderObjectList(
 }
 
 describe("ObjectList search states", () => {
+  it("guides the first useful loop without forcing AI setup", () => {
+    const onOpenModelSettings = vi.fn();
+
+    renderObjectList({
+      objects: [],
+      onOpenModelSettings,
+    });
+
+    expect(screen.getByText("Your first useful loop")).toBeInTheDocument();
+    expect(screen.getByText(/AI is optional/)).toBeInTheDocument();
+    expect(screen.getByText(/1. Save a URL/)).toBeInTheDocument();
+    expect(screen.getByText(/2. Search your library/)).toBeInTheDocument();
+    expect(screen.getByText(/3. Run an Evaluation/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure AI (optional)" }));
+    expect(onOpenModelSettings).toHaveBeenCalledOnce();
+  });
+
   it("renders an actionable empty search state", () => {
     renderObjectList({
       objects: [],

@@ -145,6 +145,11 @@ $steps = @(
     Command = @('npm', 'run', 'test')
   },
   @{
+    Name = 'Alpha feedback evidence contract'
+    WorkingDirectory = $repo
+    Command = @('npm', 'run', 'test:alpha-feedback-contract')
+  },
+  @{
     Name = 'frontend production build'
     WorkingDirectory = $repo
     Command = @('npm', 'run', 'build')

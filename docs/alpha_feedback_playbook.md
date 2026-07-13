@@ -1,6 +1,6 @@
 # Week 10 邀请制 Alpha 与反馈闭环
 
-状态: Draft，邀请、反馈、缺陷响应和决策模板已建立；真实 5-15 名目标用户观察与下一阶段决策证据仍需执行。
+状态: Operationally ready，邀请、反馈、缺陷响应、脱敏证据契约和自动门禁已建立；真实 5-15 名目标用户观察与下一阶段决策证据仍需执行。
 适用范围: Node Tide Windows Local Alpha 的邀请制测试、反馈采集、数据处理、P0/P1 响应、核心漏斗观察和下一阶段决策。
 
 ## 1. 目标与边界
@@ -221,3 +221,23 @@ Week 10 可以标记为完成的最低条件:
 - `docs/post_mvp_roadmap.md` 和 `docs/operational_readiness.md` 记录观察日期、参与人数、P0/P1 状态和下一阶段决策。
 
 只准备邀请文案、只内部自测、或只收集非结构化聊天反馈，都不足以证明 Week 10 完成。
+
+## 11. 脱敏证据目录与自动门禁
+
+真实证据只保存在本机根目录的 `alpha-evidence/`，该目录已被 Git 忽略，不应直接提交。目录必须包含同一 `releaseCommit` 的三个 schema v1 JSON：
+
+- `participants.json`：`evidenceKind=alpha_observation`、5-15 个匿名 `participantCode`、consent、完成观察的 `observedOn`、Windows 大版本和枚举化 funnel 结果。
+- `issues.json`：只保存 issue id、P0-P3、open/closed、owner、workaround 和 dueDate，不保存正文或原始报错。
+- `decision.json`：`decisionDate`、完成观察数、唯一 `primaryPriority`、20-500 字脱敏摘要、明确不做项和 owner role/code。
+
+运行真实门禁：
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/alpha-feedback-readiness.ps1 -EvidenceDirectory alpha-evidence -OutputPath alpha-feedback-readiness.json
+```
+
+门禁强制要求邀请 5-15 人、至少一次完整观察、完整观察通过 start/save/search/Evaluation、AI 为 `passed` 或正常的 `not_configured`、零开放 P0、每个开放 P1 都有 owner/workaround/dueDate，并且决策只选择 Evaluation 深度、采集覆盖、数据安全或 other 中的一个最高优先级。
+
+校验器会递归拒绝 API key/token/cookie/session/password、正文、Prompt、source snapshot、embedding、URL/query、本机绝对路径和直接身份字段，也会拒绝 secret-like 值。输出报告只含聚合计数，不含参与者逐条记录。
+
+仓库中的 `tests/fixtures/alpha-feedback-ready` 是明确标注的 synthetic contract fixture，只用于 CI。`npm run test:alpha-feedback-contract` 同时证明：合法 synthetic fixture 可通过测试开关、synthetic fixture 不能冒充真实证据、含敏感字段的证据必定失败。它不能证明任何真实用户已经被邀请或观察。

@@ -22,6 +22,8 @@ test("saves, searches, opens, degrades without a model, and enters Settings", as
     timeout: 45_000,
   });
   await expect(page.getByText("No captured objects yet.", { exact: false })).toBeVisible();
+  await expect(page.getByText("Your first useful loop")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Configure AI (optional)" })).toBeVisible();
 
   const omnibox = page.getByPlaceholder("Search or paste a URL to save...");
   await omnibox.fill(FIXTURE_URL);
