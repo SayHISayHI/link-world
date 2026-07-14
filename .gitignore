@@ -18,3 +18,5 @@ sprint5-readiness*.json
 # Real invited-Alpha records stay local and redacted; only synthetic fixtures are versioned.
 alpha-evidence/
 alpha-feedback-readiness*.json
+
+.claude/
