@@ -1,8 +1,8 @@
 # Node Tide（拾海）
 
-Node Tide 是一款本地优先的 Windows 知识工作台，用来保存、检索、阅读和评估文章、GitHub 仓库与 Prompt。中文名“拾海”表达的是：从信息之海中拾取真正值得留下的内容。
+Node Tide 是一款本地优先的桌面知识工作台，用来保存、检索、阅读和评估文章、GitHub 仓库与 Prompt。中文名“拾海”表达的是：从信息之海中拾取真正值得留下的内容。
 
-> 当前处于邀请制 Windows Alpha。不要把它用于唯一副本、公司机密、客户数据或任何无法安全恢复的资料。
+> 当前处于邀请制 Alpha。Windows 是主要验证路径；macOS 已有打包链路，但公开分发前仍必须完成 Developer ID 签名、公证和真实机矩阵。不要把它用于唯一副本、公司机密、客户数据或任何无法安全恢复的资料。
 
 ## 安装 Alpha
 
@@ -28,7 +28,7 @@ AI 不是前置条件。没有配置模型时，保存、阅读和本地搜索�
 
 ## 已知 Alpha 限制
 
-- 目前只支持 Windows 10/11。
+- Windows 10/11 是当前主要支持平台；macOS package 可以在 macOS 构建机上产出 `.app` / `.dmg` 候选包。
 - 安装包可能未签名，浏览器扩展及外部网络链路仍可能存在环境差异。
 - 没有云同步、移动端、团队空间和托管模型网关。
 - Alpha 不承诺数据格式永久兼容；请始终保留可验证的备份。
@@ -58,5 +58,17 @@ npm run test:e2e
 ```powershell
 npm run readiness:alpha
 ```
+
+平台打包入口：
+
+```powershell
+# Windows runner / Windows 开发机
+npm run release:windows
+
+# macOS runner / Mac 开发机
+npm run release:macos
+```
+
+`release:windows` 产出 MSI/NSIS、CLI 和 Windows release manifest；`release:macos` 产出 `.app.zip`、`.dmg`、macOS CLI 和 macOS release manifest。两个平台的公开商业分发都必须先完成对应平台签名；macOS 还必须完成 Apple notarization。
 
 架构与开发入口见 [项目文档索引](docs/README.md)。

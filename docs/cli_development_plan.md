@@ -168,7 +168,7 @@ node-tide-cli backup verify <BACKUP_ID>
 
 ## 6. 安全、隐私与可观测性
 
-- API Key 继续只通过 Windows Credential Manager/`SecretStore` 管理；禁止 `--api-key VALUE`。
+- API Key 继续只通过 `SecretStore` 管理，并落到 Windows Credential Manager 或 macOS Keychain；禁止 `--api-key VALUE`。
 - 若未来增加 secret 写入，值只能从交互式隐藏输入或 stdin 读取，禁止回显、日志和 JSON 返回。
 - URL、query、正文、prompt、模型输出、credential reference 和 raw error 不进入结构化日志。
 - CLI 复用现有 correlation id；adapter 可增加静态的 CLI lifecycle event，但不能复制业务 payload。

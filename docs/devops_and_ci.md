@@ -56,14 +56,14 @@ Target matrix:
 | Platform | Runner | Package | Priority |
 | --- | --- | --- | --- |
 | Windows 11 | `windows-latest` | `.msi` / `.exe` | MVP primary |
-| macOS Apple Silicon | `macos-latest` | `.dmg` | Later |
-| macOS Intel | `macos-13` | `.dmg` | Later |
+| macOS Apple Silicon | `macos-latest` | `.app` / `.dmg` | Alpha expansion |
+| macOS Intel | `macos-13` | `.app` / `.dmg` | Compatibility matrix |
 | Linux x64 | `ubuntu-latest` | AppImage / deb | Later |
 
 Rules:
 
-- Windows is the first release target.
-- macOS builds require signing and notarization before public distribution.
+- Windows remains the first fully validated release target.
+- macOS builds must run on macOS hosts and require Developer ID signing plus notarization before public distribution.
 - Linux package format can be deferred until demand is clear.
 - Build scripts must not assume absolute local paths.
 
@@ -124,7 +124,8 @@ Test DB strategy:
 - Week 9/10 Alpha readiness automation: `npm run readiness:alpha` first enforces the supported Node.js range, then runs the local pre-release aggregate gate for frontend typecheck/tests/build, Rust fmt/check/test/clippy, release metadata and dependency inventory. The JSON report records the Node/npm versions used. `scripts/alpha-readiness.ps1 -IncludeSprintGates -IncludeTauriBuild -IncludeNetworkAudits` additionally runs Sprint 2/3/5 gates, Tauri packaging and network-backed audit commands where available. It does not replace the Windows installer matrix in `docs/windows_alpha_release_matrix.md` or the invited-user feedback evidence in `docs/alpha_feedback_playbook.md`.
 - CLI readiness automation: `npm run readiness:cli` checks all-target compilation, parser/JSON/exit contracts, shared-service capture flow, request identity, non-ASCII paths, privacy redaction, live runtime lock contention, export/backup and user-level install/remove. It writes an atomic JSON report but does not replace `docs/cli_windows_release_matrix.md`.
 - RustSec 审计必须从 `src-tauri` 执行，以 `src-tauri/Cargo.lock` 作为发布候选的实际锁定依赖图；在仓库根目录找不到 lockfile 不能被记录为“无漏洞”。
-- 完整门禁通过后运行 `scripts/package-alpha-release.ps1 -ReadinessReport <report>`；脚本拒绝脏工作区、失败报告、报告 commit 与 HEAD 不一致，以及缺失 MSI/NSIS/CLI/CLI installer 工件，并生成规范化文件名、release manifest、Authenticode 状态和 `SHA256SUMS.txt`。
+- 完整 Windows 门禁通过后运行 `scripts/package-alpha-release.ps1 -ReadinessReport <report>` 或 `npm run package:windows`；脚本拒绝脏工作区、失败报告、报告 commit 与 HEAD 不一致，以及缺失 MSI/NSIS/CLI/CLI installer 工件，并生成规范化文件名、release manifest、Authenticode 状态和 `SHA256SUMS.txt`。
+- macOS 候选包在 macOS host 上运行 `npm run tauri:build:macos`、`npm run build:cli`、`npm run package:macos`；脚本拒绝脏工作区、失败报告、报告 commit 与 HEAD 不一致，以及缺失 `.app`、`.dmg`、CLI 或 CLI metadata，并生成 `.app.zip`、规范化 `.dmg`、release manifest、codesign/notarization 状态和 `SHA256SUMS.txt`。
 - Focused commands: `cargo test storage::database::migration_tests` and `cargo test services::restore`。
 - Function-level phase simulation belongs in normal CI; real-process kill tests belong in the Windows packaging matrix。
 - Focused command: `cargo test repositories::jobs` for retry and startup-running-job convergence.
@@ -160,12 +161,16 @@ Windows:
 - Build `.msi` or `.exe` installer。
 - Ensure uninstall does not delete user data by default。
 - Provide explicit “remove local data” option later。
-- Build `node-tide-cli.exe` separately with `npm run build:cli` after the Tauri build. This writes commit/version/bytes/SHA-256 metadata; packaging fails if a later build changes the binary. Include the CLI, `install-node-tide-cli.ps1`, Authenticode status and SHA-256 in the release manifest。
+- Build with `npm run tauri:build:windows` or the full `npm run release:windows` sequence.
+- Build `node-tide-cli.exe` separately with `npm run build:cli` after the Tauri build. This writes commit/version/target/bytes/SHA-256 metadata; packaging fails if a later build changes the binary. Include the CLI, `install-node-tide-cli.ps1`, Authenticode status and SHA-256 in the release manifest。
 - CLI installation is opt-in. The install script may modify only User PATH after explicit `-AddToPath`; desktop installers must not silently modify PATH。
 
 macOS:
 
-- `.dmg` package。
+- Build `.app` and `.dmg` packages with `npm run tauri:build:macos` or the full `npm run release:macos` sequence.
+- Build the standalone `node-tide-cli` separately with `npm run build:cli`; package it with commit/version/target/bytes/SHA-256 metadata in the macOS release manifest.
+- Package `.app` as `.app.zip` with `ditto --sequesterRsrc --keepParent` so Finder metadata/resource forks survive distribution.
+- Use macOS Keychain through `keyring` `apple-native`; SQLite stores only `keyring:model-provider:<config-id>` references.
 - Developer ID certificate。
 - Notarization。
 - Hardened runtime where applicable。
@@ -192,6 +197,7 @@ macOS:
 - Developer ID Application certificate。
 - Notarization credentials。
 - Staple notarization ticket。
+- `codesign --verify --deep --strict` and `xcrun stapler validate` status must be recorded in `release-manifest.json`.
 
 Placeholder variables:
 
@@ -200,6 +206,9 @@ Placeholder variables:
 - `APPLE_ID`
 - `APPLE_TEAM_ID`
 - `APPLE_APP_SPECIFIC_PASSWORD`
+- `APPLE_CERTIFICATE`
+- `APPLE_CERTIFICATE_PASSWORD`
+- `APPLE_SIGNING_IDENTITY`
 
 ## 8. Release Channels
 
@@ -226,6 +235,7 @@ Before release:
 - Sprint 2/3/5 readiness JSON reports retained for the same release candidate or a documented equivalent commit.
 - CLI readiness JSON report retained; CLI Windows matrix records runtime contention, install/PATH/remove, hash/signature, Defender and proxy results.
 - Windows Alpha package manifest records product version, schema version, commit SHA, package type, build time, signing status and SHA-256 checksum.
+- macOS Alpha package manifest records product version, schema version, commit SHA, package type, build time, signing status, notarization status and SHA-256 checksum.
 - Migration tests green。
 - Manual smoke test on clean Windows machine。
 - No secret in logs。
@@ -238,6 +248,7 @@ Before release:
 - Delete and purge works。
 - Diagnostics package is redacted。
 - Week 9 Windows Alpha matrix records install, upgrade, uninstall/data retention, Credential Manager, proxy/firewall/offline, non-ASCII profile and security/dependency review results.
+- macOS release matrix records install, Gatekeeper, Keychain, Intel/Apple Silicon, proxy/firewall/offline, non-ASCII profile, upgrade/uninstall/data retention, signing and notarization results.
 - Week 10 Alpha playbook records invitations, feedback, P0/P1 state, core funnel observations and next-stage decision.
 - Release package contains `node-tide-cli.exe` and `install-node-tide-cli.ps1`; manifest/checksum entries match the shipped bytes.
 - Release notes include migration risk。

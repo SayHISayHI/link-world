@@ -46,31 +46,33 @@
    - Sprint 5 Diagnostics、结构化日志、支持包隐私和真实 Windows 支持交接验收矩阵。
 21. [windows_alpha_release_matrix.md](./windows_alpha_release_matrix.md)
    - Week 9 Windows Alpha 打包、安装、升级、卸载、签名、依赖审计和真实机发布候选矩阵。
-22. [dependency_security_audit.md](./dependency_security_audit.md)
+22. [macos_release_matrix.md](./macos_release_matrix.md)
+   - macOS `.app` / `.dmg` 打包、安装、Gatekeeper、Keychain、签名、公证和真实机发布候选矩阵。
+23. [dependency_security_audit.md](./dependency_security_audit.md)
    - Windows Alpha 的 npm/RustSec 审计、漏洞处置、RSA waiver 失效条件和依赖面缩减记录。
-23. [release_evidence/alpha_0.1.0_98c9b0f.md](./release_evidence/alpha_0.1.0_98c9b0f.md)
+24. [release_evidence/alpha_0.1.0_98c9b0f.md](./release_evidence/alpha_0.1.0_98c9b0f.md)
    - Former Link World 品牌下的 Alpha 0.1.0 历史证据；不代表当前 Node Tide 发布候选。
-24. [release_evidence/alpha_0.1.0_ba3a45a.md](./release_evidence/alpha_0.1.0_ba3a45a.md)
+25. [release_evidence/alpha_0.1.0_ba3a45a.md](./release_evidence/alpha_0.1.0_ba3a45a.md)
    - Node Tide 0.1.0 在 P3/P4 前的 21/21 自动门禁和工件历史证据。
-25. [release_evidence/alpha_0.1.0_c472b7a8.md](./release_evidence/alpha_0.1.0_c472b7a8.md)
+26. [release_evidence/alpha_0.1.0_c472b7a8.md](./release_evidence/alpha_0.1.0_c472b7a8.md)
    - 当前 Node Tide 0.1.0 的 22/22 自动门禁、P3/P4、commit-bound 工件和 SHA-256 证据。
-26. [alpha_feedback_playbook.md](./alpha_feedback_playbook.md)
+27. [alpha_feedback_playbook.md](./alpha_feedback_playbook.md)
    - Week 10 邀请制 Alpha 用户邀请、反馈、P0/P1 响应、核心漏斗、脱敏证据契约和下一阶段决策门禁。
-27. [plugins/plugin_development_guide.md](./plugins/plugin_development_guide.md)
+28. [plugins/plugin_development_guide.md](./plugins/plugin_development_guide.md)
    - Connector、Parser、Evaluator、Prompt 资源和 Registry 规范。
-28. [github_repo_evaluator.md](./github_repo_evaluator.md)
+29. [github_repo_evaluator.md](./github_repo_evaluator.md)
    - GitHub 公共 metadata adapter、限流/私有边界、隐私策略、评分上限和 Week 7 验收证据。
-29. [prompt_evaluator.md](./prompt_evaluator.md)
+30. [prompt_evaluator.md](./prompt_evaluator.md)
    - Prompt 抽取、rubric、结构化 diff、synthetic tests、注入与 secret 边界和 Week 8 验收证据。
-30. [post_mvp_roadmap.md](./post_mvp_roadmap.md)
+31. [post_mvp_roadmap.md](./post_mvp_roadmap.md)
    - MVP 后 10 周执行范围、周度交付、验收门槛、当前状态和明确排除项。
-31. [cli_development_plan.md](./cli_development_plan.md)
+32. [cli_development_plan.md](./cli_development_plan.md)
    - CLI 的共享核心、命令范围、机器输出、并发安全、交付状态和发布门禁。
-32. [cli_windows_release_matrix.md](./cli_windows_release_matrix.md)
+33. [cli_windows_release_matrix.md](./cli_windows_release_matrix.md)
    - CLI 在 Windows 的进程锁、隐私、安装/PATH、签名、网络和发布候选验收矩阵。
-33. [../tests/docs/testing_strategy.md](../tests/docs/testing_strategy.md)
+34. [../tests/docs/testing_strategy.md](../tests/docs/testing_strategy.md)
    - 测试分层、fixtures、AI evals、回归测试和发布测试清单。
-34. [adr/README.md](./adr/README.md)
+35. [adr/README.md](./adr/README.md)
    - 架构决策记录，解释关键技术和产品架构取舍，包括 Markdown/AST 渲染与 AI 展示提示边界。
 
 ## Source of Truth
@@ -94,6 +96,7 @@
 - URL capture 与后台任务发布故障矩阵以 `sprint3_capture_fault_matrix.md` 为准。
 - 本地可观测性、支持包隐私与支持交接发布矩阵以 `sprint5_observability_readiness.md` 为准。
 - Windows Alpha 打包、安装、升级、卸载、签名和安全审计矩阵以 `windows_alpha_release_matrix.md` 为准。
+- macOS 打包、安装、Gatekeeper、Keychain、签名和公证矩阵以 `macos_release_matrix.md` 为准。
 - 邀请制 Alpha 反馈、数据处理、缺陷响应和下一阶段决策以 `alpha_feedback_playbook.md` 为准。
 - GitHub Repo Evaluator 的外部数据、限流、隐私和评分边界以 `github_repo_evaluator.md` 为准。
 - Prompt Evaluator 的抽取、rubric、diff、测试与注入边界以 `prompt_evaluator.md` 为准。

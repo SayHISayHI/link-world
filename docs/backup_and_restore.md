@@ -27,8 +27,8 @@
 - 目标是同一安装环境的无损恢复。
 - 包含数据库和对象存储中的用户内容，包括 personal、sensitive 和 secret 等级对象。
 - SQLite 中可能保留不可解密的 credential reference，但不包含 API Key 值。
-- API Key 值仍只存在于 Windows Credential Manager。
-- 当前备份目录位于应用数据目录下，依赖 Windows 用户目录权限，不宣称端到端加密。
+- API Key 值仍只存在于 OS 原生安全凭据存储：Windows Credential Manager 或 macOS Keychain。
+- 当前备份目录位于应用数据目录下，依赖 OS 用户目录权限，不宣称端到端加密。
 - Storage 设置页提供显式二次确认的 Restore；在线进程只准备候选和 safety backup，数据替换只发生在重启后的数据库连接池建立之前。
 
 便携导出：
@@ -36,7 +36,7 @@
 - 已实现为 `export_library`，后端只写入应用数据目录下的 `exports/<export-id>/`，不接受客户端传入任意路径。
 - 默认排除 secret 内容、credential reference、内部任务记录和本机对象存储路径；当前包含 public/personal/sensitive 对象，后续如允许 secret/sensitive 细粒度选择必须增加显式确认。
 - 输出 `manifest.json`、`manifest.sha256`、`objects.jsonl`，以及每个对象的 `metadata.json` 和可读 `document.md`。
-- 不复用原始 SQLite restore point 作为对外分享格式，也不读取 Windows Credential Manager。
+- 不复用原始 SQLite restore point 作为对外分享格式，也不读取 OS 原生安全凭据存储。
 - startup recovery 模式禁用便携导出，避免在不确定 live 状态下导出普通库。
 
 ## 3. 目录布局
@@ -257,7 +257,7 @@ Recovery UI 的后端命令边界：
 
 - 接收任意文件系统路径。
 - backup/restore/recovery 命令不得返回用户正文或 manifest 文件列表；`export_library` 只返回 summary，正文只写入用户显式触发的导出目录。
-- 读取或导出 Windows Credential Manager 中的值。
+- 读取或导出 OS 原生安全凭据存储中的值。
 - 自动删除旧备份或 safety backup。
 - 未经用户明确确认在后台准备或应用恢复。
 - 在在线 SQLite pool 存活时替换数据库或 objects。

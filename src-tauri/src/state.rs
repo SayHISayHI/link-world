@@ -15,10 +15,10 @@ use std::sync::{Arc, RwLock};
 use tauri::Manager;
 use uuid::Uuid;
 
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 // Storage ABI retained from the former product identity; changing it would orphan saved API keys.
 const LEGACY_KEYRING_SERVICE: &str = "com.linkworld.app.model-provider";
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 const KEYRING_SECRET_PREFIX: &str = "keyring:model-provider:";
 
 #[derive(Debug)]
@@ -114,20 +114,20 @@ struct MemorySecretBackend {
     inner: RwLock<HashMap<String, String>>,
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 #[derive(Debug, Default)]
-struct WindowsCredentialBackend;
+struct NativeKeyringBackend;
 
 impl SecretStore {
     pub fn system() -> AppResult<Self> {
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "windows", target_os = "macos"))]
         {
             Ok(Self {
-                backend: Arc::new(WindowsCredentialBackend),
+                backend: Arc::new(NativeKeyringBackend),
             })
         }
 
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
         {
             Err(AppError::SecretStorage)
         }
@@ -206,8 +206,8 @@ impl SecretBackend for MemorySecretBackend {
     }
 }
 
-#[cfg(target_os = "windows")]
-impl WindowsCredentialBackend {
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+impl NativeKeyringBackend {
     fn entry(secret_ref: &str) -> AppResult<keyring::Entry> {
         let account = secret_ref
             .strip_prefix(KEYRING_SECRET_PREFIX)
@@ -217,8 +217,8 @@ impl WindowsCredentialBackend {
     }
 }
 
-#[cfg(target_os = "windows")]
-impl SecretBackend for WindowsCredentialBackend {
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+impl SecretBackend for NativeKeyringBackend {
     fn set(&self, secret_ref: &str, value: &str) -> AppResult<()> {
         Self::entry(secret_ref)?
             .set_password(value)
@@ -241,7 +241,15 @@ impl SecretBackend for WindowsCredentialBackend {
     }
 
     fn backend_name(&self) -> &'static str {
-        "windows_credential_manager"
+        #[cfg(target_os = "windows")]
+        {
+            "windows_credential_manager"
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            "macos_keychain"
+        }
     }
 }
 
