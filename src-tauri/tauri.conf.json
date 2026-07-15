@@ -13,6 +13,8 @@
     "windows": [
       {
         "title": "拾海 · Node Tide",
+        "decorations": false,
+        "shadow": true,
         "width": 1280,
         "height": 820,
         "minWidth": 960,

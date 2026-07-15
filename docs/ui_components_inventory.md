@@ -28,7 +28,8 @@
 | `MainToolbar` | add/search/evaluation actions | container props | icon buttons with tooltip |
 | `ThreePaneLayout` | sidebar/list/detail structure | ui store | stable dimensions |
 | `SettingsRouteLayout` | TopBar/sidebar/settings-content structure | ui store | shares expanded/collapsed sidebar widths with `ThreePaneLayout`; route shell does not scroll |
-| `TopBar` | brand, omnibox, language switch and light/dark switch | ui store + container props | brand slot keeps the expanded width and full `拾海 · Node Tide` label when Sidebar collapses; clear, capture and preference controls remain keyboard accessible |
+| `TopBar` | frameless title bar, brand, omnibox, preferences and window controls | ui store + container props + Tauri window API | deep drag region excludes interactive controls; brand remains visible when Sidebar collapses; minimize, maximize/restore and close remain keyboard accessible |
+| `WindowTitleBar` / `WindowControls` | shared frameless fallback title bar and native window actions | ui store locale + Tauri window API | used by loading and recovery paths; keeps drag and window actions available before the main shell mounts |
 | `ResizablePane` | pane resizing | ui store | persist only UI sizes |
 | `CommandPalette` | global search/actions | search hooks | keyboard-first |
 
