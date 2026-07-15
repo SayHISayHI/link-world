@@ -313,7 +313,7 @@ function NavigationItems({
               }`}
               onClick={() => onSelect({ kind: item.kind, id: item.id })}
               aria-current={active ? "page" : undefined}
-              title={collapsed ? t(item.label) : undefined}
+              title={t(item.label)}
             >
               <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
               {!collapsed && (

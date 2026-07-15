@@ -15,8 +15,26 @@ async function runWindowAction(action: WindowAction) {
   }
 }
 
+export function NativeWindowControlsInset() {
+  if (!usesNativeMacWindowControls()) {
+    return null;
+  }
+
+  return (
+    <div
+      aria-hidden="true"
+      className="mr-3 h-full w-[68px] shrink-0"
+      data-testid="native-window-controls-inset"
+    />
+  );
+}
+
 export function WindowControls() {
   const { t } = useI18n();
+
+  if (usesNativeMacWindowControls()) {
+    return null;
+  }
 
   return (
     <div
@@ -53,4 +71,18 @@ export function WindowControls() {
       </button>
     </div>
   );
+}
+
+function usesNativeMacWindowControls() {
+  if (!isTauri()) {
+    return false;
+  }
+
+  const platform = navigator.platform.toLowerCase();
+  if (platform) {
+    return platform.startsWith("mac") || platform.includes("darwin");
+  }
+
+  const userAgent = navigator.userAgent.toLowerCase();
+  return userAgent.includes("macintosh") || userAgent.includes("mac os x");
 }

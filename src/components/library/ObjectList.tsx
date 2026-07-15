@@ -26,7 +26,6 @@ interface ObjectListProps {
   onCancelSearchIndexRebuild?: () => void;
   onCheckSearchIndex?: () => void;
   onRebuildSearchIndex?: () => void;
-  onOpenModelSettings?: () => void;
   onLoadMore: () => void;
   onSelectObject: (objectId: string) => void;
 }
@@ -50,7 +49,6 @@ export function ObjectList({
   onCancelSearchIndexRebuild = noop,
   onCheckSearchIndex = noop,
   onRebuildSearchIndex = noop,
-  onOpenModelSettings = noop,
   onLoadMore,
   onSelectObject,
 }: ObjectListProps) {
@@ -251,23 +249,8 @@ export function ObjectList({
 
       {!activeSearch && !loading && !error && objects.length === 0 ? (
         <div className="mx-4 my-2 rounded-md border border-dashed border-border bg-surface p-4 text-xs leading-5 text-muted-foreground">
-          <p className="text-sm font-semibold text-foreground">{t("Your first useful loop")}</p>
-          <p className="mt-1">{t("AI is optional. Saving and searching work locally without a model.")}</p>
-          <ol className="mt-3 space-y-2" aria-label={t("Getting started")}>
-            <li><span className="font-medium text-foreground">{t("1. Save a URL.")}</span> {t("Paste it into the bar above and press Enter.")}</li>
-            <li><span className="font-medium text-foreground">{t("2. Search your library.")}</span> {t("Find it again by title or body text.")}</li>
-            <li><span className="font-medium text-foreground">{t("3. Run an Evaluation.")}</span> {t("Open the result and evaluate it when you are ready.")}</li>
-          </ol>
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
-            <p>{t("No captured objects yet. The local database is ready for your first capture.")}</p>
-            <button
-              className="rounded-md border border-border px-2.5 py-1.5 text-[11px] font-medium text-foreground hover:bg-muted"
-              onClick={onOpenModelSettings}
-              type="button"
-            >
-              {t("Configure AI (optional)")}
-            </button>
-          </div>
+          <p className="text-sm font-semibold text-foreground">{t("No items yet")}</p>
+          <p className="mt-1">{t("Use the main panel to save your first URL.")}</p>
         </div>
       ) : null}
 

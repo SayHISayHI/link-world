@@ -24,6 +24,10 @@ const paneWidths = {
 beforeEach(() => {
   window.localStorage.clear();
   vi.clearAllMocks();
+  Object.defineProperty(window.navigator, "platform", {
+    configurable: true,
+    value: "Win32",
+  });
   useUiStore.setState({ locale: "en", theme: "dark", sidebarCollapsed: false, paneWidths });
 });
 
@@ -116,5 +120,31 @@ describe("TopBar", () => {
       expect(windowActions.toggleMaximize).toHaveBeenCalledOnce();
       expect(windowActions.close).toHaveBeenCalledOnce();
     });
+  });
+
+  it("leaves room for native macOS traffic lights without rendering custom controls", () => {
+    Object.defineProperty(window.navigator, "platform", {
+      configurable: true,
+      value: "MacIntel",
+    });
+
+    render(
+      <TopBar
+        searchValue=""
+        onSearchValueChange={vi.fn()}
+        onClearSearch={vi.fn()}
+        captureLoading={false}
+        onCaptureSubmit={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("native-window-controls-inset")).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Window controls" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Close window" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Minimize window" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Maximize or restore window" })).not.toBeInTheDocument();
+    expect(windowActions.close).not.toHaveBeenCalled();
+    expect(windowActions.minimize).not.toHaveBeenCalled();
+    expect(windowActions.toggleMaximize).not.toHaveBeenCalled();
   });
 });

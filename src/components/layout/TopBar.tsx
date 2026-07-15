@@ -6,7 +6,7 @@ import { formatCaptureFailureReason } from "../../lib/captureFailures";
 import type { AppUiError } from "../../lib/errors";
 import { PRODUCT_DISPLAY_NAME } from "../../config/brand";
 import { useI18n } from "../../i18n";
-import { WindowControls } from "./WindowControls";
+import { NativeWindowControlsInset, WindowControls } from "./WindowControls";
 
 interface TopBarProps {
   // Search Props
@@ -114,6 +114,7 @@ export function TopBar({
         className="flex h-full shrink-0 items-center px-4"
         style={{ width: sidebarHeaderWidth }}
       >
+        <NativeWindowControlsInset />
         <h1 className="mr-2 truncate text-sm font-semibold tracking-normal text-foreground">
           {PRODUCT_DISPLAY_NAME}
         </h1>

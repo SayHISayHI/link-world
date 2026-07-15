@@ -758,7 +758,6 @@ export function LibraryShellContainer() {
         sidebar={sidebar}
         list={
           <ObjectList
-            onOpenModelSettings={() => setRoute({ name: "settings", panel: "models" })}
             objects={objects}
             heading={libraryHeading(route, navigation, t)}
             hasMore={Boolean(nextCursor)}
@@ -814,12 +813,17 @@ export function LibraryShellContainer() {
             organizationLoading={objectOrganizationLoading}
             organizationMutationLoading={organizationMutations.loading}
             organizationError={objectOrganizationError ?? organizationMutations.error}
+            libraryEmpty={isLibraryEmpty(navigation)}
             onPing={() => {
               void ping();
             }}
             onDeleteObject={handleDeleteObject}
             onRetryCapture={handleRetryCapture}
             onOpenModelSettings={() => setRoute({ name: "settings", panel: "models" })}
+            onFocusCapture={() => {
+              searchInputRef.current?.focus();
+              searchInputRef.current?.select();
+            }}
             onRunAIAnalysis={handleRunAIAnalysis}
             onReindexObject={handleReindexSelectedObject}
             onRunEvaluation={handleRunEvaluation}
@@ -834,6 +838,10 @@ export function LibraryShellContainer() {
       />
     </AppShell>
   );
+}
+
+function isLibraryEmpty(navigation: LibraryNavigation | undefined) {
+  return (navigation?.systemViews.find((item) => item.kind === "system" && item.id === "all")?.count ?? 0) === 0;
 }
 
 function libraryHeading(

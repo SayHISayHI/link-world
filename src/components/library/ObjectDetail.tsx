@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, useRef, useEffect } from "react";
-import { Activity, RefreshCw, Trash2, PanelRight, PanelRightClose } from "lucide-react";
+import { Activity, ArrowUp, Brain, Link2, RefreshCw, Search, Trash2, PanelRight, PanelRightClose } from "lucide-react";
 import { Button } from "../ui/button";
 import type {
   BackgroundJob,
@@ -53,10 +53,12 @@ interface ObjectDetailProps {
   organizationLoading?: boolean;
   organizationMutationLoading?: boolean;
   organizationError?: AppUiError;
+  libraryEmpty?: boolean;
   onPing: () => void;
   onDeleteObject: () => void;
   onRetryCapture: () => void;
   onOpenModelSettings: () => void;
+  onFocusCapture?: () => void;
   onRunAIAnalysis: () => void;
   onReindexObject: () => void;
   onRunEvaluation: () => void;
@@ -93,10 +95,12 @@ export function ObjectDetail({
   organizationLoading = false,
   organizationMutationLoading = false,
   organizationError,
+  libraryEmpty = false,
   onPing,
   onDeleteObject,
   onRetryCapture,
   onOpenModelSettings,
+  onFocusCapture = noop,
   onRunAIAnalysis,
   onReindexObject,
   onRunEvaluation,
@@ -139,6 +143,15 @@ export function ObjectDetail({
   const currentObject = currentDetail?.object ?? object;
 
   if (!currentObject) {
+    if (libraryEmpty) {
+      return (
+        <EmptyLibraryOnboarding
+          onFocusCapture={onFocusCapture}
+          onOpenModelSettings={onOpenModelSettings}
+        />
+      );
+    }
+
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
         {t("Select an item to inspect.")}
@@ -366,6 +379,75 @@ export function ObjectDetail({
         </aside>
         )}
       </div>
+    </div>
+  );
+}
+
+function EmptyLibraryOnboarding({
+  onFocusCapture,
+  onOpenModelSettings,
+}: {
+  onFocusCapture: () => void;
+  onOpenModelSettings: () => void;
+}) {
+  const { t } = useI18n();
+  const steps = [
+    {
+      icon: Link2,
+      title: t("Save your first URL"),
+      body: t("Paste a link into the top field to create a local item."),
+    },
+    {
+      icon: Search,
+      title: t("Find it again"),
+      body: t("Search uses the local index and works before AI is configured."),
+    },
+    {
+      icon: Brain,
+      title: t("Evaluate when ready"),
+      body: t("AI can be added later from Settings for analysis and evaluation."),
+    },
+  ];
+
+  return (
+    <div className="flex h-full min-w-0 overflow-y-auto">
+      <section className="mx-auto flex w-full max-w-4xl flex-col justify-center px-10 py-12">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent">
+          {t("Empty library")}
+        </p>
+        <h2 className="mt-3 max-w-2xl text-2xl font-semibold tracking-normal text-foreground">
+          {t("Start by saving one useful link.")}
+        </h2>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
+          {t("Node Tide is ready to save, parse, and search locally. AI is optional and can wait until there is something worth analyzing.")}
+        </p>
+
+        <div className="mt-8 grid gap-4 lg:grid-cols-3">
+          {steps.map((step) => {
+            const Icon = step.icon;
+            return (
+              <article key={step.title} className="rounded-md border border-border bg-surface p-4">
+                <div className="flex h-9 w-9 items-center justify-center rounded-md bg-accent/10 text-accent">
+                  <Icon className="h-4 w-4" aria-hidden="true" />
+                </div>
+                <h3 className="mt-4 text-sm font-semibold text-foreground">{step.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{step.body}</p>
+              </article>
+            );
+          })}
+        </div>
+
+        <div className="mt-8 flex flex-wrap items-center gap-3">
+          <Button onClick={onFocusCapture} title={t("Focus save field")}>
+            <ArrowUp className="h-4 w-4" aria-hidden="true" />
+            {t("Paste a URL")}
+          </Button>
+          <Button variant="secondary" onClick={onOpenModelSettings} title={t("Configure AI (optional)")}>
+            <Brain className="h-4 w-4" aria-hidden="true" />
+            {t("Configure AI (optional)")}
+          </Button>
+        </div>
+      </section>
     </div>
   );
 }

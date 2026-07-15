@@ -41,22 +41,14 @@ function renderObjectList(
 }
 
 describe("ObjectList search states", () => {
-  it("guides the first useful loop without forcing AI setup", () => {
-    const onOpenModelSettings = vi.fn();
-
+  it("keeps an empty list concise while the main panel owns onboarding", () => {
     renderObjectList({
       objects: [],
-      onOpenModelSettings,
     });
 
-    expect(screen.getByText("Your first useful loop")).toBeInTheDocument();
-    expect(screen.getByText(/AI is optional/)).toBeInTheDocument();
-    expect(screen.getByText(/1. Save a URL/)).toBeInTheDocument();
-    expect(screen.getByText(/2. Search your library/)).toBeInTheDocument();
-    expect(screen.getByText(/3. Run an Evaluation/)).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Configure AI (optional)" }));
-    expect(onOpenModelSettings).toHaveBeenCalledOnce();
+    expect(screen.getByText("No items yet")).toBeInTheDocument();
+    expect(screen.getByText("Use the main panel to save your first URL.")).toBeInTheDocument();
+    expect(screen.queryByText("Your first useful loop")).not.toBeInTheDocument();
   });
 
   it("renders an actionable empty search state", () => {

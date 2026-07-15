@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { KnowledgeObject, KnowledgeObjectDetail } from "../../types/api";
 import { ObjectDetail } from "./ObjectDetail";
@@ -28,6 +28,43 @@ function renderObjectDetail(object: KnowledgeObject) {
 }
 
 describe("ObjectDetail", () => {
+  it("uses the main detail pane for first-run onboarding", () => {
+    const onFocusCapture = vi.fn();
+    const onOpenModelSettings = vi.fn();
+
+    render(
+      <ObjectDetail
+        detailLoading={false}
+        pingLoading={false}
+        deleteLoading={false}
+        retryLoading={false}
+        aiRunLoading={false}
+        searchIndexLoading={false}
+        evaluationLoading={false}
+        libraryEmpty
+        onPing={noop}
+        onDeleteObject={noop}
+        onRetryCapture={noop}
+        onOpenModelSettings={onOpenModelSettings}
+        onFocusCapture={onFocusCapture}
+        onRunAIAnalysis={noop}
+        onReindexObject={noop}
+        onRunEvaluation={noop}
+      />,
+    );
+
+    expect(screen.getByText("Start by saving one useful link.")).toBeInTheDocument();
+    expect(screen.getByText("Save your first URL")).toBeInTheDocument();
+    expect(screen.getByText("Find it again")).toBeInTheDocument();
+    expect(screen.getByText("Evaluate when ready")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Paste a URL" }));
+    expect(onFocusCapture).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure AI (optional)" }));
+    expect(onOpenModelSettings).toHaveBeenCalledOnce();
+  });
+
   it("keeps the empty state sized to the parent pane", () => {
     const { container } = render(
       <ObjectDetail
