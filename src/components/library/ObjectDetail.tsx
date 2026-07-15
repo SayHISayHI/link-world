@@ -18,6 +18,7 @@ import { OrganizationPanel } from "../organization/OrganizationPanel";
 import { selectCurrentDisplayHints } from "./displayHints";
 import { useUiStore } from "../../store/uiStore";
 import { Resizer } from "../layout/Resizer";
+import { useI18n } from "../../i18n";
 
 const noop = () => undefined;
 
@@ -106,6 +107,7 @@ export function ObjectDetail({
   onAcceptTagSuggestion = noop,
   onRejectTagSuggestion = noop,
 }: ObjectDetailProps) {
+  const { t } = useI18n();
   const storeWidths = useUiStore((s) => s.paneWidths);
   const setStoreWidth = useUiStore((s) => s.setPaneWidth);
   const detailSidebarCollapsed = useUiStore((s) => s.detailSidebarCollapsed);
@@ -139,7 +141,7 @@ export function ObjectDetail({
   if (!currentObject) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        Select an item to inspect.
+        {t("Select an item to inspect.")}
       </div>
     );
   }
@@ -154,7 +156,7 @@ export function ObjectDetail({
     ? selectCurrentDisplayHints(parsedDocument.id, currentDetail?.aiAnalyses ?? [])
     : undefined;
   const latestEvaluation = currentDetail?.evaluations[0];
-  const statusText = formatRelativeStatus(currentObject.lifecycleStatus);
+  const statusText = t(formatRelativeStatus(currentObject.lifecycleStatus));
 
   return (
     <div className="flex h-full min-w-0 flex-col">
@@ -170,8 +172,8 @@ export function ObjectDetail({
             variant="ghost"
             onClick={onDeleteObject}
             disabled={deleteLoading}
-            title="Delete object"
-            className="text-muted-foreground hover:text-red-700 hover:bg-red-50 w-8 h-8 p-0"
+            title={t("Delete object")}
+            className="text-muted-foreground hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/30 w-8 h-8 p-0"
           >
             <Trash2 className="h-4 w-4" aria-hidden="true" />
           </Button>
@@ -179,7 +181,7 @@ export function ObjectDetail({
             variant="ghost"
             onClick={onPing} 
             disabled={pingLoading} 
-            title="Ping backend"
+            title={t("Ping backend")}
             className="text-muted-foreground w-8 h-8 p-0"
           >
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
@@ -188,7 +190,7 @@ export function ObjectDetail({
           <Button
             variant="ghost"
             onClick={() => setDetailSidebarCollapsed(!detailSidebarCollapsed)}
-            title={detailSidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+            title={detailSidebarCollapsed ? t("Show sidebar") : t("Hide sidebar")}
             className="text-muted-foreground w-8 h-8 p-0"
           >
             <PanelRight className="h-4 w-4" aria-hidden="true" />
@@ -196,7 +198,7 @@ export function ObjectDetail({
           <Button
             variant="ghost"
             onClick={() => useUiStore.getState().setDetailPaneCollapsed(true)}
-            title="Close detail pane (Ctrl+Alt+B)"
+            title={t("Close detail pane (Ctrl+Alt+B)")}
             className="text-muted-foreground hover:text-foreground w-8 h-8 p-0"
           >
             <PanelRightClose className="h-4 w-4" aria-hidden="true" />
@@ -211,53 +213,53 @@ export function ObjectDetail({
               {statusText}
             </div>
             {captureFailure ? (
-              <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-800">
+              <div className="mb-4 rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 p-3 text-sm leading-6 text-red-800 dark:text-red-200">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="font-medium">{captureFailure.title}</p>
-                    <p className="mt-1">{captureFailure.message}</p>
+                    <p className="font-medium">{t(captureFailure.title)}</p>
+                    <p className="mt-1">{t(captureFailure.message)}</p>
                   </div>
                   {retryJob ? (
                     <Button
                       variant="secondary"
                       onClick={onRetryCapture}
                       disabled={retryLoading}
-                      title="Retry capture"
-                      className="shrink-0 bg-white text-red-800 hover:bg-red-100"
+                      title={t("Retry capture")}
+                      className="shrink-0 bg-white dark:bg-surface text-red-800 dark:text-red-200 hover:bg-red-100 dark:hover:bg-red-950/50"
                     >
                       <RefreshCw className="h-4 w-4" aria-hidden="true" />
-                      Retry
+                      {t("Retry")}
                     </Button>
                   ) : null}
                 </div>
               </div>
             ) : null}
             {retryError ? (
-              <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-800">
-                <p className="font-medium">{retryError.title}</p>
-                <p className="mt-1">{retryError.message}</p>
+              <div className="mb-4 rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 p-3 text-sm leading-6 text-red-800 dark:text-red-200">
+                <p className="font-medium">{t(retryError.title)}</p>
+                <p className="mt-1">{t(retryError.message)}</p>
               </div>
             ) : null}
             {deleteError ? (
-              <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-800">
-                <p className="font-medium">{deleteError.title}</p>
-                <p className="mt-1">{deleteError.message}</p>
+              <div className="mb-4 rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 p-3 text-sm leading-6 text-red-800 dark:text-red-200">
+                <p className="font-medium">{t(deleteError.title)}</p>
+                <p className="mt-1">{t(deleteError.message)}</p>
               </div>
             ) : null}
             {detailLoading ? (
-              <p className="text-sm text-muted-foreground">Loading object detail...</p>
+              <p className="text-sm text-muted-foreground">{t("Loading object detail...")}</p>
             ) : null}
             {!detailLoading && detailError ? (
-              <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-800">
-                <p className="font-medium">{detailError.title}</p>
-                <p className="mt-1">{detailError.message}</p>
+              <div className="rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 p-3 text-sm leading-6 text-red-800 dark:text-red-200">
+                <p className="font-medium">{t(detailError.title)}</p>
+                <p className="mt-1">{t(detailError.message)}</p>
               </div>
             ) : null}
             {!detailLoading && !detailError ? (
               <>
-                <h3 className="text-lg font-semibold">{parsedDocument?.title ?? "Parsed document preview"}</h3>
+                <h3 className="text-lg font-semibold">{parsedDocument?.title ?? t("Parsed document preview")}</h3>
                 {parsedDocument ? (
-                  <Suspense fallback={<p className="mt-4 text-sm text-muted-foreground">Formatting document...</p>}>
+                  <Suspense fallback={<p className="mt-4 text-sm text-muted-foreground">{t("Formatting document...")}</p>}>
                     <MarkdownDocumentView
                       documentId={parsedDocument.id}
                       markdown={parsedDocument.markdown}
@@ -268,7 +270,7 @@ export function ObjectDetail({
                   </Suspense>
                 ) : (
                   <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                    No parsed document has been produced for this object yet.
+                    {t("No parsed document has been produced for this object yet.")}
                   </p>
                 )}
               </>
@@ -287,31 +289,31 @@ export function ObjectDetail({
               onDrag={handleDrag} 
               onDragEnd={handleDragEnd} 
             />
-            <h3 className="text-sm font-semibold">Capture</h3>
+            <h3 className="text-sm font-semibold">{t("Capture")}</h3>
           <div className="mt-3 rounded-md border border-border bg-surface p-3 text-xs leading-5">
             <div className="flex items-center justify-between gap-3">
-              <p className="font-medium">Lifecycle</p>
+              <p className="font-medium">{t("Lifecycle")}</p>
               <span className="rounded-sm bg-muted px-2 py-1 text-[11px] text-muted-foreground">{statusText}</span>
             </div>
             <div className="mt-2 text-muted-foreground">
-              <p>Snapshots {currentDetail?.snapshots.length ?? 0}</p>
-              <p>Parsed document {parsedDocument ? "available" : "pending"}</p>
+              <p>{t("Snapshots {count}", { count: currentDetail?.snapshots.length ?? 0 })}</p>
+              <p>{t("Parsed document {status}", { status: t(parsedDocument ? "available" : "pending") })}</p>
             </div>
             <div className="mt-3">
               <Button
                 variant="secondary"
                 onClick={onReindexObject}
                 disabled={searchIndexLoading || !parsedDocument}
-                title="Reindex selected object"
+                title={t("Reindex selected object")}
               >
                 <RefreshCw className={searchIndexLoading ? "h-4 w-4 animate-spin" : "h-4 w-4"} aria-hidden="true" />
-                Reindex
+                {t("Reindex")}
               </Button>
             </div>
             {searchIndexError ? (
-              <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-2 text-red-800">
-                <p className="font-medium">{searchIndexError.title}</p>
-                <p className="mt-1">{searchIndexError.message}</p>
+              <div className="mt-3 rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 p-2 text-red-800 dark:text-red-200">
+                <p className="font-medium">{t(searchIndexError.title)}</p>
+                <p className="mt-1">{t(searchIndexError.message)}</p>
               </div>
             ) : searchIndexMessage ? (
               <p className="mt-3 text-muted-foreground">{searchIndexMessage}</p>
@@ -342,23 +344,23 @@ export function ObjectDetail({
             error={evaluationError}
             onRunEvaluation={onRunEvaluation}
           />
-          <h3 className="mt-4 text-sm font-semibold">Backend IPC</h3>
+          <h3 className="mt-4 text-sm font-semibold">{t("Backend IPC")}</h3>
           <div className="mt-3 rounded-md border border-border bg-surface p-3 text-xs leading-5">
-            {pingLoading ? <p className="text-muted-foreground">Pinging backend...</p> : null}
+            {pingLoading ? <p className="text-muted-foreground">{t("Pinging backend...")}</p> : null}
             {pingData ? (
               <div>
                 <p className="font-medium">{pingData.message}</p>
-                <p className="mt-1 text-muted-foreground">Backend {pingData.backendVersion}</p>
+                <p className="mt-1 text-muted-foreground">{t("Backend {version}", { version: pingData.backendVersion })}</p>
               </div>
             ) : null}
             {pingError ? (
               <div>
-                <p className="font-medium text-red-700">{pingError.title}</p>
-                <p className="mt-1 text-muted-foreground">{pingError.message}</p>
+                <p className="font-medium text-red-700 dark:text-red-300">{t(pingError.title)}</p>
+                <p className="mt-1 text-muted-foreground">{t(pingError.message)}</p>
               </div>
             ) : null}
             {!pingLoading && !pingData && !pingError ? (
-              <p className="text-muted-foreground">Use Ping to validate Tauri IPC.</p>
+              <p className="text-muted-foreground">{t("Use Ping to validate Tauri IPC.")}</p>
             ) : null}
           </div>
         </aside>

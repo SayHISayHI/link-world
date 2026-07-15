@@ -1,10 +1,11 @@
-import { Search, X, CornerDownLeft, CheckCircle2, AlertCircle } from "lucide-react";
+import { Search, X, CornerDownLeft, CheckCircle2, AlertCircle, Languages, Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { RefObject } from "react";
 import { useUiStore } from "../../store/uiStore";
 import { formatCaptureFailureReason } from "../../lib/captureFailures";
 import type { AppUiError } from "../../lib/errors";
 import { PRODUCT_DISPLAY_NAME } from "../../config/brand";
+import { useI18n } from "../../i18n";
 
 interface TopBarProps {
   // Search Props
@@ -34,6 +35,10 @@ export function TopBar({
   captureJob,
   onCaptureSubmit,
 }: TopBarProps) {
+  const { locale, t } = useI18n();
+  const theme = useUiStore((state) => state.theme);
+  const toggleLocale = useUiStore((state) => state.toggleLocale);
+  const toggleTheme = useUiStore((state) => state.toggleTheme);
   const [showToast, setShowToast] = useState(false);
   const [inputValue, setInputValue] = useState(searchValue);
 
@@ -116,7 +121,7 @@ export function TopBar({
           <input
             ref={searchInputRef}
             className="h-10 w-full rounded-md border border-border bg-background pl-9 pr-10 text-sm outline-none transition-colors focus:ring-2 focus:ring-accent focus:border-transparent"
-            placeholder="Search or paste a URL to save..."
+            placeholder={t("Search or paste a URL to save...")}
             value={inputValue}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
@@ -127,35 +132,35 @@ export function TopBar({
             {captureLoading ? (
               <div className="flex items-center gap-1.5 pr-2 text-xs text-muted-foreground animate-pulse">
                 <span className="h-3.5 w-3.5 rounded-full border-2 border-muted-foreground border-t-transparent animate-spin" />
-                <span>Saving...</span>
+                <span>{t("Saving...")}</span>
               </div>
             ) : showToast && (captureJob || captureError) ? (
               <div className={`group relative flex cursor-default items-center gap-1.5 pr-2 text-xs animate-in fade-in zoom-in-95 ${captureError || captureJob?.status === 'failed' ? 'text-red-500' : 'text-accent'}`}>
                 {captureError || captureJob?.status === 'failed' ? (
                   <>
                     <AlertCircle className="h-4 w-4" />
-                    <span className="font-medium">{captureError?.title ?? "Failed"}</span>
+                    <span className="font-medium">{t(captureError?.title ?? "Failed")}</span>
                     {/* Error Tooltip */}
                     <div className="absolute right-0 top-full mt-2 hidden w-64 rounded-md border border-border bg-surface p-3 text-xs text-foreground shadow-lg group-hover:block z-50">
-                      {captureError?.message ?? failure?.message ?? "An unknown error occurred."}
+                      {t(captureError?.message ?? failure?.message ?? "An unknown error occurred.")}
                     </div>
                   </>
                 ) : (
                   <>
                     <CheckCircle2 className="h-4 w-4" />
-                    <span className="font-medium">{isDeduplicated ? "Already saved" : "Saved"}</span>
+                    <span className="font-medium">{isDeduplicated ? t("Already saved") : t("Saved")}</span>
                   </>
                 )}
               </div>
             ) : isUrl ? (
               <div className="flex items-center gap-1.5 pr-2 text-xs text-muted-foreground animate-in fade-in">
-                <span>Press <kbd className="rounded border border-border bg-muted px-1 font-sans text-[10px] font-medium text-foreground">Enter</kbd></span>
+                <span>{t("Press")} <kbd className="rounded border border-border bg-muted px-1 font-sans text-[10px] font-medium text-foreground">Enter</kbd></span>
                 <CornerDownLeft className="h-3 w-3" />
               </div>
             ) : searchActive ? (
               <button
                 type="button"
-                aria-label="Clear search"
+                aria-label={t("Clear search")}
                 onClick={handleClear}
                 className="rounded-sm p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
               >
@@ -166,8 +171,27 @@ export function TopBar({
         </div>
       </div>
 
-      {/* Right: Empty spacer to balance the layout */}
-      <div className="w-[216px] shrink-0" />
+      <div className="flex w-[216px] shrink-0 items-center justify-end gap-1">
+        <button
+          type="button"
+          className="inline-flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+          onClick={toggleLocale}
+          title={locale === "zh-CN" ? t("Switch to English") : t("Switch to Chinese")}
+          aria-label={locale === "zh-CN" ? t("Switch to English") : t("Switch to Chinese")}
+        >
+          <Languages className="h-4 w-4" aria-hidden="true" />
+          <span>{locale === "zh-CN" ? "EN" : "中"}</span>
+        </button>
+        <button
+          type="button"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+          onClick={toggleTheme}
+          title={theme === "dark" ? t("Use light mode") : t("Use dark mode")}
+          aria-label={theme === "dark" ? t("Use light mode") : t("Use dark mode")}
+        >
+          {theme === "dark" ? <Sun className="h-4 w-4" aria-hidden="true" /> : <Moon className="h-4 w-4" aria-hidden="true" />}
+        </button>
+      </div>
     </header>
   );
 }

@@ -4,8 +4,10 @@ import { AppShell } from "../components/layout/AppShell";
 import { StartupRecoveryScreen } from "../components/recovery/StartupRecoveryScreen";
 import { LibraryShellContainer } from "../containers/LibraryShellContainer";
 import { useStartupStatus } from "../hooks/commands/useStartupStatus";
+import { useI18n } from "../i18n";
 
 export function App() {
+  const { t } = useI18n();
   const { error, loading, loadStartupStatus, status } = useStartupStatus();
   const sidebarCollapsed = useUiStore((s) => s.sidebarCollapsed);
   const setSidebarCollapsed = useUiStore((s) => s.setSidebarCollapsed);
@@ -42,7 +44,7 @@ export function App() {
     return (
       <AppShell>
         <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
-          Starting Node Tide...
+          {t("Starting Node Tide...")}
         </div>
       </AppShell>
     );

@@ -4,6 +4,7 @@ import { useBackups } from "../../hooks/commands/useBackups";
 import { usePortableExport } from "../../hooks/commands/usePortableExport";
 import type { BackupSummary, StartupIssue } from "../../types/api";
 import { Button } from "../ui/button";
+import { localeTag, useI18n, type Translator } from "../../i18n";
 
 interface StorageSettingsProps {
   mode?: "settings" | "startupRecovery";
@@ -11,6 +12,7 @@ interface StorageSettingsProps {
 }
 
 export function StorageSettings({ mode = "settings", startupIssue }: StorageSettingsProps) {
+  const { locale, t } = useI18n();
   const isStartupRecovery = mode === "startupRecovery";
   const {
     backups,
@@ -45,38 +47,36 @@ export function StorageSettings({ mode = "settings", startupIssue }: StorageSett
       <div className="flex items-start justify-between gap-5">
         <div>
           <h2 className="text-xl font-semibold">
-            {isStartupRecovery ? "Startup recovery" : "Storage and backups"}
+            {isStartupRecovery ? t("Startup recovery") : t("Storage and backups")}
           </h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
             {isStartupRecovery
-              ? "Node Tide is running in restricted recovery mode. Choose a verified local restore point to recover the library; ordinary library features stay disabled until restart succeeds."
-              : "Create a local restore point containing a consistent SQLite snapshot and the object store. Every payload file is recorded in a versioned SHA-256 manifest."}
+              ? t("Node Tide is running in restricted recovery mode. Choose a verified local restore point to recover the library; ordinary library features stay disabled until restart succeeds.")
+              : t("Create a local restore point containing a consistent SQLite snapshot and the object store. Every payload file is recorded in a versioned SHA-256 manifest.")}
           </p>
         </div>
         {isStartupRecovery ? null : (
           <Button onClick={() => void createBackup()} disabled={creating || loading}>
             <Archive className="h-4 w-4" aria-hidden="true" />
-            {creating ? "Creating..." : "Create backup"}
+            {creating ? t("Creating...") : t("Create backup")}
           </Button>
         )}
       </div>
 
       {isStartupRecovery && startupIssue?.verifiedBackupId ? (
-        <div className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-xs leading-5 text-emerald-900">
-          Verified pre-migration restore point available: {startupIssue.verifiedBackupId}
+        <div className="mt-5 rounded-lg border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/30 p-4 text-xs leading-5 text-emerald-900 dark:text-emerald-200">
+          {t("Verified pre-migration restore point available: {id}", { id: startupIssue.verifiedBackupId })}
         </div>
       ) : null}
 
-      <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-900">
-        Backups contain saved user content, including locally classified sensitive content. API
-        key values remain in Windows Credential Manager and are never copied. Protect the Windows
-        account and backup directory accordingly.
+      <div className="mt-6 rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 p-4 text-xs leading-5 text-amber-900 dark:text-amber-200">
+        {t("Backups contain saved user content, including locally classified sensitive content. API key values remain in Windows Credential Manager and are never copied. Protect the Windows account and backup directory accordingly.")}
       </div>
 
       {visibleError ? (
-        <div className="mt-5 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-          <p className="font-medium">{visibleError.title}</p>
-          <p className="mt-1">{visibleError.message}</p>
+        <div className="mt-5 rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 p-3 text-sm text-red-800 dark:text-red-200">
+          <p className="font-medium">{t(visibleError.title)}</p>
+          <p className="mt-1">{t(visibleError.message)}</p>
         </div>
       ) : null}
 
@@ -85,21 +85,20 @@ export function StorageSettings({ mode = "settings", startupIssue }: StorageSett
           className={
             "mt-5 rounded-md border p-3 text-sm " +
             (restoreStatus.status === "succeeded"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-              : "border-amber-200 bg-amber-50 text-amber-900")
+              ? "border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-200"
+              : "border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200")
           }
         >
           <p className="font-medium">
             {restoreStatus.status === "succeeded"
-              ? "Restore completed"
-              : "Restore did not replace the current library"}
+              ? t("Restore completed")
+              : t("Restore did not replace the current library")}
           </p>
           <p className="mt-1 text-xs">
-            Target {restoreStatus.backupId} / safety backup {restoreStatus.safetyBackupId} /{" "}
-            {formatDate(restoreStatus.completedAt)}
+            {t("Target {target} / safety backup {safety} / {date}", { target: restoreStatus.backupId, safety: restoreStatus.safetyBackupId, date: formatDate(restoreStatus.completedAt, locale, t) })}
           </p>
           {restoreStatus.message ? (
-            <p className="mt-1 text-xs">{restoreStatus.message}</p>
+            <p className="mt-1 text-xs">{t(restoreStatus.message)}</p>
           ) : null}
         </div>
       ) : null}
@@ -108,10 +107,9 @@ export function StorageSettings({ mode = "settings", startupIssue }: StorageSett
         <section className="mt-7 rounded-lg border border-border bg-surface p-5">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h3 className="text-sm font-semibold">Portable export</h3>
+              <h3 className="text-sm font-semibold">{t("Portable export")}</h3>
               <p className="mt-2 max-w-2xl text-xs leading-5 text-muted-foreground">
-                Export all non-secret objects to Markdown and JSON under the app data exports folder.
-                Credential references, internal jobs, and local object storage paths are excluded.
+                {t("Export all non-secret objects to Markdown and JSON under the app data exports folder. Credential references, internal jobs, and local object storage paths are excluded.")}
               </p>
             </div>
             <Button
@@ -120,13 +118,12 @@ export function StorageSettings({ mode = "settings", startupIssue }: StorageSett
               disabled={exporting || loading || creating}
             >
               <Download className="h-4 w-4" aria-hidden="true" />
-              {exporting ? "Exporting..." : "Export library"}
+              {exporting ? t("Exporting...") : t("Export library")}
             </Button>
           </div>
           {exportSummary ? (
-            <div className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-900">
-              Exported {exportSummary.objectCount} objects to {exportSummary.exportRoot}. Skipped{" "}
-              {exportSummary.skippedSecretCount} secret objects by default.
+            <div className="mt-4 rounded-md border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/30 p-3 text-xs leading-5 text-emerald-900 dark:text-emerald-200">
+              {t("Exported {count} objects to {path}. Skipped {skipped} secret objects by default.", { count: exportSummary.objectCount, path: exportSummary.exportRoot, skipped: exportSummary.skippedSecretCount })}
             </div>
           ) : null}
         </section>
@@ -134,7 +131,7 @@ export function StorageSettings({ mode = "settings", startupIssue }: StorageSett
 
       <section className="mt-7">
         <div className="flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold">Local restore points</h3>
+          <h3 className="text-sm font-semibold">{t("Local restore points")}</h3>
           <Button
             variant="ghost"
             className="h-8 px-2 text-xs"
@@ -145,17 +142,17 @@ export function StorageSettings({ mode = "settings", startupIssue }: StorageSett
               className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"}
               aria-hidden="true"
             />
-            Refresh
+            {t("Refresh")}
           </Button>
         </div>
 
         <div className="mt-3 space-y-3">
           {loading && backups.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Loading backups...</p>
+            <p className="text-sm text-muted-foreground">{t("Loading backups...")}</p>
           ) : null}
           {!loading && backups.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border p-5 text-sm text-muted-foreground">
-              No local restore points yet.
+              {t("No local restore points yet.")}
             </div>
           ) : null}
           {backups.map((backup) => (
@@ -180,8 +177,8 @@ export function StorageSettings({ mode = "settings", startupIssue }: StorageSett
         <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
         <p>
           {isStartupRecovery
-            ? "Recovery mode only exposes backup listing, verification, restore preparation, and restart. It does not open the normal library database or start background services."
-            : "Restore preparation re-verifies every payload, migrates a private candidate, and creates a safety backup. Live data is switched only during restart; interrupted or invalid restores are rolled back before the application opens."}
+            ? t("Recovery mode only exposes backup listing, verification, restore preparation, and restart. It does not open the normal library database or start background services.")
+            : t("Restore preparation re-verifies every payload, migrates a private candidate, and creates a safety backup. Live data is switched only during restart; interrupted or invalid restores are rolled back before the application opens.")}
         </p>
       </div>
     </div>
@@ -215,6 +212,7 @@ function BackupRow({
   };
   verifying: boolean;
 }) {
+  const { locale, t } = useI18n();
   const invalid = backup.status === "invalid";
 
   return (
@@ -227,16 +225,15 @@ function BackupRow({
               className={
                 "rounded-full px-2 py-0.5 text-[11px] " +
                 (invalid
-                  ? "bg-red-100 text-red-800"
-                  : "bg-emerald-100 text-emerald-800")
+                  ? "bg-red-100 dark:bg-red-950/50 text-red-800 dark:text-red-200"
+                  : "bg-emerald-100 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-200")
               }
             >
-              {invalid ? "Invalid manifest" : "Ready"}
+              {invalid ? t("Invalid manifest") : t("Ready")}
             </span>
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
-            {formatDate(backup.createdAt)} / {formatBytes(backup.totalSizeBytes)} /{" "}
-            {backup.objectFileCount} object files
+            {t("{date} / {size} / {count} object files", { date: formatDate(backup.createdAt, locale, t), size: formatBytes(backup.totalSizeBytes), count: backup.objectFileCount })}
           </p>
           {backup.appVersion ? (
             <p className="mt-1 text-[11px] text-muted-foreground">
@@ -251,7 +248,7 @@ function BackupRow({
             onClick={onVerify}
             disabled={verifying || invalid || restoring}
           >
-            {verifying ? "Verifying..." : "Verify"}
+            {verifying ? t("Verifying...") : t("Verify")}
           </Button>
           <Button
             variant="secondary"
@@ -260,18 +257,18 @@ function BackupRow({
             disabled={invalid || restoring || restoreDisabled}
           >
             <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
-            {restoring ? "Preparing..." : "Restore"}
+            {restoring ? t("Preparing...") : t("Restore")}
           </Button>
         </div>
       </div>
       {verification ? (
         verification.valid ? (
-          <p className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-800">
-            Verified {verification.checkedFileCount} payload files and SQLite integrity.
+          <p className="mt-3 rounded-md border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/30 p-2 text-xs text-emerald-800 dark:text-emerald-200">
+            {t("Verified {count} payload files and SQLite integrity.", { count: verification.checkedFileCount })}
           </p>
         ) : (
-          <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-800">
-            <p className="font-medium">Verification failed</p>
+          <div className="mt-3 rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 p-2 text-xs text-red-800 dark:text-red-200">
+            <p className="font-medium">{t("Verification failed")}</p>
             <ul className="mt-1 list-disc pl-4">
               {verification.issues.map((issue) => (
                 <li key={issue}>{issue}</li>
@@ -282,15 +279,13 @@ function BackupRow({
       ) : null}
       {confirming ? (
         <div
-          className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950"
+          className="mt-3 rounded-md border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3 text-xs text-amber-950 dark:text-amber-100"
           role="group"
-          aria-label="Confirm restore"
+          aria-label={t("Confirm restore")}
         >
-          <p className="font-semibold">Restore this point and restart Node Tide?</p>
+          <p className="font-semibold">{t("Restore this point and restart Node Tide?")}</p>
           <p className="mt-1 leading-5">
-            The current database and object store will be replaced. Before shutdown, Node Tide
-            re-verifies this backup, migrates a private candidate, and creates a separate safety
-            backup for automatic rollback.
+            {t("The current database and object store will be replaced. Before shutdown, Node Tide re-verifies this backup, migrates a private candidate, and creates a separate safety backup for automatic rollback.")}
           </p>
           <div className="mt-3 flex justify-end gap-2">
             <Button
@@ -299,7 +294,7 @@ function BackupRow({
               onClick={onCancelRestore}
               disabled={restoring}
             >
-              Cancel
+              {t("Cancel")}
             </Button>
             <Button
               variant="primary"
@@ -307,7 +302,7 @@ function BackupRow({
               onClick={onRestore}
               disabled={restoring}
             >
-              {restoring ? "Preparing and restarting..." : "Restore and restart"}
+              {restoring ? t("Preparing and restarting...") : t("Restore and restart")}
             </Button>
           </div>
         </div>
@@ -316,12 +311,12 @@ function BackupRow({
   );
 }
 
-function formatDate(value?: string) {
+function formatDate(value: string | undefined, locale: "en" | "zh-CN", t: Translator) {
   if (!value) {
-    return "Unknown creation time";
+    return t("Unknown creation time");
   }
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString(localeTag(locale));
 }
 
 function formatBytes(value: number) {

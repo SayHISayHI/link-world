@@ -80,7 +80,10 @@ Rules:
 - active modal。
 - command palette open。
 - detail panel width。
-- theme。
+- locale（`en` / `zh-CN`）。
+- theme（`light` / `dark`）。
+
+语言与主题偏好沿用现有 `link-world-ui` 持久化键；首次运行跟随系统语言与系统配色，用户切换后以持久化值为准。`AppProviders` 负责同步 `<html lang>`、主题 class、`data-theme` 与 `color-scheme`。所有固定 UI 文案通过 `src/i18n` 翻译，用户内容、路径、哈希、模型名和未知后端诊断值必须原样显示。
 
 不得放入：
 

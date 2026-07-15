@@ -9,12 +9,14 @@ import type {
   SupportBundleSummary,
 } from "../../types/api";
 import { Button } from "../ui/button";
+import { useI18n, type Translator } from "../../i18n";
 
 interface DiagnosticsSettingsProps {
   onOpenObject?: (objectId: string) => void;
 }
 
 export function DiagnosticsSettings({ onOpenObject }: DiagnosticsSettingsProps) {
+  const { t } = useI18n();
   const { data, error, loading, loadSnapshot } = useLocalMetricsSnapshot();
   const {
     error: retryError,
@@ -55,40 +57,39 @@ export function DiagnosticsSettings({ onOpenObject }: DiagnosticsSettingsProps) 
     <div className="mx-auto max-w-6xl p-8">
       <div className="flex items-start justify-between gap-5">
         <div>
-          <h2 className="text-xl font-semibold">Diagnostics</h2>
+          <h2 className="text-xl font-semibold">{t("Diagnostics")}</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Local runtime health, storage status, failed job summaries, and redaction boundaries.
-            This page displays local diagnostics only; support bundle export requires explicit confirmation below.
+            {t("Local runtime health, storage status, failed job summaries, and redaction boundaries. This page displays local diagnostics only; support bundle export requires explicit confirmation below.")}
           </p>
         </div>
         <Button variant="secondary" onClick={() => void loadSnapshot()} disabled={loading}>
           <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} aria-hidden="true" />
-          {loading ? "Refreshing..." : "Refresh"}
+          {loading ? t("Refreshing...") : t("Refresh")}
         </Button>
       </div>
 
       {error ? (
-        <div className="mt-6 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-          <p className="font-medium">{error.title}</p>
-          <p className="mt-1">{error.message}</p>
+        <div className="mt-6 rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 p-4 text-sm text-red-800 dark:text-red-200">
+          <p className="font-medium">{t(error.title)}</p>
+          <p className="mt-1">{t(error.message)}</p>
         </div>
       ) : null}
 
       {retryError ? (
-        <div className="mt-6 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-          <p className="font-medium">{retryError.title}</p>
-          <p className="mt-1">{retryError.message}</p>
+        <div className="mt-6 rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 p-4 text-sm text-red-800 dark:text-red-200">
+          <p className="font-medium">{t(retryError.title)}</p>
+          <p className="mt-1">{t(retryError.message)}</p>
         </div>
       ) : null}
 
       {supportBundleError ? (
-        <div className="mt-6 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-          <p className="font-medium">{supportBundleError.title}</p>
-          <p className="mt-1">{supportBundleError.message}</p>
+        <div className="mt-6 rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 p-4 text-sm text-red-800 dark:text-red-200">
+          <p className="font-medium">{t(supportBundleError.title)}</p>
+          <p className="mt-1">{t(supportBundleError.message)}</p>
         </div>
       ) : null}
 
-      {!data && loading ? <p className="mt-6 text-sm text-muted-foreground">Loading diagnostics...</p> : null}
+      {!data && loading ? <p className="mt-6 text-sm text-muted-foreground">{t("Loading diagnostics...")}</p> : null}
       {data ? (
         <div className="mt-7 space-y-6">
           <HealthGrid snapshot={data} />
@@ -113,51 +114,52 @@ export function DiagnosticsSettings({ onOpenObject }: DiagnosticsSettingsProps) 
 }
 
 function HealthGrid({ snapshot }: { snapshot: LocalMetricsSnapshot }) {
+  const { t } = useI18n();
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <section className="rounded-xl border border-border bg-surface p-5">
-        <h3 className="text-sm font-semibold">Runtime</h3>
+        <h3 className="text-sm font-semibold">{t("Runtime")}</h3>
         <dl className="mt-4 space-y-3 text-sm">
-          <Metric label="App version" value={snapshot.appVersion} />
-          <Metric label="Data directory" value={snapshot.dataDir} mono />
-          <Metric label="Database" value={snapshot.databasePath} mono />
-          <Metric label="Object store" value={snapshot.objectStorePath} mono />
+          <Metric label={t("App version")} value={snapshot.appVersion} />
+          <Metric label={t("Data directory")} value={snapshot.dataDir} mono />
+          <Metric label={t("Database")} value={snapshot.databasePath} mono />
+          <Metric label={t("Object store")} value={snapshot.objectStorePath} mono />
         </dl>
       </section>
 
       <section className="rounded-xl border border-border bg-surface p-5">
-        <h3 className="text-sm font-semibold">Database health</h3>
+        <h3 className="text-sm font-semibold">{t("Database health")}</h3>
         <dl className="mt-4 space-y-3 text-sm">
-          <Metric label="Status" value={snapshot.databaseHealth.healthy ? "Healthy" : "Needs attention"} />
-          <Metric label="SQLite quick_check" value={snapshot.databaseHealth.quickCheck} />
-          <Metric label="Foreign key violations" value={snapshot.databaseHealth.foreignKeyViolations.toString()} />
-          <Metric label="Migration version" value={snapshot.databaseHealth.appliedMigrationVersion?.toString() ?? "Unknown"} />
-          <Metric label="Size" value={formatBytes(snapshot.databaseHealth.sizeBytes)} />
+          <Metric label={t("Status")} value={snapshot.databaseHealth.healthy ? t("Healthy") : t("Needs attention")} />
+          <Metric label={t("SQLite quick_check")} value={snapshot.databaseHealth.quickCheck} />
+          <Metric label={t("Foreign key violations")} value={snapshot.databaseHealth.foreignKeyViolations.toString()} />
+          <Metric label={t("Migration version")} value={snapshot.databaseHealth.appliedMigrationVersion?.toString() ?? t("Unknown")} />
+          <Metric label={t("Size")} value={t(formatBytes(snapshot.databaseHealth.sizeBytes))} />
         </dl>
       </section>
 
       <section className="rounded-xl border border-border bg-surface p-5">
-        <h3 className="text-sm font-semibold">Object store</h3>
+        <h3 className="text-sm font-semibold">{t("Object store")}</h3>
         <dl className="mt-4 space-y-3 text-sm">
-          <Metric label="Status" value={snapshot.objectStoreHealth.healthy ? "Healthy" : "Needs attention"} />
-          <Metric label="Files" value={snapshot.objectStoreHealth.fileCount.toString()} />
-          <Metric label="Size" value={formatBytes(snapshot.objectStoreHealth.sizeBytes)} />
-          {snapshot.objectStoreHealth.issue ? <Metric label="Issue" value={snapshot.objectStoreHealth.issue} /> : null}
+          <Metric label={t("Status")} value={snapshot.objectStoreHealth.healthy ? t("Healthy") : t("Needs attention")} />
+          <Metric label={t("Files")} value={snapshot.objectStoreHealth.fileCount.toString()} />
+          <Metric label={t("Size")} value={t(formatBytes(snapshot.objectStoreHealth.sizeBytes))} />
+          {snapshot.objectStoreHealth.issue ? <Metric label={t("Issue")} value={snapshot.objectStoreHealth.issue} /> : null}
         </dl>
       </section>
 
       <section className="rounded-xl border border-border bg-surface p-5">
-        <h3 className="text-sm font-semibold">Jobs and models</h3>
+        <h3 className="text-sm font-semibold">{t("Jobs and models")}</h3>
         <dl className="mt-4 space-y-3 text-sm">
-          <Metric label="Queued / running" value={`${snapshot.jobs.queued} / ${snapshot.jobs.running}`} />
-          <Metric label="Failed / blocked" value={`${snapshot.jobs.failed} / ${snapshot.jobs.blocked}`} />
-          <Metric label="Cancelled" value={snapshot.jobs.cancelled.toString()} />
-          <Metric label="Model configs" value={`${snapshot.models.enabledCount}/${snapshot.models.configuredCount} enabled`} />
-          <Metric label="Default chat model" value={modelStatusLabel(snapshot.models.status)} />
+          <Metric label={t("Queued / running")} value={`${snapshot.jobs.queued} / ${snapshot.jobs.running}`} />
+          <Metric label={t("Failed / blocked")} value={`${snapshot.jobs.failed} / ${snapshot.jobs.blocked}`} />
+          <Metric label={t("Cancelled")} value={snapshot.jobs.cancelled.toString()} />
+          <Metric label={t("Model configs")} value={t("{enabled}/{configured} enabled", { enabled: snapshot.models.enabledCount, configured: snapshot.models.configuredCount })} />
+          <Metric label={t("Default chat model")} value={modelStatusLabel(snapshot.models.status, t)} />
         </dl>
         {snapshot.models.status === "not_configured_normal_degradation" ? (
           <p className="mt-3 rounded-md border border-border bg-background p-3 text-xs leading-5 text-muted-foreground">
-            No model provider is configured. Save, parse, search, backup, restore, and diagnostics remain healthy; AI features are degraded by design.
+            {t("No model provider is configured. Save, parse, search, backup, restore, and diagnostics remain healthy; AI features are degraded by design.")}
           </p>
         ) : null}
       </section>
@@ -176,12 +178,13 @@ function FailedJobs({
   onRetryJob: (jobId: string) => void;
   retryLoading: boolean;
 }) {
+  const { t } = useI18n();
   return (
     <section className="rounded-xl border border-border bg-surface p-5">
-      <h3 className="text-sm font-semibold">Recent failed jobs</h3>
+      <h3 className="text-sm font-semibold">{t("Recent failed jobs")}</h3>
       {jobs.length === 0 ? (
         <div className="mt-4 rounded-lg border border-dashed border-border p-5 text-sm text-muted-foreground">
-          No failed or blocked jobs in the latest diagnostics snapshot.
+          {t("No failed or blocked jobs in the latest diagnostics snapshot.")}
         </div>
       ) : (
         <div className="mt-4 space-y-3">
@@ -191,23 +194,23 @@ function FailedJobs({
                 <div>
                   <p className="font-medium">{job.jobType}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {job.status} / {job.updatedAt}
+                    {t(job.status)} / {job.updatedAt}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {job.objectId && onOpenObject ? (
                     <Button variant="secondary" onClick={() => onOpenObject(job.objectId!)}>
-                      Open object
+                      {t("Open object")}
                     </Button>
                   ) : null}
                   {job.jobType === "capture.fetch_url" ? (
                     <Button variant="secondary" onClick={() => onRetryJob(job.jobId)} disabled={retryLoading}>
-                      {retryLoading ? "Retrying..." : "Retry"}
+                      {retryLoading ? t("Retrying...") : t("Retry")}
                     </Button>
                   ) : null}
                 </div>
               </div>
-              {job.objectId ? <p className="mt-3 text-xs text-muted-foreground">Object: {job.objectId}</p> : null}
+              {job.objectId ? <p className="mt-3 text-xs text-muted-foreground">{t("Object: {id}", { id: job.objectId })}</p> : null}
               {job.lastError ? (
                 <p className="mt-2 rounded-md border border-border bg-surface p-3 text-xs leading-5 text-muted-foreground">
                   {job.lastError}
@@ -236,24 +239,24 @@ function PrivacyBoundary({
   onConfirmedChange: (confirmed: boolean) => void;
   onExport: () => void;
 }) {
+  const { t } = useI18n();
   const available = snapshot.privacy.supportBundleAvailable;
 
   return (
     <section className="rounded-xl border border-border bg-surface p-5">
-      <h3 className="text-sm font-semibold">Support bundle</h3>
+      <h3 className="text-sm font-semibold">{t("Support bundle")}</h3>
       <p className="mt-2 text-sm leading-6 text-muted-foreground">
-        Export a local JSON file with operational metadata only. Node Tide never uploads the file
-        automatically, and the export does not read object bodies.
+        {t("Export a local JSON file with operational metadata only. Node Tide never uploads the file automatically, and the export does not read object bodies.")}
       </p>
       <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
         {snapshot.privacy.redaction.map((item) => (
-          <li key={item}>{item}</li>
+          <li key={item}>{t(item)}</li>
         ))}
       </ul>
 
       {available ? (
         <fieldset className="mt-5 rounded-lg border border-border bg-background p-4">
-          <legend className="px-1 text-sm font-medium">Confirm support bundle export</legend>
+          <legend className="px-1 text-sm font-medium">{t("Confirm support bundle export")}</legend>
           <label className="flex items-start gap-3 text-sm leading-6">
             <input
               type="checkbox"
@@ -262,8 +265,7 @@ function PrivacyBoundary({
               onChange={(event) => onConfirmedChange(event.target.checked)}
             />
             <span>
-              I understand this creates a local diagnostic file containing app/runtime metadata,
-              stable failed-job codes, plugin fingerprints, and recent audit actions.
+              {t("I understand this creates a local diagnostic file containing app/runtime metadata, stable failed-job codes, plugin fingerprints, and recent audit actions.")}
             </span>
           </label>
           <Button
@@ -272,26 +274,25 @@ function PrivacyBoundary({
             onClick={onExport}
             disabled={!confirmed || exporting}
           >
-            {exporting ? "Exporting..." : "Export support bundle"}
+            {exporting ? t("Exporting...") : t("Export support bundle")}
           </Button>
         </fieldset>
       ) : (
         <p className="mt-5 text-sm text-muted-foreground">
-          Support bundle export is unavailable in this build.
+          {t("Support bundle export is unavailable in this build.")}
         </p>
       )}
 
       {summary ? (
         <div className="mt-5 rounded-lg border border-border bg-background p-4 text-sm">
-          <p className="font-medium">Support bundle exported</p>
+          <p className="font-medium">{t("Support bundle exported")}</p>
           <dl className="mt-3 space-y-2">
-            <Metric label="File" value={summary.filePath} mono />
-            <Metric label="Size" value={formatBytes(summary.sizeBytes)} />
-            <Metric label="SHA-256" value={summary.sha256} mono />
+            <Metric label={t("File")} value={summary.filePath} mono />
+            <Metric label={t("Size")} value={t(formatBytes(summary.sizeBytes))} />
+            <Metric label={t("SHA-256")} value={summary.sha256} mono />
           </dl>
           <p className="mt-3 text-xs leading-5 text-muted-foreground">
-            Review the JSON before sharing it. The file remains on this device until you move or
-            delete it.
+            {t("Review the JSON before sharing it. The file remains on this device until you move or delete it.")}
           </p>
         </div>
       ) : null}
@@ -328,17 +329,17 @@ function formatBytes(value?: number) {
   return `${scaled.toFixed(1)} ${units[unitIndex]}`;
 }
 
-function modelStatusLabel(status: string) {
+function modelStatusLabel(status: string, t: Translator) {
   if (status === "configured") {
-    return "Configured";
+    return t("Configured");
   }
 
   if (status === "not_configured_normal_degradation") {
-    return "Not configured - normal degradation";
+    return t("Not configured - normal degradation");
   }
 
   if (status === "missing_default_chat_config") {
-    return "Missing default chat config";
+    return t("Missing default chat config");
   }
 
   return status;
