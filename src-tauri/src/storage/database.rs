@@ -232,7 +232,25 @@ mod migration_tests;
 
 #[cfg(test)]
 mod tests {
-    use super::Database;
+    use super::{Database, MIGRATOR};
+
+    #[test]
+    fn embeds_released_v1_migration_checksum() {
+        let migration = MIGRATOR
+            .iter()
+            .find(|migration| migration.version == 1)
+            .expect("migration 1 should be embedded");
+        let checksum = migration
+            .checksum
+            .iter()
+            .map(|byte| format!("{byte:02X}"))
+            .collect::<String>();
+
+        assert_eq!(
+            checksum,
+            "600E0AD7A91121BF11028D0CF6CA50D3A8055212F993484A67096D02676D114C395C5D226B53965049634576D9C9C5BE"
+        );
+    }
 
     #[tokio::test]
     async fn initializes_in_memory_database_with_core_tables() {

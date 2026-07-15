@@ -16,6 +16,8 @@
 - 不用大面积渐变、装饰性背景、浮夸 hero。
 - 不用可见说明文字解释功能；通过布局、状态和控件表达。
 - 所有异步区域必须有 loading、empty、failed、retry。
+- 固定 UI 文案必须支持中文和英文；用户生成内容及技术证据不翻译。
+- 界面必须同时支持浅色和深色设计令牌，状态色在两种模式下都要满足可读性。
 
 ## 3. Layout Components
 
@@ -26,7 +28,8 @@
 | `MainToolbar` | add/search/evaluation actions | container props | icon buttons with tooltip |
 | `ThreePaneLayout` | sidebar/list/detail structure | ui store | stable dimensions |
 | `SettingsRouteLayout` | TopBar/sidebar/settings-content structure | ui store | shares expanded/collapsed sidebar widths with `ThreePaneLayout`; route shell does not scroll |
-| `TopBar` | brand and omnibox for text search and URL capture | ui store + container props | brand slot keeps the expanded width and full `拾海 · Node Tide` label when Sidebar collapses; clear and capture states remain keyboard accessible |
+| `TopBar` | frameless title bar, brand, omnibox, preferences and window controls | ui store + container props + Tauri window API | deep drag region excludes interactive controls; brand remains visible when Sidebar collapses; minimize, maximize/restore and close remain keyboard accessible |
+| `WindowTitleBar` / `WindowControls` | shared frameless fallback title bar and native window actions | ui store locale + Tauri window API | used by loading and recovery paths; keeps drag and window actions available before the main shell mounts |
 | `ResizablePane` | pane resizing | ui store | persist only UI sizes |
 | `CommandPalette` | global search/actions | search hooks | keyboard-first |
 

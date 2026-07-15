@@ -1,8 +1,19 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useUiStore } from "../../store/uiStore";
 import { TopBar } from "./TopBar";
+
+const windowActions = vi.hoisted(() => ({
+  close: vi.fn().mockResolvedValue(undefined),
+  minimize: vi.fn().mockResolvedValue(undefined),
+  toggleMaximize: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => windowActions,
+}));
 
 const paneWidths = {
   sidebar: 248,
@@ -12,7 +23,8 @@ const paneWidths = {
 
 beforeEach(() => {
   window.localStorage.clear();
-  useUiStore.setState({ sidebarCollapsed: false, paneWidths });
+  vi.clearAllMocks();
+  useUiStore.setState({ locale: "en", theme: "dark", sidebarCollapsed: false, paneWidths });
 });
 
 describe("TopBar", () => {
@@ -75,5 +87,34 @@ describe("TopBar", () => {
     expect(onSearchValueChange).toHaveBeenLastCalledWith("");
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onCaptureSubmit).toHaveBeenCalledWith("https://example.com/article");
+  });
+
+  it("provides a deep drag region and routes custom window controls through Tauri", async () => {
+    render(
+      <TopBar
+        searchValue=""
+        onSearchValueChange={vi.fn()}
+        onClearSearch={vi.fn()}
+        captureLoading={false}
+        onCaptureSubmit={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("app-titlebar")).toHaveAttribute("data-tauri-drag-region", "deep");
+    expect(screen.getByPlaceholderText("Search or paste a URL to save...").parentElement).toHaveAttribute(
+      "data-tauri-drag-region",
+      "false",
+    );
+    expect(screen.getByRole("group", { name: "Window controls" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Minimize window" }));
+    fireEvent.click(screen.getByRole("button", { name: "Maximize or restore window" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close window" }));
+
+    await waitFor(() => {
+      expect(windowActions.minimize).toHaveBeenCalledOnce();
+      expect(windowActions.toggleMaximize).toHaveBeenCalledOnce();
+      expect(windowActions.close).toHaveBeenCalledOnce();
+    });
   });
 });

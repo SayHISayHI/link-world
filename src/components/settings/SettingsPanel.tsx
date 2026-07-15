@@ -13,6 +13,7 @@ import type {
 import { Button } from "../ui/button";
 import { DiagnosticsSettings } from "./DiagnosticsSettings";
 import { StorageSettings } from "./StorageSettings";
+import { useI18n } from "../../i18n";
 
 export type SettingsPanelName =
   | "models"
@@ -49,11 +50,12 @@ const emptyDraft: ModelProviderConfig = {
 };
 
 export function SettingsPanel({ panel, onPanelChange, onOpenObject }: SettingsPanelProps) {
+  const { t } = useI18n();
   return (
     <div data-testid="settings-panel" className="flex h-full min-h-0 min-w-0 bg-background">
       <aside className="w-52 shrink-0 border-r border-border bg-surface p-4">
-        <h1 className="px-2 text-base font-semibold">Settings</h1>
-        <nav className="mt-5 space-y-1" aria-label="Settings sections">
+        <h1 className="px-2 text-base font-semibold">{t("Settings")}</h1>
+        <nav className="mt-5 space-y-1" aria-label={t("Settings sections")}>
           {settingsSections.map((section) => (
             <Button
               key={section.id}
@@ -61,7 +63,7 @@ export function SettingsPanel({ panel, onPanelChange, onOpenObject }: SettingsPa
               className="w-full justify-start"
               onClick={() => onPanelChange(section.id)}
             >
-              {section.label}
+              {t(section.label)}
             </Button>
           ))}
         </nav>
@@ -85,6 +87,7 @@ export function SettingsPanel({ panel, onPanelChange, onOpenObject }: SettingsPa
 }
 
 function ModelSettings() {
+  const { t } = useI18n();
   const {
     configs,
     error,
@@ -168,8 +171,8 @@ function ModelSettings() {
     }
     const confirmed = window.confirm(
       selectedConfig?.isDefault
-        ? "Delete the default model config? AI analysis will stop until another default is selected."
-        : "Delete this model config?",
+        ? t("Delete the default model config? AI analysis will stop until another default is selected.")
+        : t("Delete this model config?"),
     );
     if (confirmed && (await deleteConfig(selectedId))) {
       startNewConfig();
@@ -180,26 +183,25 @@ function ModelSettings() {
     <div className="mx-auto max-w-6xl p-8">
       <div className="flex items-start justify-between gap-5">
         <div>
-          <h2 className="text-xl font-semibold">Model providers</h2>
+          <h2 className="text-xl font-semibold">{t("Model providers")}</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Configure reusable model connections here. Object pages use the selected default but
-            never expose or edit credentials.
+            {t("Configure reusable model connections here. Object pages use the selected default but never expose or edit credentials.")}
           </p>
         </div>
         <Button variant="secondary" onClick={startNewConfig}>
           <Plus className="h-4 w-4" aria-hidden="true" />
-          Add provider
+          {t("Add provider")}
         </Button>
       </div>
 
       <div className="mt-7 grid gap-6 lg:grid-cols-[300px_minmax(0,1fr)]">
         <section>
-          <h3 className="text-sm font-semibold">Configured providers</h3>
+          <h3 className="text-sm font-semibold">{t("Configured providers")}</h3>
           <div className="mt-3 space-y-2">
-            {loading ? <p className="text-sm text-muted-foreground">Loading providers...</p> : null}
+            {loading ? <p className="text-sm text-muted-foreground">{t("Loading providers...")}</p> : null}
             {!loading && configs.length === 0 ? (
               <div className="rounded-lg border border-dashed border-border p-5 text-sm text-muted-foreground">
-                No model provider configured.
+                {t("No model provider configured.")}
               </div>
             ) : null}
             {configs.map((config) => (
@@ -217,17 +219,17 @@ function ModelSettings() {
                 <div className="flex items-center justify-between gap-3">
                   <span className="font-medium">{config.provider}</span>
                   {config.isDefault ? (
-                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] text-emerald-800">
-                      Default
+                    <span className="rounded-full bg-emerald-100 dark:bg-emerald-950/50 px-2 py-0.5 text-[11px] text-emerald-800 dark:text-emerald-200">
+                      {t("Default")}
                     </span>
                   ) : null}
                 </div>
                 <p className="mt-1 truncate text-xs text-muted-foreground">
-                  {config.defaultChatModel ?? "No chat model"}
+                  {config.defaultChatModel ?? t("No chat model")}
                 </p>
                 <p className="mt-1 text-[11px] text-muted-foreground">
-                  {config.enabled ? "Enabled" : "Disabled"} /{" "}
-                  {config.hasApiKey ? "credential available" : "no credential"}
+                  {config.enabled ? t("Enabled") : t("Disabled")} /{" "}
+                  {config.hasApiKey ? t("credential available") : t("no credential")}
                 </p>
               </button>
             ))}
@@ -238,16 +240,16 @@ function ModelSettings() {
           <div className="flex items-center gap-2">
             <KeyRound className="h-4 w-4" aria-hidden="true" />
             <h3 className="text-sm font-semibold">
-              {selectedId ? "Edit provider" : "New provider"}
+              {selectedId ? t("Edit provider") : t("New provider")}
             </h3>
           </div>
           <div className="mt-5 grid gap-4 md:grid-cols-2">
-            <Field label="Provider">
+            <Field label={t("Provider")}>
               <input
                 className={inputClass}
                 value={draft.provider}
                 onChange={(event) => updateProvider(event.target.value)}
-                placeholder="openai, anthropic, ollama, or custom"
+                placeholder={t("openai, anthropic, ollama, or custom")}
                 list="settings-model-provider-suggestions"
               />
               <datalist id="settings-model-provider-suggestions">
@@ -256,7 +258,7 @@ function ModelSettings() {
                 ))}
               </datalist>
             </Field>
-            <Field label="API protocol">
+            <Field label={t("API protocol")}>
               <select
                 className={inputClass}
                 value={draft.apiFamily}
@@ -271,7 +273,7 @@ function ModelSettings() {
                 ))}
               </select>
             </Field>
-            <Field label="Chat base URL" wide>
+            <Field label={t("Chat base URL")} wide>
               <input
                 className={inputClass}
                 value={draft.chatBaseUrl ?? ""}
@@ -281,7 +283,7 @@ function ModelSettings() {
                 placeholder="https://api.openai.com/v1"
               />
             </Field>
-            <Field label="Chat model">
+            <Field label={t("Chat model")}>
               <input
                 className={inputClass}
                 value={draft.defaultChatModel ?? ""}
@@ -291,7 +293,7 @@ function ModelSettings() {
                 placeholder="gpt-4.1-mini"
               />
             </Field>
-            <Field label="API key">
+            <Field label={t("API key")}>
               <input
                 className={inputClass}
                 value={draft.apiKey ?? ""}
@@ -299,7 +301,7 @@ function ModelSettings() {
                   updateDraft({ apiKey: event.target.value })
                 }
                 placeholder={
-                  selectedConfig?.hasApiKey ? "Configured - leave blank to keep it" : "Optional for local providers"
+                  selectedConfig?.hasApiKey ? t("Configured - leave blank to keep it") : t("Optional for local providers")
                 }
                 type="password"
                 autoComplete="new-password"
@@ -315,19 +317,19 @@ function ModelSettings() {
                 updateDraft({ enabled: event.target.checked })
               }
             />
-            Enable this provider
+            {t("Enable this provider")}
           </label>
 
           <div className="mt-5 flex flex-wrap gap-2">
             <Button onClick={handleSave} disabled={mutating || testLoading}>
-              {mutating ? "Saving..." : "Save"}
+              {mutating ? t("Saving...") : t("Save")}
             </Button>
             <Button
               variant="secondary"
               onClick={() => void testConfig(normalizeDraft(draft))}
               disabled={mutating || testLoading}
             >
-              {testLoading ? "Testing..." : "Test connection"}
+              {testLoading ? t("Testing...") : t("Test connection")}
             </Button>
             {selectedId && !selectedConfig?.isDefault ? (
               <Button
@@ -336,34 +338,33 @@ function ModelSettings() {
                 disabled={mutating || !(draft.enabled ?? true)}
               >
                 <Check className="h-4 w-4" aria-hidden="true" />
-                Set as default
+                {t("Set as default")}
               </Button>
             ) : null}
             {selectedId ? (
               <Button variant="ghost" onClick={handleDelete} disabled={mutating}>
                 <Trash2 className="h-4 w-4" aria-hidden="true" />
-                Delete
+                {t("Delete")}
               </Button>
             ) : null}
           </div>
 
           {testResult ? (
-            <p className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
-              Connected to {testResult.provider} / {testResult.model} in {testResult.latencyMs} ms.
+            <p className="mt-4 rounded-md border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/30 p-3 text-sm text-emerald-800 dark:text-emerald-200">
+              {t("Connected to {provider} / {model} in {latency} ms.", { provider: testResult.provider, model: testResult.model, latency: testResult.latencyMs })}
             </p>
           ) : null}
           {error || testError ? (
-            <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-              <p className="font-medium">{(error ?? testError)?.title}</p>
-              <p className="mt-1">{(error ?? testError)?.message}</p>
+            <div className="mt-4 rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 p-3 text-sm text-red-800 dark:text-red-200">
+              <p className="font-medium">{t((error ?? testError)?.title ?? "Command failed")}</p>
+              <p className="mt-1">{t((error ?? testError)?.message ?? "")}</p>
             </div>
           ) : null}
 
           <div className="mt-6 flex gap-3 rounded-lg border border-border bg-background p-4 text-xs leading-5 text-muted-foreground">
             <Shield className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             <p>
-              API keys are stored in Windows Credential Manager. Database rows contain only an
-              opaque credential reference; saved keys are never returned to the UI.
+              {t("API keys are stored in Windows Credential Manager. Database rows contain only an opaque credential reference; saved keys are never returned to the UI.")}
             </p>
           </div>
         </section>
@@ -377,6 +378,7 @@ function SettingsBoundary({
 }: {
   panel: Exclude<SettingsPanelName, "models" | "storage" | "diagnostics">;
 }) {
+  const { t } = useI18n();
   const copy: Record<
     Exclude<SettingsPanelName, "models" | "storage" | "diagnostics">,
     [string, string]
@@ -393,10 +395,10 @@ function SettingsBoundary({
 
   return (
     <div className="mx-auto max-w-4xl p-8">
-      <h2 className="text-xl font-semibold">{title}</h2>
-      <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p>
+      <h2 className="text-xl font-semibold">{t(title)}</h2>
+      <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">{t(description)}</p>
       <div className="mt-6 rounded-lg border border-dashed border-border p-5 text-sm text-muted-foreground">
-        This section is intentionally bounded for the current milestone.
+        {t("This section is intentionally bounded for the current milestone.")}
       </div>
     </div>
   );

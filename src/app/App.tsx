@@ -1,11 +1,14 @@
 import { useEffect } from "react";
 import { useUiStore } from "../store/uiStore";
 import { AppShell } from "../components/layout/AppShell";
+import { WindowTitleBar } from "../components/layout/WindowTitleBar";
 import { StartupRecoveryScreen } from "../components/recovery/StartupRecoveryScreen";
 import { LibraryShellContainer } from "../containers/LibraryShellContainer";
 import { useStartupStatus } from "../hooks/commands/useStartupStatus";
+import { useI18n } from "../i18n";
 
 export function App() {
+  const { t } = useI18n();
   const { error, loading, loadStartupStatus, status } = useStartupStatus();
   const sidebarCollapsed = useUiStore((s) => s.sidebarCollapsed);
   const setSidebarCollapsed = useUiStore((s) => s.setSidebarCollapsed);
@@ -41,8 +44,11 @@ export function App() {
   if (loading && !error) {
     return (
       <AppShell>
-        <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
-          Starting Node Tide...
+        <div className="flex h-screen flex-col overflow-hidden bg-background">
+          <WindowTitleBar />
+          <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">
+            {t("Starting Node Tide...")}
+          </div>
         </div>
       </AppShell>
     );

@@ -3,6 +3,7 @@ import { Check, Inbox, Plus, Tag, X } from "lucide-react";
 import type { AppUiError } from "../../lib/errors";
 import type { NavigationItem, ObjectOrganization } from "../../types/api";
 import { Button } from "../ui/button";
+import { useI18n } from "../../i18n";
 
 interface OrganizationPanelProps {
   organization?: ObjectOrganization;
@@ -31,6 +32,7 @@ export function OrganizationPanel({
   onAcceptSuggestion,
   onRejectSuggestion,
 }: OrganizationPanelProps) {
+  const { t } = useI18n();
   const [tagName, setTagName] = useState("");
   const selectedCollections = new Set(
     organization?.collections.map((collection) => collection.id) ?? [],
@@ -47,39 +49,39 @@ export function OrganizationPanel({
   return (
     <section className="mt-4 border-t border-border pt-4">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold">Organization</h3>
+        <h3 className="text-sm font-semibold">{t("Organization")}</h3>
         {organization ? (
           <Button
             variant="ghost"
             className="h-8 px-2 text-xs"
             disabled={mutationLoading}
             onClick={() => onMarkFiled(organization.triageStatus !== "filed")}
-            title={organization.triageStatus === "filed" ? "Move back to Inbox" : "Mark as filed"}
+            title={organization.triageStatus === "filed" ? t("Move back to Inbox") : t("Mark as filed")}
           >
             {organization.triageStatus === "filed" ? (
               <Inbox className="h-4 w-4" aria-hidden="true" />
             ) : (
               <Check className="h-4 w-4" aria-hidden="true" />
             )}
-            {organization.triageStatus === "filed" ? "Inbox" : "File"}
+            {organization.triageStatus === "filed" ? t("Inbox") : t("File")}
           </Button>
         ) : null}
       </div>
 
       {loading && !organization ? (
-        <p className="mt-3 text-xs text-muted-foreground">Loading organization...</p>
+        <p className="mt-3 text-xs text-muted-foreground">{t("Loading organization...")}</p>
       ) : null}
       {error ? (
-        <div className="mt-3 border-l-2 border-red-400 pl-2 text-xs text-red-700">
-          <p className="font-medium">Organization update failed</p>
-          <p className="mt-1">{error.message}</p>
+        <div className="mt-3 border-l-2 border-red-400 pl-2 text-xs text-red-700 dark:text-red-300">
+          <p className="font-medium">{t("Organization update failed")}</p>
+          <p className="mt-1">{t(error.message)}</p>
         </div>
       ) : null}
 
       {organization ? (
         <div className="mt-3 space-y-4 text-xs">
           <div>
-            <p className="font-medium text-foreground">Collections</p>
+            <p className="font-medium text-foreground">{t("Collections")}</p>
             {collections.length ? (
               <div className="mt-2 max-h-32 space-y-1 overflow-y-auto">
                 {collections.map((collection) => {
@@ -102,12 +104,12 @@ export function OrganizationPanel({
                 })}
               </div>
             ) : (
-              <p className="mt-1 text-muted-foreground">Create a collection from the sidebar.</p>
+              <p className="mt-1 text-muted-foreground">{t("Create a collection from the sidebar.")}</p>
             )}
           </div>
 
           <div>
-            <p className="font-medium text-foreground">Topics</p>
+            <p className="font-medium text-foreground">{t("Topics")}</p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {organization.tags.map((tag) => (
                 <span
@@ -120,16 +122,16 @@ export function OrganizationPanel({
                     type="button"
                     disabled={mutationLoading}
                     onClick={() => onRemoveTag(tag.id)}
-                    className="ml-0.5 text-muted-foreground hover:text-red-700"
-                    title={`Remove ${tag.name}`}
-                    aria-label={`Remove ${tag.name}`}
+                    className="ml-0.5 text-muted-foreground hover:text-red-700 dark:hover:text-red-300"
+                    title={t("Remove {name}", { name: tag.name })}
+                    aria-label={t("Remove {name}", { name: tag.name })}
                   >
                     <X className="h-3 w-3" aria-hidden="true" />
                   </button>
                 </span>
               ))}
               {organization.tags.length === 0 ? (
-                <span className="text-muted-foreground">No accepted topics</span>
+                <span className="text-muted-foreground">{t("No accepted topics")}</span>
               ) : null}
             </div>
             <form className="mt-2 flex gap-1" onSubmit={submitTag}>
@@ -138,15 +140,15 @@ export function OrganizationPanel({
                 maxLength={80}
                 onChange={(event) => setTagName(event.target.value)}
                 className="h-8 min-w-0 flex-1 rounded-sm border border-border bg-surface px-2 outline-none focus:border-accent"
-                placeholder="Add topic"
-                aria-label="Add topic"
+                placeholder={t("Add topic")}
+                aria-label={t("Add topic")}
               />
               <button
                 type="submit"
                 disabled={mutationLoading || !tagName.trim()}
                 className="flex h-8 w-8 items-center justify-center rounded-sm border border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
-                title="Add topic"
-                aria-label="Add topic"
+                title={t("Add topic")}
+                aria-label={t("Add topic")}
               >
                 <Plus className="h-4 w-4" aria-hidden="true" />
               </button>
@@ -155,7 +157,7 @@ export function OrganizationPanel({
 
           {organization.tagSuggestions.length ? (
             <div>
-              <p className="font-medium text-foreground">AI suggestions</p>
+              <p className="font-medium text-foreground">{t("AI suggestions")}</p>
               <div className="mt-2 space-y-2">
                 {organization.tagSuggestions.map((suggestion) => (
                   <div key={suggestion.id} className="border-l-2 border-violet-300 pl-2">
@@ -173,8 +175,8 @@ export function OrganizationPanel({
                         disabled={mutationLoading}
                         onClick={() => onAcceptSuggestion(suggestion.id)}
                         className="text-accent hover:text-foreground"
-                        title={`Accept ${suggestion.name}`}
-                        aria-label={`Accept ${suggestion.name}`}
+                        title={t("Accept {name}", { name: suggestion.name })}
+                        aria-label={t("Accept {name}", { name: suggestion.name })}
                       >
                         <Check className="h-4 w-4" aria-hidden="true" />
                       </button>
@@ -182,9 +184,9 @@ export function OrganizationPanel({
                         type="button"
                         disabled={mutationLoading}
                         onClick={() => onRejectSuggestion(suggestion.id)}
-                        className="text-muted-foreground hover:text-red-700"
-                        title={`Reject ${suggestion.name}`}
-                        aria-label={`Reject ${suggestion.name}`}
+                        className="text-muted-foreground hover:text-red-700 dark:hover:text-red-300"
+                        title={t("Reject {name}", { name: suggestion.name })}
+                        aria-label={t("Reject {name}", { name: suggestion.name })}
                       >
                         <X className="h-4 w-4" aria-hidden="true" />
                       </button>

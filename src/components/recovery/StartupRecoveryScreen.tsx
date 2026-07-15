@@ -2,93 +2,99 @@ import { AlertTriangle, RefreshCw, ShieldCheck } from "lucide-react";
 import { useRestartApp } from "../../hooks/commands/useRestartApp";
 import type { StartupIssue, StartupStatus } from "../../types/api";
 import { AppShell } from "../layout/AppShell";
+import { WindowTitleBar } from "../layout/WindowTitleBar";
 import { StorageSettings } from "../settings/StorageSettings";
 import { Button } from "../ui/button";
+import { useI18n, type Translator } from "../../i18n";
 
 interface StartupRecoveryScreenProps {
   status: StartupStatus;
 }
 
 export function StartupRecoveryScreen({ status }: StartupRecoveryScreenProps) {
+  const { t } = useI18n();
   const issue = status.issue;
   const { error, loading, restartApp } = useRestartApp();
 
   return (
     <AppShell>
-      <div className="min-h-screen bg-background">
-        <section className="border-b border-border bg-surface">
-          <div className="mx-auto max-w-5xl px-8 py-7">
-            <div className="flex items-start justify-between gap-5">
-              <div className="flex gap-4">
-                <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-800">
-                  <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+      <div className="flex h-screen flex-col overflow-hidden bg-background">
+        <WindowTitleBar />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <section className="border-b border-border bg-surface">
+            <div className="mx-auto max-w-5xl px-8 py-7">
+              <div className="flex items-start justify-between gap-5">
+                <div className="flex gap-4">
+                  <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-200">
+                    <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                      {t("Restricted startup recovery")}
+                    </p>
+                    <h1 className="mt-1 text-2xl font-semibold">
+                      {t("Node Tide could not open the normal library safely.")}
+                    </h1>
+                    <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
+                      {issue?.message ??
+                        t("Startup failed before the library database and background services were opened.")}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-amber-700">
-                    Restricted startup recovery
-                  </p>
-                  <h1 className="mt-1 text-2xl font-semibold">
-                    Node Tide could not open the normal library safely.
-                  </h1>
-                  <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
-                    {issue?.message ??
-                      "Startup failed before the library database and background services were opened."}
-                  </p>
-                </div>
+                <Button
+                  variant="secondary"
+                  onClick={() => void restartApp()}
+                  disabled={loading}
+                >
+                  <RefreshCw
+                    className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"}
+                    aria-hidden="true"
+                  />
+                  {loading ? t("Restarting...") : t("Restart and retry")}
+                </Button>
               </div>
-              <Button
-                variant="secondary"
-                onClick={() => void restartApp()}
-                disabled={loading}
-              >
-                <RefreshCw
-                  className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"}
-                  aria-hidden="true"
-                />
-                {loading ? "Restarting..." : "Restart and retry"}
-              </Button>
+
+              {issue ? <RecoveryIssueCard issue={issue} /> : null}
+              {error ? (
+                <div className="mt-4 rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 p-3 text-sm text-red-800 dark:text-red-200">
+                  <p className="font-medium">{t(error.title)}</p>
+                  <p className="mt-1">{t(error.message)}</p>
+                </div>
+              ) : null}
             </div>
+          </section>
 
-            {issue ? <RecoveryIssueCard issue={issue} /> : null}
-            {error ? (
-              <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-                <p className="font-medium">{error.title}</p>
-                <p className="mt-1">{error.message}</p>
-              </div>
-            ) : null}
-          </div>
-        </section>
-
-        <StorageSettings mode="startupRecovery" startupIssue={issue} />
+          <StorageSettings mode="startupRecovery" startupIssue={issue} />
+        </div>
       </div>
     </AppShell>
   );
 }
 
 function RecoveryIssueCard({ issue }: { issue: StartupIssue }) {
+  const { t } = useI18n();
   return (
     <div
       className="mt-5 grid gap-3 rounded-lg border border-border bg-background p-4 text-xs leading-5 text-muted-foreground md:grid-cols-3"
       role="alert"
     >
       <div>
-        <p className="font-medium text-foreground">Failure kind</p>
-        <p className="mt-1">{recoveryKindLabel(issue.recoveryKind)}</p>
+        <p className="font-medium text-foreground">{t("Failure kind")}</p>
+        <p className="mt-1">{recoveryKindLabel(issue.recoveryKind, t)}</p>
       </div>
       <div>
-        <p className="font-medium text-foreground">Error code</p>
+        <p className="font-medium text-foreground">{t("Error code")}</p>
         <p className="mt-1">{issue.code}</p>
       </div>
       <div>
-        <p className="font-medium text-foreground">Safe restore point</p>
-        <p className="mt-1">{issue.verifiedBackupId ?? "Not available from startup guard"}</p>
+        <p className="font-medium text-foreground">{t("Safe restore point")}</p>
+        <p className="mt-1">{issue.verifiedBackupId ?? t("Not available from startup guard")}</p>
       </div>
       {issue.migration ? (
-        <div className="flex gap-2 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-emerald-900 md:col-span-3">
+        <div className="flex gap-2 rounded-md border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/30 p-3 text-emerald-900 dark:text-emerald-200 md:col-span-3">
           <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <p>
-            Migration guard phase {issue.migration.phase}; target schema version{" "}
-            {issue.migration.targetVersion}. The guard exposes only restore-point metadata.
+            {t("Migration guard phase {phase}; target schema version {version}. The guard exposes only restore-point metadata.", { phase: issue.migration.phase, version: issue.migration.targetVersion })}
           </p>
         </div>
       ) : null}
@@ -96,17 +102,17 @@ function RecoveryIssueCard({ issue }: { issue: StartupIssue }) {
   );
 }
 
-function recoveryKindLabel(kind: StartupIssue["recoveryKind"]) {
+function recoveryKindLabel(kind: StartupIssue["recoveryKind"], t: Translator) {
   switch (kind) {
     case "database_migration":
-      return "Database migration";
+      return t("Database migration");
     case "restore":
-      return "Restore transaction";
+      return t("Restore transaction");
     case "database":
-      return "Database open";
+      return t("Database open");
     case "storage":
-      return "Local storage";
+      return t("Local storage");
     default:
-      return "Unknown startup failure";
+      return t("Unknown startup failure");
   }
 }

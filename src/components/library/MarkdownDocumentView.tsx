@@ -24,6 +24,7 @@ import {
   nodeTideRemarkPlugins,
   type NodeTideCalloutKind,
 } from "./markdownPlugins";
+import { useI18n } from "../../i18n";
 
 interface MarkdownDocumentViewProps {
   documentId: string;
@@ -36,11 +37,11 @@ interface MarkdownDocumentViewProps {
 const DEFAULT_RENDER_POLICY = getDocumentRenderPolicy("article");
 const DocumentRenderContext = createContext<DocumentRenderPolicy>(DEFAULT_RENDER_POLICY);
 const CALLOUT_STYLES: Record<NodeTideCalloutKind, { label: string; className: string }> = {
-  note: { label: "Note", className: "border-blue-500 bg-blue-50 text-blue-950" },
-  tip: { label: "Tip", className: "border-emerald-500 bg-emerald-50 text-emerald-950" },
-  important: { label: "Important", className: "border-violet-500 bg-violet-50 text-violet-950" },
-  warning: { label: "Warning", className: "border-amber-500 bg-amber-50 text-amber-950" },
-  caution: { label: "Caution", className: "border-red-500 bg-red-50 text-red-950" },
+  note: { label: "Note", className: "border-blue-500 bg-blue-50 dark:bg-blue-950/30 text-blue-950 dark:text-blue-100" },
+  tip: { label: "Tip", className: "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-950 dark:text-emerald-100" },
+  important: { label: "Important", className: "border-violet-500 bg-violet-50 dark:bg-violet-950/30 text-violet-950 dark:text-violet-100" },
+  warning: { label: "Warning", className: "border-amber-500 bg-amber-50 dark:bg-amber-950/30 text-amber-950 dark:text-amber-100" },
+  caution: { label: "Caution", className: "border-red-500 bg-red-50 dark:bg-red-950/30 text-red-950 dark:text-red-100" },
 };
 const TOC_INDENT: Record<DocumentTocItem["depth"], string> = {
   2: "pl-0",
@@ -57,6 +58,7 @@ function Heading({
   id?: string;
   children: ReactNode;
 }) {
+  const { t } = useI18n();
   const Tag = `h${level}` as const;
   const sizeClass = {
     1: "mt-8 text-2xl",
@@ -71,7 +73,7 @@ function Heading({
       {id ? (
         <a
           href={`#${id}`}
-          aria-label="Copy link to this section"
+          aria-label={t("Copy link to this section")}
           className="ml-2 inline-flex align-middle text-muted-foreground opacity-0 transition-opacity hover:text-accent group-hover:opacity-100 focus:opacity-100"
         >
           <LinkIcon className="h-3.5 w-3.5" aria-hidden="true" />
@@ -82,6 +84,7 @@ function Heading({
 }
 
 function CodeBlock({ children }: { children: ReactNode }) {
+  const { t } = useI18n();
   const policy = useContext(DocumentRenderContext);
   const code = extractReactText(children).replace(/\n$/, "");
   const isLong = code.split("\n").length > 40;
@@ -102,7 +105,7 @@ function CodeBlock({ children }: { children: ReactNode }) {
             onClick={() => setExpanded((value) => !value)}
             aria-expanded={expanded}
           >
-            {expanded ? "Collapse" : `Expand ${code.split("\n").length} lines`}
+            {expanded ? t("Collapse") : t("Expand {count} lines", { count: code.split("\n").length })}
           </button>
         ) : null}
         <button
@@ -111,7 +114,7 @@ function CodeBlock({ children }: { children: ReactNode }) {
           onClick={handleCopy}
         >
           {copyState === "copied" ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <Clipboard className="h-3.5 w-3.5" aria-hidden="true" />}
-          {copyState === "copied" ? "Copied" : copyState === "error" ? "Copy failed" : "Copy"}
+          {copyState === "copied" ? t("Copied") : copyState === "error" ? t("Copy failed") : t("Copy")}
         </button>
       </div>
       <div className={cn("relative", !expanded && "max-h-80 overflow-hidden")}>
@@ -123,6 +126,7 @@ function CodeBlock({ children }: { children: ReactNode }) {
 }
 
 function Callout({ node, children }: ComponentPropsWithoutRef<"blockquote"> & ExtraProps) {
+  const { t } = useI18n();
   const property = node?.properties?.["data-lw-callout"];
   const kind = typeof property === "string" && property in CALLOUT_STYLES ? (property as NodeTideCalloutKind) : undefined;
 
@@ -137,7 +141,7 @@ function Callout({ node, children }: ComponentPropsWithoutRef<"blockquote"> & Ex
   const style = CALLOUT_STYLES[kind];
   return (
     <aside data-callout-kind={kind} className={cn("my-5 rounded-r-md border-l-4 px-4 py-3", style.className)}>
-      <p className="mb-1 text-xs font-semibold uppercase tracking-wide">{style.label}</p>
+      <p className="mb-1 text-xs font-semibold uppercase tracking-wide">{t(style.label)}</p>
       {children}
     </aside>
   );
@@ -158,13 +162,14 @@ function MarkdownTable({ children }: { children?: ReactNode }) {
 }
 
 function DocumentToc({ items, defaultOpen }: { items: DocumentTocItem[]; defaultOpen: boolean }) {
+  const { t } = useI18n();
   return (
     <details className="mb-6 rounded-lg border border-border bg-muted/40 p-4" open={defaultOpen}>
       <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-semibold">
-        On this page
+        {t("On this page")}
         <ChevronDown className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
       </summary>
-      <nav aria-label="Table of contents" className="mt-3 border-t border-border pt-3">
+      <nav aria-label={t("Table of contents")} className="mt-3 border-t border-border pt-3">
         <ol className="space-y-1.5 text-sm text-muted-foreground">
           {items.map((item) => (
             <li key={item.id} className={TOC_INDENT[item.depth]}>
@@ -233,6 +238,7 @@ export const MarkdownDocumentView = memo(function MarkdownDocumentView({
   sourceUrl,
   displayHints,
 }: MarkdownDocumentViewProps) {
+  const { t } = useI18n();
   const markdownContent = markdown?.trim();
   const content = markdownContent || text.trim();
   const summary = useMemo(() => analyzeMarkdownDocument(markdownContent ?? ""), [markdownContent]);
@@ -249,11 +255,11 @@ export const MarkdownDocumentView = memo(function MarkdownDocumentView({
       <div className="document-markdown mt-4 min-w-0 text-foreground" data-document-id={documentId} data-display-mode={policy.mode}>
         {resolution.aiApplied ? (
           <div
-            className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-800"
+            className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-violet-200 dark:border-violet-900 bg-violet-50 dark:bg-violet-950/30 px-2.5 py-1 text-xs font-medium text-violet-800 dark:text-violet-200"
             title={displayHints?.reason}
           >
             <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-            AI layout · {displayModeLabel(policy.mode)}
+            {t("AI layout")} · {t(displayModeLabel(policy.mode))}
           </div>
         ) : null}
         {summary.toc.length >= 3 ? <DocumentToc items={summary.toc} defaultOpen={policy.tocExpanded} /> : null}

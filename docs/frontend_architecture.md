@@ -80,7 +80,10 @@ Rules:
 - active modal。
 - command palette open。
 - detail panel width。
-- theme。
+- locale（`en` / `zh-CN`）。
+- theme（`light` / `dark`）。
+
+语言与主题偏好沿用现有 `link-world-ui` 持久化键；首次运行跟随系统语言与系统配色，用户切换后以持久化值为准。`AppProviders` 负责同步 `<html lang>`、主题 class、`data-theme` 与 `color-scheme`。所有固定 UI 文案通过 `src/i18n` 翻译，用户内容、路径、哈希、模型名和未知后端诊断值必须原样显示。
 
 不得放入：
 
@@ -237,6 +240,8 @@ Rules:
 - `Inbox` 只读取 `triage_status`，不能从 lifecycle 推断；AI enrich 不得自动改变 route 或 triage。
 - Settings 是与 Library 同级的正式 route；凭据表单不得嵌入对象详情。
 - `SettingsRouteLayout` 与 `ThreePaneLayout` 必须共享同一个折叠侧栏宽度；TopBar 品牌区保持展开宽度，侧栏折叠时仍显示完整 `拾海 · Node Tide` 品牌名。
+- Windows 主窗口使用 `decorations: false` 的自绘标题栏；TopBar 的非交互区域必须声明 Tauri drag region，搜索、偏好和窗口控制不得触发拖拽，窗口 API 仅授予最小 capability。
+- 启动加载与受限恢复界面必须复用 `WindowTitleBar` / `WindowControls`；关闭原生 decorations 后，任何启动分支都不得丢失拖动、最小化、最大化/还原和关闭入口。
 - `SettingsPanel` 填满 TopBar 下方的剩余高度，只有内部 main 区域允许纵向滚动；不得在 route shell 内再次使用 viewport height。
 
 ## 6. Container and Presentational Components

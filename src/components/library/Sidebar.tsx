@@ -21,6 +21,7 @@ import type { AppRoute } from "../../app/routes";
 import type { AppUiError } from "../../lib/errors";
 import type { LibraryNavigation, LibraryViewRef, NavigationItem } from "../../types/api";
 import { Button } from "../ui/button";
+import { useI18n } from "../../i18n";
 
 interface SidebarProps {
   route: AppRoute;
@@ -56,6 +57,7 @@ export function Sidebar({
   onRenameCollection,
   onArchiveCollection,
 }: SidebarProps) {
+  const { t } = useI18n();
   const sidebarCollapsed = useUiStore((s) => s.sidebarCollapsed);
   const setSidebarCollapsed = useUiStore((s) => s.setSidebarCollapsed);
   const [creating, setCreating] = useState(false);
@@ -74,7 +76,7 @@ export function Sidebar({
   return (
     <div className={`flex h-full flex-col py-3 ${sidebarCollapsed ? "overflow-hidden px-0" : "overflow-y-auto px-3"}`}>
 
-      <nav className={`mt-2 space-y-5 ${sidebarCollapsed ? "w-full" : ""}`} aria-label="Knowledge library">
+      <nav className={`mt-2 space-y-5 ${sidebarCollapsed ? "w-full" : ""}`} aria-label={t("Knowledge library")}>
         <NavigationSection
           label="Library"
           items={navigation?.systemViews ?? []}
@@ -87,13 +89,13 @@ export function Sidebar({
         <section>
           {!sidebarCollapsed && (
             <div className="flex h-7 items-center justify-between px-2">
-              <h2 className="text-[11px] font-semibold uppercase text-muted-foreground">Collections</h2>
+              <h2 className="text-[11px] font-semibold uppercase text-muted-foreground">{t("Collections")}</h2>
               <button
                 type="button"
                 className="flex h-6 w-6 items-center justify-end rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
                 onClick={() => setCreating(true)}
-                title="New collection"
-                aria-label="New collection"
+                title={t("New collection")}
+                aria-label={t("New collection")}
               >
                 <Plus className="h-3.5 w-3.5 translate-x-[3px]" aria-hidden="true" />
               </button>
@@ -113,15 +115,15 @@ export function Sidebar({
                 maxLength={80}
                 onChange={(event) => setCollectionName(event.target.value)}
                 className="h-8 min-w-0 flex-1 rounded-sm border border-border bg-surface px-2 text-xs outline-none focus:border-accent"
-                placeholder="Collection name"
-                aria-label="Collection name"
+                placeholder={t("Collection name")}
+                aria-label={t("Collection name")}
               />
               <button
                 type="submit"
                 disabled={mutationLoading || !collectionName.trim()}
                 className="flex h-8 w-8 items-center justify-center rounded-sm text-accent hover:bg-muted disabled:opacity-40"
-                title="Create collection"
-                aria-label="Create collection"
+                title={t("Create collection")}
+                aria-label={t("Create collection")}
               >
                 <Check className="h-4 w-4" aria-hidden="true" />
               </button>
@@ -132,8 +134,8 @@ export function Sidebar({
                   setCreating(false);
                   setCollectionName("");
                 }}
-                title="Cancel"
-                aria-label="Cancel new collection"
+                title={t("Cancel")}
+                aria-label={t("Cancel new collection")}
               >
                 <X className="h-4 w-4" aria-hidden="true" />
               </button>
@@ -153,20 +155,20 @@ export function Sidebar({
                     event.stopPropagation();
                     onRenameCollection(item);
                   }}
-                  title={`Rename ${item.label}`}
-                  aria-label={`Rename ${item.label}`}
+                  title={t("Rename {name}", { name: item.label })}
+                  aria-label={t("Rename {name}", { name: item.label })}
                 >
                   <Pencil className="h-3 w-3" aria-hidden="true" />
                 </button>
                 <button
                   type="button"
-                  className="flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-red-50 hover:text-red-700"
+                  className="flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-700 dark:hover:text-red-300"
                   onClick={(event) => {
                     event.stopPropagation();
                     onArchiveCollection(item);
                   }}
-                  title={`Archive ${item.label}`}
-                  aria-label={`Archive ${item.label}`}
+                  title={t("Archive {name}", { name: item.label })}
+                  aria-label={t("Archive {name}", { name: item.label })}
                 >
                   <Trash2 className="h-3 w-3" aria-hidden="true" />
                 </button>
@@ -193,9 +195,9 @@ export function Sidebar({
       </nav>
 
       {error && !sidebarCollapsed ? (
-        <div className="mt-4 border-l-2 border-red-400 px-2 text-xs text-red-700">
-          <p className="font-medium">Navigation unavailable</p>
-          <p className="mt-1">{error.message}</p>
+        <div className="mt-4 border-l-2 border-red-400 px-2 text-xs text-red-700 dark:text-red-300">
+          <p className="font-medium">{t("Navigation unavailable")}</p>
+          <p className="mt-1">{t(error.message)}</p>
         </div>
       ) : null}
 
@@ -204,16 +206,16 @@ export function Sidebar({
           variant={route.name === "settings" ? "secondary" : "ghost"}
           className={sidebarCollapsed ? "h-9 w-9 mx-auto justify-center px-0" : "flex-1 h-9 justify-start"}
           onClick={() => onNavigate({ name: "settings", panel: "models" })}
-          title="Settings"
+          title={t("Settings")}
         >
           <Settings className="h-4 w-4 shrink-0" aria-hidden="true" />
-          {!sidebarCollapsed && <span className="truncate">Settings</span>}
+          {!sidebarCollapsed && <span className="truncate">{t("Settings")}</span>}
         </Button>
         <Button
           variant="ghost"
           className={sidebarCollapsed ? "h-9 w-9 mx-auto justify-center px-0" : "shrink-0 w-9 h-9 px-0"}
           onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          title={sidebarCollapsed ? "Expand sidebar (Ctrl+B)" : "Collapse sidebar (Ctrl+B)"}
+          title={sidebarCollapsed ? t("Expand sidebar (Ctrl+B)") : t("Collapse sidebar (Ctrl+B)")}
         >
           {sidebarCollapsed ? (
             <PanelLeftOpen className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -243,18 +245,19 @@ function NavigationSection({
   onSelect: (view: LibraryViewRef) => void;
   onAdd?: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <section>
       {!collapsed && (
         <div className="flex h-7 items-center justify-between px-2">
-          <h2 className="text-[11px] font-semibold uppercase text-muted-foreground">{label}</h2>
+          <h2 className="text-[11px] font-semibold uppercase text-muted-foreground">{t(label)}</h2>
           {onAdd ? (
             <button
               type="button"
               className="flex h-6 w-6 items-center justify-end rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
               onClick={onAdd}
-              title={"New " + label.toLowerCase().replace(/s$/, "")}
-              aria-label={"New " + label.toLowerCase().replace(/s$/, "")}
+              title={t("New " + label.toLowerCase().replace(/s$/, ""))}
+              aria-label={t("New " + label.toLowerCase().replace(/s$/, ""))}
             >
               <Plus className="h-3.5 w-3.5 translate-x-[3px]" aria-hidden="true" />
             </button>
@@ -291,6 +294,7 @@ function NavigationItems({
   onSelect: (view: LibraryViewRef) => void;
   renderActions?: (item: NavigationItem) => React.ReactNode;
 }) {
+  const { t } = useI18n();
   return (
     <div className="space-y-0.5">
       {items.map((item) => {
@@ -309,12 +313,12 @@ function NavigationItems({
               }`}
               onClick={() => onSelect({ kind: item.kind, id: item.id })}
               aria-current={active ? "page" : undefined}
-              title={collapsed ? item.label : undefined}
+              title={collapsed ? t(item.label) : undefined}
             >
               <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
               {!collapsed && (
                 <>
-                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                  <span className="min-w-0 flex-1 truncate">{t(item.label)}</span>
                   <span
                     className={`w-6 text-right font-mono text-[11px] tracking-tight text-muted-foreground ${
                       renderActions ? "group-hover:opacity-0 group-focus-within:opacity-0" : ""

@@ -31,6 +31,7 @@ import {
   type CaptureJobCompletedPayload,
 } from "../lib/libraryEvents";
 import type { AppUiError } from "../lib/errors";
+import { useI18n, type Translator } from "../i18n";
 import { useLibraryStore } from "../store/libraryStore";
 import { useSearchStore } from "../store/searchStore";
 import { useUiStore } from "../store/uiStore";
@@ -47,6 +48,7 @@ import type {
 const LIBRARY_PAGE_SIZE = 30;
 
 export function LibraryShellContainer() {
+  const { t } = useI18n();
   const route = useUiStore((s) => s.route);
   const setRoute = useUiStore((s) => s.setRoute);
   const [lastCaptureJob, setLastCaptureJob] = useState<CaptureJobCompletedPayload>();
@@ -336,6 +338,7 @@ export function LibraryShellContainer() {
     resetObjectJobs,
     selectedObjectId,
     setSelectedDetail,
+    t,
   ]);
 
   useEffect(() => {
@@ -383,7 +386,7 @@ export function LibraryShellContainer() {
       return;
     }
 
-    const confirmed = window.confirm("Delete this item from the local library?");
+    const confirmed = window.confirm(t("Delete this item from the local library?"));
     if (!confirmed) {
       return;
     }
@@ -412,6 +415,7 @@ export function LibraryShellContainer() {
     selectedObjectId,
     setObjects,
     setSelectedDetail,
+    t,
   ]);
 
   const handleRetryCapture = useCallback(async () => {
@@ -593,7 +597,7 @@ export function LibraryShellContainer() {
   );
 
   const handleCreateSmartView = useCallback(async () => {
-    const name = window.prompt("Name this smart view")?.trim();
+    const name = window.prompt(t("Name this smart view"))?.trim();
     if (!name) {
       return;
     }
@@ -609,10 +613,10 @@ export function LibraryShellContainer() {
     if (created) {
       await loadNavigation();
     }
-  }, [libraryQuery.filters, loadNavigation, organizationMutations]);
+  }, [libraryQuery.filters, loadNavigation, organizationMutations, t]);
   const handleRenameCollection = useCallback(
     async (item: NavigationItem) => {
-      const nextName = window.prompt("Rename collection", item.label)?.trim();
+      const nextName = window.prompt(t("Rename collection"), item.label)?.trim();
       if (!nextName || nextName === item.label || item.revision === undefined) {
         return;
       }
@@ -625,12 +629,12 @@ export function LibraryShellContainer() {
         await loadNavigation();
       }
     },
-    [loadNavigation, organizationMutations],
+    [loadNavigation, organizationMutations, t],
   );
 
   const handleArchiveCollection = useCallback(
     async (item: NavigationItem) => {
-      if (!window.confirm("Archive " + item.label + "? Saved items will remain in the library.")) {
+      if (!window.confirm(t("Archive {name}? Saved items will remain in the library.", { name: item.label }))) {
         return;
       }
       const archived = await organizationMutations.archiveCollection(item.id);
@@ -642,7 +646,7 @@ export function LibraryShellContainer() {
       }
       await loadNavigation();
     },
-    [loadNavigation, organizationMutations, route, setRoute],
+    [loadNavigation, organizationMutations, route, setRoute, t],
   );
 
   const handleMarkFiled = useCallback(
@@ -756,7 +760,7 @@ export function LibraryShellContainer() {
           <ObjectList
             onOpenModelSettings={() => setRoute({ name: "settings", panel: "models" })}
             objects={objects}
-            heading={libraryHeading(route, navigation)}
+            heading={libraryHeading(route, navigation, t)}
             hasMore={Boolean(nextCursor)}
             selectedObjectId={selectedObjectId}
             loading={libraryObjectsLoading}
@@ -772,6 +776,7 @@ export function LibraryShellContainer() {
               searchMaintenanceMode,
               rebuildSearchIndexResult,
               searchIndexHealth,
+              t,
             )}
             searchRebuildStatus={rebuildSearchIndexResult}
             onCancelSearchIndexRebuild={handleCancelSearchIndexRebuild}
@@ -801,7 +806,7 @@ export function LibraryShellContainer() {
             aiError={triggerAIError ?? aiRunFailureToError(aiRunResult)}
             searchIndexLoading={reindexObjectLoading}
             searchIndexError={reindexObjectError}
-            searchIndexMessage={reindexStatusMessage(reindexObjectResult, selectedObjectId)}
+            searchIndexMessage={reindexStatusMessage(reindexObjectResult, selectedObjectId, t)}
             evaluationLoading={triggerEvaluationLoading || retryEvaluationLoading}
             evaluationError={triggerEvaluationError ?? retryEvaluationError}
             organization={objectOrganization}
@@ -833,10 +838,11 @@ export function LibraryShellContainer() {
 
 function libraryHeading(
   route: ReturnType<typeof useUiStore.getState>["route"],
-  navigation?: LibraryNavigation,
+  navigation: LibraryNavigation | undefined,
+  t: Translator,
 ) {
   if (route.name !== "library") {
-    return "All";
+    return t("All");
   }
   const view = route.view ?? allLibraryView;
   const items = [
@@ -845,23 +851,25 @@ function libraryHeading(
     ...(navigation?.topics ?? []),
     ...(navigation?.smartViews ?? []),
   ];
-  return items.find((item) => item.kind === view.kind && item.id === view.id)?.label ?? "Library";
+  return t(items.find((item) => item.kind === view.kind && item.id === view.id)?.label ?? "Library");
 }
 function reindexStatusMessage(
   result: { objectId: string; indexed: boolean } | undefined,
-  selectedObjectId?: string,
+  selectedObjectId: string | undefined,
+  t: Translator,
 ) {
   if (!result || result.objectId !== selectedObjectId) {
     return undefined;
   }
 
-  return result.indexed ? "Search index updated." : "No parsed document available for indexing.";
+  return result.indexed ? t("Search index updated.") : t("No parsed document available for indexing.");
 }
 
 function searchMaintenanceMessage(
   mode: "check" | "rebuild" | undefined,
-  rebuildResult?: RebuildSearchIndexResponse,
-  health?: SearchIndexHealthResponse,
+  rebuildResult: RebuildSearchIndexResponse | undefined,
+  health: SearchIndexHealthResponse | undefined,
+  t: Translator,
 ) {
   if (mode === "rebuild" && rebuildResult) {
     return undefined;
@@ -872,10 +880,10 @@ function searchMaintenanceMessage(
   }
 
   if (health.healthy) {
-    return `Search index healthy: ${health.actualIndexedRows}/${health.expectedIndexedObjects} rows indexed.`;
+    return t("Search index healthy: {actual}/{expected} rows indexed.", { actual: health.actualIndexedRows, expected: health.expectedIndexedObjects });
   }
 
-  return `Search index needs rebuild: ${health.missingObjects} missing, ${health.staleObjects} stale, ${health.orphanedRows} orphaned, ${health.duplicateRows} duplicate.`;
+  return t("Search index needs rebuild: {missing} missing, {stale} stale, {orphaned} orphaned, {duplicate} duplicate.", { missing: health.missingObjects, stale: health.staleObjects, orphaned: health.orphanedRows, duplicate: health.duplicateRows });
 }
 
 function inferEvaluatorType(object?: KnowledgeObject) {

@@ -48,6 +48,17 @@
   background: hsl(var(--background));
 }
 
+.dark {
+  --background: 222 24% 9%;
+  --foreground: 210 20% 92%;
+  --surface: 222 20% 12%;
+  --border: 220 15% 22%;
+  --muted: 220 16% 17%;
+  --muted-foreground: 215 12% 64%;
+  --accent: 163 70% 45%;
+  --accent-foreground: 222 24% 8%;
+}
+
 html,
 body,
 #root {
@@ -56,6 +67,19 @@ body,
 
 body {
   margin: 0;
+  background: hsl(var(--background));
+}
+
+html,
+body,
+#root,
+button,
+input,
+textarea,
+select {
+  transition-property: background-color, border-color, color;
+  transition-duration: 160ms;
+  transition-timing-function: ease;
 }
 
 button,
