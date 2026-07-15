@@ -40,3 +40,6 @@ keyring = { version = "3.6.3", default-features = false, features = ["windows-na
 
 [target.'cfg(target_os = "macos")'.dependencies]
 keyring = { version = "3.6.3", default-features = false, features = ["apple-native"] }
+
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+fs2 = "0.4"

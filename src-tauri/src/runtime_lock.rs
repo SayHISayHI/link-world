@@ -50,27 +50,25 @@ fn open_exclusive(path: &Path) -> AppResult<File> {
 
 #[cfg(not(windows))]
 fn open_exclusive(path: &Path) -> AppResult<File> {
-    // Node Tide currently ships on Windows. This fallback preserves single-process
-    // behavior for development builds on other targets, but is not a release gate.
-    OpenOptions::new()
+    use fs2::FileExt;
+
+    let file = OpenOptions::new()
         .read(true)
         .write(true)
-        .create_new(true)
+        .create(true)
+        .truncate(false)
         .open(path)
-        .map_err(|error| {
-            if error.kind() == std::io::ErrorKind::AlreadyExists {
-                AppError::RuntimeBusy
-            } else {
-                AppError::Filesystem("runtime lock could not be opened".to_string())
-            }
-        })
-}
+        .map_err(|_| AppError::Filesystem("runtime lock could not be opened".to_string()))?;
 
-#[cfg(not(windows))]
-impl Drop for RuntimeLock {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.path);
-    }
+    file.try_lock_exclusive().map_err(|error| {
+        if error.kind() == std::io::ErrorKind::WouldBlock {
+            AppError::RuntimeBusy
+        } else {
+            AppError::Filesystem("runtime lock could not be acquired".to_string())
+        }
+    })?;
+
+    Ok(file)
 }
 
 #[cfg(test)]
