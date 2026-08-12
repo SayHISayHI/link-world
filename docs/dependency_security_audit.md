@@ -12,7 +12,7 @@
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/alpha-readiness.ps1 -IncludeSprintGates -IncludeTauriBuild -IncludeNetworkAudits
 ```
 
-门禁包含 npm high/critical audit、RustSec lockfile audit 和 `scripts/rustsec-waiver-check.ps1`。任何新增 high/critical 漏洞必须修复、形成有边界的 waiver 或阻断发布。
+门禁包含 npm high/critical audit、RustSec lockfile audit 和 `scripts/rustsec-waiver-check.ps1`。`scripts/update-rustsec-advisory-db.ps1` 先通过系统 Git 从固定官方 origin 获取并检出 `main` 的最新 commit，随后 `cargo audit --no-fetch` 读取该数据库，避免 cargo-audit 内置 libgit2 的代理/鉴权差异绕过审计。任何新增 high/critical 漏洞必须修复、形成有边界的 waiver 或阻断发布。
 
 ## 2. 2026-07-02 处置记录
 

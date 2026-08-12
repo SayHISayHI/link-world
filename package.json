@@ -25,7 +25,7 @@
     "build:cli": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build-cli-release.ps1",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings=0",
-    "test:e2e": "playwright test",
+    "test:e2e": "npm run build && playwright test",
     "test:e2e:install": "playwright install chromium"
   },
   "dependencies": {

@@ -184,7 +184,7 @@ The committed Playwright smoke at `tests/e2e/library-smoke.spec.ts` is the deter
 - readable no-model degradation;
 - navigation into Model Settings.
 
-Run `npm run test:e2e:install` once per machine, then `npm run test:e2e`. The mock rejects unexpected commands so new frontend IPC dependencies fail visibly. This browser gate does not replace Rust service tests, installed Tauri verification, or the manual extension smoke below.
+Run `npm run test:e2e:install` once per machine, then `npm run test:e2e`. The command first creates the production frontend build and serves it with Vite Preview, so lazy chunks and the exact release bundle are exercised instead of relying on development-time transforms. The mock rejects unexpected commands so new frontend IPC dependencies fail visibly. This browser gate does not replace Rust service tests, installed Tauri verification, or the manual extension smoke below.
 
 The invited-Alpha evidence contract is tested separately with `npm run test:alpha-feedback-contract`. It proves that the synthetic ready fixture passes only with the test-only switch, while synthetic-as-real evidence, sensitive/unknown fields, cohorts below five, open P0s and open P1s without a due date fail closed. It does not substitute for real participant evidence.
 

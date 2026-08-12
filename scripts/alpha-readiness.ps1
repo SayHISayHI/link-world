@@ -249,6 +249,11 @@ if ($IncludeTauriBuild) {
 
 if ($IncludeNetworkAudits) {
   $steps += @{
+    Name = 'RustSec advisory database update'
+    WorkingDirectory = $repo
+    Command = @('pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'scripts/update-rustsec-advisory-db.ps1')
+  }
+  $steps += @{
     Name = 'RustSec waiver validation'
     WorkingDirectory = $repo
     Command = @('pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'scripts/rustsec-waiver-check.ps1')
@@ -261,7 +266,7 @@ if ($IncludeNetworkAudits) {
   $steps += @{
     Name = 'cargo audit runtime dependencies'
     WorkingDirectory = (Join-Path $repo 'src-tauri')
-    Command = @('cargo', 'audit', '--ignore', 'RUSTSEC-2023-0071')
+    Command = @('cargo', 'audit', '--no-fetch', '--ignore', 'RUSTSEC-2023-0071')
   }
 }
 

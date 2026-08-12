@@ -29,7 +29,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "node ./node_modules/vite/bin/vite.js --host 127.0.0.1 --port 1420",
+    command: "node ./node_modules/vite/bin/vite.js preview --host 127.0.0.1 --port 1420 --strictPort",
     url: "http://127.0.0.1:1420",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
