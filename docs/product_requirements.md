@@ -2,7 +2,7 @@
 
 状态: Current（MVP 范围，已实现）
 
-本文档面向 AI 开发者，详细说明 MVP 阶段必须实现的用户故事和界面交互约束。MVP 必须控制范围，但不能破坏 `docs/architecture.md`、`docs/api_contracts.ts` 和 `docs/database_schema.sql` 定义的长期架构边界。
+本文档面向 AI 开发者，详细说明 MVP 阶段必须实现的用户故事和界面交互约束。MVP 必须控制范围，但不能破坏 `docs/architecture.md`、`src/types/api.ts` 和 `docs/database_schema.sql` 定义的长期架构边界。
 
 ## 1. 核心目标
 

@@ -12,7 +12,7 @@
    - `docs/architecture.md`
    - `docs/backend_architecture.md`
    - `docs/frontend_architecture.md`
-   - `docs/api_contracts.ts`
+   - `docs/api_contracts.md` + `src/types/api.ts`
    - `docs/database_schema.sql`
    - `docs/security_privacy_compliance.md`
 2. 确认后端分层目录：`commands`, `services`, `repositories`, `domain`, `jobs`, `events`, `runtime`, `security`。

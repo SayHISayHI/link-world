@@ -19,8 +19,8 @@
   - Rust/Tauri 后端分层、AppState、错误处理、事务、异步隔离、后台任务和测试要求。
 - [frontend_architecture.md](./frontend_architecture.md)
   - React 前端状态分层、组件边界、Tauri command hooks、三栏布局、错误状态和测试要求。
-- [api_contracts.ts](./api_contracts.ts)
-  - Tauri IPC、核心类型、后台任务、错误码和维护命令的契约。
+- [api_contracts.md](./api_contracts.md)
+  - Tauri IPC 信封、52 个 command 清单、错误码和维护检查表；类型真源是 `src/types/api.ts`。
 - [database_schema.sql](./database_schema.sql)
   - SQLite schema 蓝图，包括 knowledge objects、parsed documents、AI trace、evaluation、jobs、events。
 - [state_machines.md](./state_machines.md)
@@ -99,7 +99,7 @@
 
 - 架构原则以 `architecture.md` 为准。
 - 用户体验和 MVP 范围以 `product_requirements.md` 为准。
-- 前后端通信以 `api_contracts.ts` 和 `src/types/api.ts` 为准；两者冲突时以代码为准并立即回写文档。
+- 前后端类型以 `src/types/api.ts` 为准，IPC 命令与错误码以 `api_contracts.md` 为准；冲突时以代码为准并立即回写文档。
 - 数据存储以 `database_schema.sql` 和 `src-tauri/migrations/` 为准；蓝图与已发布迁移冲突时以迁移为准。
 - 状态流转以 `state_machines.md` 为准。
 - 数据库升级以 `database_migrations.md` 为准。

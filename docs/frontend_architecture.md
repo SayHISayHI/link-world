@@ -48,7 +48,7 @@ src/
 │   ├── jobStore.ts
 │   └── pluginStore.ts
 ├── types/
-│   └── api.ts               # generated or copied from docs/api_contracts.ts
+│   └── api.ts               # hand-maintained IPC types; see docs/api_contracts.md
 ├── lib/
 │   ├── tauri.ts
 │   ├── errors.ts

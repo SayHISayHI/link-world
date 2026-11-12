@@ -575,7 +575,7 @@ Backend minimum test matrix:
 
 Before implementing a new backend feature:
 
-- Define DTO in `api_contracts.ts` if it crosses IPC.
+- Define DTO in `src/types/api.ts` (and mirror it in the Rust `domain` module) if it crosses IPC.
 - Define domain type and state transition.
 - Decide service and repository ownership.
 - Decide transaction boundary.

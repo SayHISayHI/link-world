@@ -28,7 +28,7 @@
 ## 3. 代码与架构红线 (Red Lines)
 * **前后端分离**: 
   - 前端绝不能直接使用 `better-sqlite3` 等 Node.js 原生包访问数据库。
-  - 所有的本地磁盘读写、数据库 CRUD、本地环境沙盒运行必须写在 Rust 端，并通过严格的类型契约（`docs/api_contracts.ts`）以 Tauri Commands 的形式暴露给前端。
+  - 所有的本地磁盘读写、数据库 CRUD、本地环境沙盒运行必须写在 Rust 端，并通过严格的类型契约（`docs/api_contracts.md` + `src/types/api.ts`）以 Tauri Commands 的形式暴露给前端。
 * **隐私分级 (Privacy)**: 
   - 如果对象的 `privacyLevel` 是 `secret` 或 `sensitive`，禁止将其内容直接通过 HTTP 发送给第三方云端 API，除非获取了用户对该对象或 collection 的 explicit 授权参数。
   - 日志中严禁打印用户的正文数据及 Token。
