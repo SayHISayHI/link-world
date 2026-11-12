@@ -3,8 +3,7 @@ use std::fs::{self, File, OpenOptions};
 use std::path::{Path, PathBuf};
 
 const RUNTIME_DIR_NAME: &str = "runtime";
-// Legacy storage ABI shared with pre-rename desktop and CLI builds.
-const RUNTIME_LOCK_FILE_NAME: &str = "link-world.lock";
+use crate::legacy_abi::RUNTIME_LOCK_FILE_NAME;
 
 #[derive(Debug)]
 pub struct RuntimeLock {

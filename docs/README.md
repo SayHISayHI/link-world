@@ -27,6 +27,8 @@
   - Knowledge Object、Job、AI、Evaluation、Deletion 状态流转和禁止状态。
 - [database_migrations.md](./database_migrations.md)
   - SQLite migration 命名、事务、历史 fixture、启动 restore-point guard、数据不变量和回滚策略。
+- [storage_abi.md](./storage_abi.md)
+  - Link World → Node Tide 之后冻结的磁盘标识（数据目录、数据库、日志、锁、凭据、前端偏好）和改名步骤。
 - [backup_and_restore.md](./backup_and_restore.md)
   - 本地 restore point、manifest、原子创建、两阶段恢复、phase rollback、启动 recovery UI、便携导出和凭据边界。
 - [tech_stack.md](./tech_stack.md)
@@ -115,7 +117,7 @@
 - Prompt Evaluator 的抽取、rubric、diff、测试与注入边界以 `prompt_evaluator.md` 为准。
 - 当前里程碑、周度范围与完成状态以 `post_mvp_roadmap.md` 为准。
 - CLI 的目标范围、命令契约、并发策略和阶段门禁以 `cli_development_plan.md` 为准。
-- 产品身份、技术 slug 与 legacy 存储兼容以 `adr/0010-node-tide-product-identity.md` 为准。
+- 产品身份与 legacy 存储兼容：命名以 `adr/0010-node-tide-product-identity.md` 为准，冻结标识清单以 `storage_abi.md` 为准。
 - 多端同步与插件能力**尚无** source of truth：相关设计在 `deferred/` 下，未实现前不得引用为规范。
 
 ## Documentation Versioning Policy

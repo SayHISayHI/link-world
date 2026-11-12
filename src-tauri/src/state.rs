@@ -17,7 +17,7 @@ use uuid::Uuid;
 
 #[cfg(target_os = "windows")]
 // Storage ABI retained from the former product identity; changing it would orphan saved API keys.
-const LEGACY_KEYRING_SERVICE: &str = "com.linkworld.app.model-provider";
+const LEGACY_KEYRING_SERVICE: &str = crate::legacy_abi::KEYRING_SERVICE;
 #[cfg(target_os = "windows")]
 const KEYRING_SECRET_PREFIX: &str = "keyring:model-provider:";
 

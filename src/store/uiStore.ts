@@ -1,9 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { initialRoute, type AppRoute } from "../app/routes";
-
-// Kept stable during the Node Tide rename so existing UI preferences survive the upgrade.
-const LEGACY_UI_STORAGE_KEY = "link-world-ui";
+import { LEGACY_UI_STORAGE_KEY } from "../config/storageKeys";
 
 export type AppLocale = "en" | "zh-CN";
 export type AppTheme = "light" | "dark";

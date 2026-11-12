@@ -7,9 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 const LOGS_DIR_NAME: &str = "logs";
-// Legacy storage ABI: support bundles continue the existing bounded log stream.
-const LOG_FILE_NAME: &str = "link-world.jsonl";
-const ROTATED_LOG_FILE_NAME: &str = "link-world.jsonl.1";
+use crate::legacy_abi::{LOG_FILE_NAME, ROTATED_LOG_FILE_NAME};
 const MAX_LOG_FILE_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_LOG_ENTRY_BYTES: usize = 4 * 1024;
 const MAX_MESSAGE_CHARS: usize = 256;

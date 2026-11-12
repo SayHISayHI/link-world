@@ -5,8 +5,7 @@ use sqlx::SqlitePool;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-// Legacy storage ABI: keep this filename until an explicit data migration is shipped.
-pub const DATABASE_FILE_NAME: &str = "link-world.sqlite3";
+pub use crate::legacy_abi::DATABASE_FILE_NAME;
 const MAX_SQLITE_CONNECTIONS: u32 = 5;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");

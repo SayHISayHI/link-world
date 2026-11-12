@@ -21,6 +21,8 @@ use serde_json::{json, Map, Value};
 use std::env;
 use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
+
+use crate::legacy_abi::APP_DATA_DIR_IDENTIFIER;
 use uuid::Uuid;
 
 const CLI_SCHEMA_VERSION: u32 = 1;
@@ -1466,7 +1468,7 @@ fn resolve_data_dir() -> Result<PathBuf, CliError> {
     {
         env::var_os("APPDATA")
             .map(PathBuf::from)
-            .map(|path| path.join("com.linkworld.app"))
+            .map(|path| path.join(APP_DATA_DIR_IDENTIFIER))
             .ok_or_else(|| CliError::invalid("APPDATA is unavailable"))
     }
 
@@ -1474,18 +1476,22 @@ fn resolve_data_dir() -> Result<PathBuf, CliError> {
     {
         env::var_os("HOME")
             .map(PathBuf::from)
-            .map(|path| path.join("Library/Application Support/com.linkworld.app"))
+            .map(|path| {
+                path.join(format!(
+                    "Library/Application Support/{APP_DATA_DIR_IDENTIFIER}"
+                ))
+            })
             .ok_or_else(|| CliError::invalid("HOME is unavailable"))
     }
 
     #[cfg(all(unix, not(target_os = "macos")))]
     {
         if let Some(path) = env::var_os("XDG_DATA_HOME") {
-            return Ok(PathBuf::from(path).join("com.linkworld.app"));
+            return Ok(PathBuf::from(path).join(APP_DATA_DIR_IDENTIFIER));
         }
         env::var_os("HOME")
             .map(PathBuf::from)
-            .map(|path| path.join(".local/share/com.linkworld.app"))
+            .map(|path| path.join(format!(".local/share/{APP_DATA_DIR_IDENTIFIER}")))
             .ok_or_else(|| CliError::invalid("HOME is unavailable"))
     }
 }

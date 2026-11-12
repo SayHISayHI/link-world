@@ -6,6 +6,7 @@ pub mod domain;
 pub mod errors;
 pub mod events;
 pub mod jobs;
+pub mod legacy_abi;
 pub mod repositories;
 pub mod runtime;
 pub mod runtime_lock;
