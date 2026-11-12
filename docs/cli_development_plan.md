@@ -284,7 +284,7 @@ CLI 首期代码实现只有同时满足以下条件才能标记为完成；对�
 
 1. CLI 以独立 `node-tide-cli.exe` artifact 发布；`install-node-tide-cli.ps1` 负责显式用户级安装和可选 PATH，不由桌面安装器静默修改 PATH。
 2. 首期命令名固定为 `node-tide-cli`，不提供未经冲突验证的短 alias。
-3. 参数解析采用 `clap 4.6.x`，completion 使用 `clap_complete 4.6.x`；两者为 MIT OR Apache-2.0，MSRV 与项目 Rust 1.85 对齐，并进入 Cargo.lock/RustSec 门禁。
+3. 参数解析采用 `clap 4.6.x`，completion 使用 `clap_complete 4.6.x`；两者为 MIT OR Apache-2.0，MSRV 与项目 Rust 1.88 对齐，并进入 Cargo.lock/RustSec 门禁。
 4. Library、Operations 和 Portable Export 已抽为共享 application service；CLI adapter 不依赖 repository、sqlx 或 Tauri window API。
 5. 首期明确不支持桌面端与 CLI 并发打开同一数据目录，竞争稳定返回 `ERR_RUNTIME_BUSY`。daemon/IPC 仅在真实需求成立后另立 ADR。
 

@@ -2018,7 +2018,7 @@ mod tests {
     }
 
     fn benchmark_lifecycle_status(index: usize) -> &'static str {
-        if index % 13 == 0 {
+        if index.is_multiple_of(13) {
             "failed"
         } else {
             "parsed"
@@ -2026,9 +2026,9 @@ mod tests {
     }
 
     fn benchmark_privacy_level(index: usize) -> &'static str {
-        if index % 19 == 0 {
+        if index.is_multiple_of(19) {
             "secret"
-        } else if index % 7 == 0 {
+        } else if index.is_multiple_of(7) {
             "sensitive"
         } else {
             "personal"
@@ -2056,7 +2056,7 @@ mod tests {
         } else {
             " successful parse boundary visible knowledge library object"
         };
-        let rare_marker = if index % 97 == 0 {
+        let rare_marker = if index.is_multiple_of(97) {
             " priority alpha rare marker"
         } else {
             ""

@@ -116,8 +116,7 @@ impl CaptureService {
 
         if snapshot_bytes.len() > MAX_RAW_CAPTURE_BYTES {
             return Err(AppError::PolicyDenied(format!(
-                "capture snapshot exceeds {} bytes",
-                MAX_RAW_CAPTURE_BYTES
+                "capture snapshot exceeds {MAX_RAW_CAPTURE_BYTES} bytes"
             )));
         }
 
@@ -381,8 +380,7 @@ impl CaptureService {
         let bytes = response.bytes().await.map_err(map_reqwest_error)?;
         if bytes.len() > MAX_FETCH_BYTES {
             return Err(AppError::PolicyDenied(format!(
-                "fetched HTML exceeds {} bytes",
-                MAX_FETCH_BYTES
+                "fetched HTML exceeds {MAX_FETCH_BYTES} bytes"
             )));
         }
 

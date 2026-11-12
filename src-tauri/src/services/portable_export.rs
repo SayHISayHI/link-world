@@ -378,9 +378,9 @@ fn render_markdown(
     markdown.push_str(&format!("- Type: {}\n", object.object_type));
     markdown.push_str(&format!("- Privacy: {}\n", object.privacy_level));
     markdown.push_str(&format!("- Captured: {}\n", object.captured_at));
-    markdown.push_str(&format!("- Exported: {}\n", exported_at));
+    markdown.push_str(&format!("- Exported: {exported_at}\n"));
     if let Some(url) = object.canonical_url.as_deref() {
-        markdown.push_str(&format!("- Source: {}\n", url));
+        markdown.push_str(&format!("- Source: {url}\n"));
     }
     markdown.push('\n');
 

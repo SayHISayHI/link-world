@@ -41,7 +41,7 @@ AI 不是前置条件。没有配置模型时，保存、阅读和本地搜索�
 
 ## 本地开发
 
-需要 Node.js `20.19+`、`22.13+` 或 `24+`、pnpm `10+`（可用 `corepack enable` 启用），以及 Rust `1.85+`。前端开发、单元测试和浏览器 E2E 可在 Linux/WSL 下运行；Tauri 桌面构建与 `scripts/*.ps1` 门禁仍以 Windows 为目标环境。
+需要 Node.js `20.19+`、`22.13+` 或 `24+`、pnpm `10+`（可用 `corepack enable` 启用），以及 Rust `1.88+`。前端开发、单元测试和浏览器 E2E 可在 Linux/WSL 下运行；Tauri 桌面构建与 `scripts/*.ps1` 门禁仍以 Windows 为目标环境。
 
 ```bash
 pnpm install --frozen-lockfile

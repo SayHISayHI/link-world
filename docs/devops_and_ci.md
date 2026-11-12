@@ -141,10 +141,12 @@ Test DB strategy:
 可执行工作流位于 `.github/workflows/quality.yml`：
 
 - Ubuntu frontend job：锁定依赖安装、ESLint、strict typecheck、Vitest、生产构建、Chromium Playwright smoke；
-- Windows Rust job：Rust 1.85、rustfmt、Clippy `-D warnings`、`--locked` 单线程全量测试；
+- Windows Rust job：Rust 1.88、rustfmt、Clippy `-D warnings`、`--locked` 单线程全量测试；
 - Playwright HTML 报告保留 7 天；同一 ref 的旧运行自动取消；workflow 仅授予 `contents: read`。
 
 单线程 Rust 测试是当前正式门禁，因为 restore interruption fixtures 共享进程级恢复状态；并行执行会产生测试间干扰，但相关用例单独和单线程全量均通过。发布打包、签名、真实安装升级和浏览器扩展仍属于 Windows RC 矩阵，不在普通提交 CI 中执行。
+
+工具链约定：`src-tauri/Cargo.toml` 的 `rust-version`、CI 的 `dtolnay/rust-toolchain` 版本和 `Cargo.lock` 必须互相兼容。升级依赖后若出现 `requires rustc X.Y` 报错，要么同时提升 `rust-version` 与 CI 工具链，要么用 `cargo update <crate> --precise <version>` 压回兼容版本；不要只改其中一处。`@tauri-apps/api`、`@tauri-apps/cli` 与 `tauri` crate 需保持同一 2.x 版本与相同 minor，否则 `tauri dev/build` 会因版本不匹配拒绝启动。
 ## 6. Packaging Strategy
 
 Tauri packaging requirements:

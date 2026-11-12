@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Local-first personal information asset system"
 authors = ["Node Tide"]
 edition = "2021"
-rust-version = "1.85"
+rust-version = "1.88"
 default-run = "node-tide"
 
 [lib]

@@ -296,7 +296,7 @@ fn list_to_markdown(element: ElementRef<'_>, ordered: bool, list_depth: usize) -
                 "- ".to_string()
             };
             let content = normalize_block_output(&render_markdown_children(item, list_depth + 1));
-            let continuation = format!("\n{}  ", indentation);
+            let continuation = format!("\n{indentation}  ");
             format!(
                 "{}{}{}",
                 indentation,
@@ -306,7 +306,7 @@ fn list_to_markdown(element: ElementRef<'_>, ordered: bool, list_depth: usize) -
         })
         .collect::<Vec<_>>()
         .join("\n");
-    format!("\n{}\n", items)
+    format!("\n{items}\n")
 }
 
 fn blockquote_to_markdown(element: ElementRef<'_>, list_depth: usize) -> String {
