@@ -290,7 +290,7 @@ Recovery UI 的后端命令边界：
 
 发布前仍需完成：
 
-- Sprint 2 自动化门禁：`npm run readiness:sprint2`，输出 JSON 报告并作为发布候选 artifact 保存。
+- Sprint 2 自动化门禁：`pnpm run readiness:sprint2`，输出 JSON 报告并作为发布候选 artifact 保存。
 - 空对象存储、嵌套 evaluation artifact 和额外/缺失 payload 的独立 fixture。
 - 0001/0002/0003 historical fixture → current 0007 已自动化；新增 migration 时必须持续追加上一发布版本。
 - 真实进程在四个 phase 边界被强制终止的 Windows 安装包集成测试；当前是函数级确定性中断模拟，真实矩阵以 `docs/sprint2_windows_fault_matrix.md` 为准。

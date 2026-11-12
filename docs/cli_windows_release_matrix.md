@@ -6,8 +6,8 @@
 ## 1. 自动化入口
 
 ```powershell
-npm run readiness:cli
-npm run build:cli
+pnpm run readiness:cli
+pnpm run build:cli
 ```
 
 `readiness:cli` 使用中文临时目录，覆盖 rustfmt/check/clippy、参数与 completion、单 JSON document、稳定退出码、路径脱敏、破坏性操作显式确认、实时 runtime lock 竞争、capture/AI request-id identity、共享 service capture→search→show→delete、便携导出、backup create/list/verify 以及安装/卸载脚本，并原子写出 JSON report。

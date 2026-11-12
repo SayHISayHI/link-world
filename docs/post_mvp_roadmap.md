@@ -95,7 +95,7 @@
 - 备份中断不产生“看似成功”的半成品。
 - 启动 migration fail closed 后不进入普通 Library，recovery UI 可列出并验证 restore point，显式准备恢复或重启重试。（组件与后端自动化已通过；真实安装包回归待完成）
 - existing v1 启动升级前备份保持旧 schema；fresh DB 不备份；running guard 中断 fail closed；已提交 migration 的遗留 guard 可收敛。（自动化已通过）
-- 恢复失败时原数据目录仍可启动。（自动化故障注入已通过；`npm run readiness:sprint2` 已作为聚合门禁；安装包与强制终止矩阵待完成）
+- 恢复失败时原数据目录仍可启动。（自动化故障注入已通过；`pnpm run readiness:sprint2` 已作为聚合门禁；安装包与强制终止矩阵待完成）
 - 本地 restore point 不含 API Key value，但为无损恢复包含用户内容和 opaque credential reference；便携导出不含 credential reference，默认排除 secret 对象。
 
 ### Week 3：采集与后台任务可靠性
@@ -110,7 +110,7 @@
 
 验收：
 
-- 离线/DNS、403、超时、无正文和损坏 HTML 都得到稳定状态。（`npm run readiness:sprint3` 覆盖确定性分类；真实离线/DNS/外部 HTTP 仍按 `sprint3_capture_fault_matrix.md` 执行）
+- 离线/DNS、403、超时、无正文和损坏 HTML 都得到稳定状态。（`pnpm run readiness:sprint3` 覆盖确定性分类；真实离线/DNS/外部 HTTP 仍按 `sprint3_capture_fault_matrix.md` 执行）
 - 单个失败任务不阻塞其他对象。（capture fetch job 自动化已覆盖：403 失败后后续 URL job 仍可成功解析）
 - 重启后无永久 running job。（repository 自动化已覆盖）
 - 日志不包含正文、cookie、token 或第三方原始错误 body。（capture failure mapper 的诱饵秘密测试已覆盖 HTTP、网络、policy 和 generic fallback；失败原因在写入数据库/事件前完成稳定分类）
@@ -139,14 +139,14 @@
 - Diagnostics 设置页：版本、数据路径、数据库健康、对象存储健康、job 失败摘要。（本地快照与 Settings UI 已实现）
 - 脱敏支持包与用户确认流程。（schema v1 已实现：固定目录原子 JSON、command/UI 双重确认、稳定 failure code、插件指纹、audit/domain correlation 摘要、最近 100 条重验证 runtime logs、size/SHA-256）
 - 关键流程结构化日志和稳定 correlation id。（代码级覆盖已完成：capture submit/fetch 与 AI enrichment 由 job payload、domain event、IPC result 和日志复用 UUID；AI event payload 只含 analysis id 或稳定 `ai.*` code；search rebuild/reindex 以 job UUID 关联完成/取消/失败并只保存稳定 `search.*` code；startup migration 的 UUID 写入 guard/result；restore 的 transaction UUID 写入 prepare result、pending marker 和 last-result，并覆盖成功、中断回滚、candidate 篡改与 marker 损坏，只记录稳定 `restore.*` code）
-- operational readiness 清单自动化。（`npm run readiness:sprint5` 与 W5-01 至 W5-14 发布候选矩阵已建立；真实 Windows/支持交接证据待执行）
+- operational readiness 清单自动化。（`pnpm run readiness:sprint5` 与 W5-01 至 W5-14 发布候选矩阵已建立；真实 Windows/支持交接证据待执行）
 
 验收：
 
 - 支持包不含正文、URL query、API Key、credential reference 或 embedding。（后端诱饵秘密测试已覆盖 object title/store body、job payload/error、plugin manifest、audit metadata、credential ref 和本机绝对路径）
 - 用户可从失败项进入对应对象或重试动作。（Diagnostics failed job summary 已支持打开对象；capture.fetch_url 支持 retry）
 - 无模型配置被视为正常能力降级，不是系统故障。（Diagnostics model status 使用 not_configured_normal_degradation）
-- `npm run readiness:sprint5` 聚合门禁通过，真实发布候选按 `sprint5_observability_readiness.md` 留存确认、轮转、隐私和支持交接证据。（自动化已建立；真实矩阵待执行）
+- `pnpm run readiness:sprint5` 聚合门禁通过，真实发布候选按 `sprint5_observability_readiness.md` 留存确认、轮转、隐私和支持交接证据。（自动化已建立；真实矩阵待执行）
 
 ### Week 6：Evaluation 通用框架
 
@@ -232,7 +232,7 @@
 
 - Rust format、check、unit/integration tests。
 - TypeScript typecheck、Vitest 和 production build。
-- Week 9/10 发布候选需运行 `npm run readiness:alpha`，并在发布候选时附加 Sprint 2/3/5 readiness JSON、安装包 manifest/checksum 和安全审计处置；开始真实邀请后还必须运行 `scripts/alpha-feedback-readiness.ps1` 验证脱敏 Alpha 证据。
+- Week 9/10 发布候选需运行 `pnpm run readiness:alpha`，并在发布候选时附加 Sprint 2/3/5 readiness JSON、安装包 manifest/checksum 和安全审计处置；开始真实邀请后还必须运行 `scripts/alpha-feedback-readiness.ps1` 验证脱敏 Alpha 证据。
 - Settings、Library、无模型、错误模型、离线和删除的浏览器回归。
 - migration fixture 与数据完整性检查。
 - secret/log 扫描。

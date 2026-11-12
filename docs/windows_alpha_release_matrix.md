@@ -7,7 +7,7 @@
 
 Week 9 的目标是把当前代码从“开发机可运行”推进到“可以交给邀请制用户安装的 Windows Alpha 发布候选”。本矩阵不新增云账号、自动更新、托管模型网关或动态插件安装。
 
-完成 Week 9 不能只看 `cargo test` 或 `npm test`。最低证据必须同时覆盖:
+完成 Week 9 不能只看 `cargo test` 或 `pnpm test`。最低证据必须同时覆盖:
 
 - 可追踪的发布候选 commit、版本、schema version 和构建时间。
 - Windows 安装包可以安装、启动、卸载和重装。
@@ -21,7 +21,7 @@ Week 9 的目标是把当前代码从“开发机可运行”推进到“可以�
 默认命令:
 
 ```powershell
-npm run readiness:alpha
+pnpm run readiness:alpha
 ```
 
 发布候选环境应使用完整门禁:
@@ -32,13 +32,13 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/alpha-readiness.ps1 -Inclu
 
 该脚本负责聚合:
 
-- Node.js 运行时版本预检，并在报告中记录 Node/npm 版本。
+- Node.js 运行时版本预检，并在报告中记录 Node/pnpm 版本。
 - frontend typecheck、Vitest 和 production build。
 - Rust format、check、test 和 clippy warnings gate。
 - 本地 dependency inventory。
 - 可选 Sprint 2/3/5 readiness JSON 报告。
 - 可选 Tauri Windows package build。
-- 可选 `npm audit` / `cargo audit` 网络审计。
+- 可选 `pnpm audit` / `cargo audit` 网络审计。
 - RustSec waiver 必须通过独立活跃依赖图检查；当前处置与失效条件记录在 `docs/dependency_security_audit.md`。
 - release metadata: app version、commit SHA、branch、schema version、构建时间。
 
@@ -54,7 +54,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/alpha-readiness.ps1 -Inclu
 | checksum | SHA-256，独立于安装包保存 |
 | release manifest | app version、schema version、commit SHA、branch、build time、package type、签名状态 |
 | readiness reports | `readiness:alpha`，以及 Sprint 2/3/5 reports |
-| dependency inventory | npm runtime dependency list、Cargo dependency tree、许可证/安全审计摘要 |
+| dependency inventory | pnpm runtime dependency list、Cargo dependency tree、许可证/安全审计摘要 |
 | release notes | migration 风险、已知问题、回滚方式、支持包说明 |
 | rollback note | 如何保留数据、如何使用 restore point、何时停止升级 |
 
@@ -88,7 +88,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/package-alpha-release.ps1 
 | W9-10 | 非 ASCII 用户目录 | 在中文或 emoji 用户目录安装，执行启动、backup、support bundle、capture | 路径派生正确；UI 不乱码；支持包不含绝对 profile 路径 |
 | W9-11 | 长路径 | 使用长标题、深对象目录和便携导出 | Windows 非法路径被拒绝或规范化；无任意路径写入 |
 | W9-12 | Defender/杀软 | Defender 实时保护开启时执行 capture、backup、restore、support bundle | transient file locks 可恢复或可诊断；无半成品伪成功 |
-| W9-13 | 依赖/许可证审计 | 保存 npm/Cargo inventory，执行 high/critical security review | high/critical runtime 风险有修复、waiver 或 release blocker；许可证风险有记录 |
+| W9-13 | 依赖/许可证审计 | 保存 pnpm/Cargo inventory，执行 high/critical security review | high/critical runtime 风险有修复、waiver 或 release blocker；许可证风险有记录 |
 | W9-14 | 回滚演练 | 当前包升级后回滚到上一 Alpha 或用 restore point 恢复 | 兼容策略清楚；不兼容 schema 必须阻断二进制回滚并提示 restore |
 
 ## 5. 证据要求

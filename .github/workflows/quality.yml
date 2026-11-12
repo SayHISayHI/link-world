@@ -21,35 +21,38 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v5
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 20.19.0
-          cache: npm
+          cache: pnpm
 
       - name: Install locked dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Lint
-        run: npm run lint
+        run: pnpm run lint
 
       - name: Typecheck
-        run: npm run typecheck
+        run: pnpm run typecheck
 
       - name: Unit tests
-        run: npm test
+        run: pnpm test
 
       - name: Alpha feedback evidence contract
-        run: npm run test:alpha-feedback-contract
+        run: pnpm run test:alpha-feedback-contract
 
       - name: Production build
-        run: npm run build
+        run: pnpm run build
 
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        run: pnpm exec playwright install --with-deps chromium
 
       - name: Browser E2E smoke
-        run: npm run test:e2e
+        run: pnpm run test:e2e
 
       - name: Upload Playwright report
         if: ${{ !cancelled() }}

@@ -9,7 +9,7 @@ Sprint 2 的核心承诺是：用户数据在备份、迁移、恢复和导出�
 
 本矩阵把验收分成两层：
 
-- 自动化门禁：在开发机或 CI 上运行 `npm run readiness:sprint2`，覆盖函数级确定性故障注入、fixture migration、restore rollback 和隐私边界。
+- 自动化门禁：在开发机或 CI 上运行 `pnpm run readiness:sprint2`，覆盖函数级确定性故障注入、fixture migration、restore rollback 和隐私边界。
 - 真实 Windows 矩阵：在签名或待签名安装包上执行，覆盖安装包升级、真实进程强制终止、Windows 用户目录和文件系统异常。
 
 ## 2. 自动化门禁
@@ -17,7 +17,7 @@ Sprint 2 的核心承诺是：用户数据在备份、迁移、恢复和导出�
 默认命令：
 
 ```powershell
-npm run readiness:sprint2
+pnpm run readiness:sprint2
 ```
 
 脚本会顺序执行：
@@ -65,7 +65,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/sprint2-readiness.ps1 -Inc
 每次发布候选至少保存：
 
 - 安装包版本、commit SHA、Windows 版本和安装路径。
-- `npm run readiness:sprint2` JSON 报告。
+- `pnpm run readiness:sprint2` JSON 报告。
 - 每个真实矩阵项的结果：pass/fail、执行人、时间、数据目录位置、关键截图或日志尾部。
 - 对失败项的处置：修复 commit、降级决策或明确阻断发布。
 

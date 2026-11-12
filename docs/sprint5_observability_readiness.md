@@ -9,7 +9,7 @@ Sprint 5 的核心承诺是：用户能够在本机判断应用、数据和后�
 
 本矩阵分成两层：
 
-- 自动化门禁：运行 `npm run readiness:sprint5`，覆盖 Diagnostics 健康聚合与脱敏、有界日志校验和轮转、支持包确认/隐私/原子发布，以及 capture、AI、search、startup migration 和 restore 的 correlation/失败脱敏边界。
+- 自动化门禁：运行 `pnpm run readiness:sprint5`，覆盖 Diagnostics 健康聚合与脱敏、有界日志校验和轮转、支持包确认/隐私/原子发布，以及 capture、AI、search、startup migration 和 restore 的 correlation/失败脱敏边界。
 - 真实发布候选矩阵：在 Windows 安装包上执行用户确认、目录权限、非 ASCII 用户目录、运行态轮转、100 个失败任务、支持包人工复核和支持交接。
 
 自动化只证明确定性代码边界。它不能证明已安装应用的交互可理解、Windows 文件系统行为、真实运行时性能，或人工接收方能用有限证据完成问题定位。
@@ -19,7 +19,7 @@ Sprint 5 的核心承诺是：用户能够在本机判断应用、数据和后�
 默认命令：
 
 ```powershell
-npm run readiness:sprint5
+pnpm run readiness:sprint5
 ```
 
 脚本顺序执行：
@@ -83,7 +83,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/sprint5-readiness.ps1 -Ski
 每次发布候选保存：
 
 - 应用版本、commit SHA、Windows 版本、安装包类型和测试 profile 版本。
-- `npm run readiness:sprint5` JSON 报告；前端依赖完整环境还需 `-IncludeFrontend` 报告。
+- `pnpm run readiness:sprint5` JSON 报告；前端依赖完整环境还需 `-IncludeFrontend` 报告。
 - W5-01 至 W5-14 的 pass/fail、执行时间、执行人、关键截图和脱敏标识符。
 - W5-06 的独立 hash/size、W5-09 的轮转前后大小、W5-13 的交互耗时、W5-14 的定位结果。
 - 失败项的修复 commit、release blocker，或包含负责人、到期日和风险说明的 waiver。

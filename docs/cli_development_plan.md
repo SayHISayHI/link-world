@@ -264,7 +264,7 @@ MCP 不得通过 shell 字符串拼接绕过 typed validation，也不得因为�
 已增加：
 
 ```text
-npm run readiness:cli
+pnpm run readiness:cli
 ```
 
 该命令生成原子 JSON report，覆盖 rustfmt/check/clippy、CLI parser、共享 service 流程、request-id 幂等、中文临时目录、JSON/退出码、破坏性操作显式确认、实时进程锁竞争、便携导出、备份以及用户级安装/卸载脚本。真实代理/防火墙、强制终止、用户 PATH 会话刷新、签名和 Defender 仍按 `cli_windows_release_matrix.md` 验收，不能由单进程自动化替代。
@@ -288,4 +288,4 @@ CLI 首期代码实现只有同时满足以下条件才能标记为完成；对�
 4. Library、Operations 和 Portable Export 已抽为共享 application service；CLI adapter 不依赖 repository、sqlx 或 Tauri window API。
 5. 首期明确不支持桌面端与 CLI 并发打开同一数据目录，竞争稳定返回 `ERR_RUNTIME_BUSY`。daemon/IPC 仅在真实需求成立后另立 ADR。
 
-发布构建顺序固定为 Tauri bundle → `npm run build:cli` → package。CLI build 生成 commit/version/bytes/SHA-256 stamp；package 在复制前复验 stamp，防止 Tauri 的后续 Cargo build 悄悄替换已验收 CLI。
+发布构建顺序固定为 Tauri bundle → `pnpm run build:cli` → package。CLI build 生成 commit/version/bytes/SHA-256 stamp；package 在复制前复验 stamp，防止 Tauri 的后续 Cargo build 悄悄替换已验收 CLI。

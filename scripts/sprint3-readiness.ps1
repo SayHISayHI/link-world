@@ -117,12 +117,12 @@ if ($IncludeFrontend) {
   $steps += @{
     Name = 'frontend typecheck'
     WorkingDirectory = $repo
-    Command = @('npm', 'run', 'typecheck')
+    Command = @('pnpm', 'run', 'typecheck')
   }
   $steps += @{
     Name = 'frontend tests'
     WorkingDirectory = $repo
-    Command = @('npm', 'run', 'test')
+    Command = @('pnpm', 'run', 'test')
   }
 }
 

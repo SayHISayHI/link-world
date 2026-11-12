@@ -9,7 +9,7 @@ Sprint 3 的核心承诺是：第三方页面不可达、拒绝访问、响应�
 
 本矩阵分成两层：
 
-- 自动化门禁：运行 `npm run readiness:sprint3`，覆盖确定性解析、失败分类、任务隔离、启动收敛、AI failure reason 和脱敏边界。
+- 自动化门禁：运行 `pnpm run readiness:sprint3`，覆盖确定性解析、失败分类、任务隔离、启动收敛、AI failure reason 和脱敏边界。
 - 真实故障矩阵：使用 Windows 发布候选安装包、受控本地 HTTP fixture 和明确的网络切换执行；覆盖真实 DNS、断网、20 秒 fetch timeout、进程强制终止和并发调度。
 
 自动化测试不能替代真实网络栈、Windows 电源/进程终止和安装包路径验证。真实矩阵不得对不受控第三方站点制造高频、超时或故障流量。
@@ -19,7 +19,7 @@ Sprint 3 的核心承诺是：第三方页面不可达、拒绝访问、响应�
 默认命令：
 
 ```powershell
-npm run readiness:sprint3
+pnpm run readiness:sprint3
 ```
 
 脚本顺序执行：
@@ -85,7 +85,7 @@ fixture 日志只记录路径、状态码、耗时和 request id，不记录 hea
 每次发布候选保存：
 
 - 应用版本、commit SHA、Windows 版本、安装包类型和 fixture 版本。
-- `npm run readiness:sprint3` JSON 报告。
+- `pnpm run readiness:sprint3` JSON 报告。
 - W3-01 至 W3-16 的 pass/fail、执行时间、执行人、对象/job ID、关键截图和脱敏日志尾部。
 - W3-05 的实际超时时间，W3-11 的终止阶段，W3-14 的最终状态计数。
 - 失败项的修复 commit、release blocker 或有负责人和到期日的 waiver。

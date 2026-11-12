@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "com.linkworld.app",
   "build": {
-    "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "pnpm run dev",
+    "beforeBuildCommand": "pnpm run build",
     "devUrl": "http://127.0.0.1:1420",
     "frontendDist": "../dist"
   },

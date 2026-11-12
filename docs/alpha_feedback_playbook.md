@@ -240,4 +240,4 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/alpha-feedback-readiness.p
 
 校验器会递归拒绝 API key/token/cookie/session/password、正文、Prompt、source snapshot、embedding、URL/query、本机绝对路径和直接身份字段，也会拒绝 secret-like 值。输出报告只含聚合计数，不含参与者逐条记录。
 
-仓库中的 `tests/fixtures/alpha-feedback-ready` 是明确标注的 synthetic contract fixture，只用于 CI。`npm run test:alpha-feedback-contract` 同时证明：合法 synthetic fixture 可通过测试开关、synthetic fixture 不能冒充真实证据、含敏感字段的证据必定失败。它不能证明任何真实用户已经被邀请或观察。
+仓库中的 `tests/fixtures/alpha-feedback-ready` 是明确标注的 synthetic contract fixture，只用于 CI。`pnpm run test:alpha-feedback-contract` 同时证明：合法 synthetic fixture 可通过测试开关、synthetic fixture 不能冒充真实证据、含敏感字段的证据必定失败。它不能证明任何真实用户已经被邀请或观察。

@@ -1,1 +1,3 @@
+# Normalize line endings so the repo builds the same on Windows (CRLF checkout) and Linux/WSL (LF).
+* text=auto eol=lf
 src-tauri/migrations/*.sql text eol=lf

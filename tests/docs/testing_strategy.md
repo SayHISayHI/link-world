@@ -122,8 +122,8 @@ Must cover:
 - local diagnostics snapshot redacts URL query/fragment and model credential references from failed job summaries, and does not read source snapshots, parsed documents, embeddings or API key values.
 - support bundle export rejects missing confirmation, publishes one atomic JSON file with size/SHA-256, exports payload-free domain correlation summaries plus up to 100 revalidated current runtime log entries, and adversarially proves omission of object bodies, object-store content, job/domain-event payload/query, raw errors, plugin manifest secrets, audit metadata, credential references and local absolute paths.
 - structured logger writes bounded JSONL and rejects messages containing URL/credential markers; capture integration proves submitted/started/succeeded entries share the persisted UUID without source URLs, while AI integration proves success and failure reuse one UUID across job payload, `analysis.requested/created/failed` events, IPC result and logs without prompt/model output/provider config or raw errors; mismatched job object/correlation identity is rejected before partial analysis/event writes.
-- Sprint 2 readiness automation is available through `npm run readiness:sprint2`; it aggregates focused backup, restore, migration, portable export and startup recovery redaction gates into a JSON report, while the real Windows installer/process-kill matrix remains a release-candidate manual gate.
-- Sprint 5 readiness automation is available through `npm run readiness:sprint5`; it aggregates local diagnostics/redaction, bounded logger/rotation, support-bundle confirmation/privacy/atomicity plus capture/AI correlation and search maintenance correlation/cancellation/failure redaction into a JSON report, while user-confirmation, installed Windows paths, live rotation, large failed-job UI and support handoff remain release-candidate matrix gates.
+- Sprint 2 readiness automation is available through `pnpm run readiness:sprint2`; it aggregates focused backup, restore, migration, portable export and startup recovery redaction gates into a JSON report, while the real Windows installer/process-kill matrix remains a release-candidate manual gate.
+- Sprint 5 readiness automation is available through `pnpm run readiness:sprint5`; it aggregates local diagnostics/redaction, bounded logger/rotation, support-bundle confirmation/privacy/atomicity plus capture/AI correlation and search maintenance correlation/cancellation/failure redaction into a JSON report, while user-confirmation, installed Windows paths, live rotation, large failed-job UI and support handoff remain release-candidate matrix gates.
 - staged full-index rebuild reports persisted progress, publishes through an atomic FTS swap, preserves the existing index when cancelled before finalizing, and makes completed rebuilds non-cancellable; rebuild logs use the persisted UUID job id as correlation and reindex logs use the generated operation/job UUID (persisted on success), repeated cancel logs once, injected final-swap failure cleans staging and persists/emits only stable `search.rebuild_failed` text without query/index content or raw SQLite errors; service error mappers adversarially prove raw query/rebuild/reindex database details cannot cross IPC.
 
 ### 4.3 Job idempotency tests
@@ -184,9 +184,9 @@ The committed Playwright smoke at `tests/e2e/library-smoke.spec.ts` is the deter
 - readable no-model degradation;
 - navigation into Model Settings.
 
-Run `npm run test:e2e:install` once per machine, then `npm run test:e2e`. The command first creates the production frontend build and serves it with Vite Preview, so lazy chunks and the exact release bundle are exercised instead of relying on development-time transforms. The mock rejects unexpected commands so new frontend IPC dependencies fail visibly. This browser gate does not replace Rust service tests, installed Tauri verification, or the manual extension smoke below.
+Run `pnpm run test:e2e:install` once per machine, then `pnpm run test:e2e`. The command first creates the production frontend build and serves it with Vite Preview, so lazy chunks and the exact release bundle are exercised instead of relying on development-time transforms. The mock rejects unexpected commands so new frontend IPC dependencies fail visibly. This browser gate does not replace Rust service tests, installed Tauri verification, or the manual extension smoke below.
 
-The invited-Alpha evidence contract is tested separately with `npm run test:alpha-feedback-contract`. It proves that the synthetic ready fixture passes only with the test-only switch, while synthetic-as-real evidence, sensitive/unknown fields, cohorts below five, open P0s and open P1s without a due date fail closed. It does not substitute for real participant evidence.
+The invited-Alpha evidence contract is tested separately with `pnpm run test:alpha-feedback-contract`. It proves that the synthetic ready fixture passes only with the test-only switch, while synthetic-as-real evidence, sensitive/unknown fields, cohorts below five, open P0s and open P1s without a due date fail closed. It does not substitute for real participant evidence.
 
 MVP smoke tests:
 
@@ -211,7 +211,7 @@ If CI cannot automate an installed browser extension, steps 6-8 must be covered 
 
 ### 6.1 CLI smoke and parity
 
-`npm run readiness:cli` is the deterministic CLI gate. It must cover:
+`pnpm run readiness:cli` is the deterministic CLI gate. It must cover:
 
 - help/version/completion without data initialization;
 - schema v1 single-document JSON, stdout/stderr separation and stable exit codes;
@@ -361,10 +361,10 @@ Before release:
 - Sprint 3 real offline/DNS/process/concurrency matrix is recorded for the release candidate.
 - Sprint 5 observability/support readiness gate passes and its JSON report is retained.
 - Sprint 5 W5-01 through W5-14 Windows/support matrix is recorded for the release candidate.
-- Week 9/10 Alpha readiness gate passes through `npm run readiness:alpha` and its JSON report is retained.
+- Week 9/10 Alpha readiness gate passes through `pnpm run readiness:alpha` and its JSON report is retained.
 - CLI readiness gate passes and its JSON report is retained; the CLI Windows release matrix is recorded for the same candidate.
 - Week 9 Windows Alpha install/upgrade/uninstall/security matrix is recorded according to `docs/windows_alpha_release_matrix.md`.
-- The Alpha feedback schema contract passes through `npm run test:alpha-feedback-contract`.
+- The Alpha feedback schema contract passes through `pnpm run test:alpha-feedback-contract`.
 - Week 10 invited-user feedback, P0/P1 triage, core funnel and next-stage decision pass `scripts/alpha-feedback-readiness.ps1` and are recorded according to `docs/alpha_feedback_playbook.md`.
 - E2E smoke pass.
 - direct URL and browser extension captures pass against the same synthetic structured article.

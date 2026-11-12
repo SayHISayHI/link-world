@@ -47,7 +47,7 @@
 21. [windows_alpha_release_matrix.md](./windows_alpha_release_matrix.md)
    - Week 9 Windows Alpha 打包、安装、升级、卸载、签名、依赖审计和真实机发布候选矩阵。
 22. [dependency_security_audit.md](./dependency_security_audit.md)
-   - Windows Alpha 的 npm/RustSec 审计、漏洞处置、RSA waiver 失效条件和依赖面缩减记录。
+   - Windows Alpha 的 pnpm/RustSec 审计、漏洞处置、RSA waiver 失效条件和依赖面缩减记录。
 23. [release_evidence/alpha_0.1.0_98c9b0f.md](./release_evidence/alpha_0.1.0_98c9b0f.md)
    - Former Link World 品牌下的 Alpha 0.1.0 历史证据；不代表当前 Node Tide 发布候选。
 24. [release_evidence/alpha_0.1.0_ba3a45a.md](./release_evidence/alpha_0.1.0_ba3a45a.md)

@@ -41,22 +41,22 @@ AI 不是前置条件。没有配置模型时，保存、阅读和本地搜索�
 
 ## 本地开发
 
-需要 Node.js `20.19+`、`22.13+` 或 `24+`，以及 Rust `1.85+`。
+需要 Node.js `20.19+`、`22.13+` 或 `24+`、pnpm `10+`（可用 `corepack enable` 启用），以及 Rust `1.85+`。前端开发、单元测试和浏览器 E2E 可在 Linux/WSL 下运行；Tauri 桌面构建与 `scripts/*.ps1` 门禁仍以 Windows 为目标环境。
 
-```powershell
-npm ci
-npm run lint
-npm run typecheck
-npm test
-npm run build
-npm run test:e2e:install
-npm run test:e2e
+```bash
+pnpm install --frozen-lockfile
+pnpm run lint
+pnpm run typecheck
+pnpm test
+pnpm run build
+pnpm run test:e2e:install
+pnpm run test:e2e
 ```
 
-完整 Alpha 候选验证使用：
+完整 Alpha 候选验证使用（Windows + PowerShell）：
 
 ```powershell
-npm run readiness:alpha
+pnpm run readiness:alpha
 ```
 
 架构与开发入口见 [项目文档索引](docs/README.md)。

@@ -85,7 +85,7 @@ foreach ($artifact in $sourceArtifacts) {
 }
 
 if (-not (Test-Path -LiteralPath $cliBuildMetadataPath -PathType Leaf)) {
-  throw 'Missing CLI build metadata. Run npm run build:cli after the Tauri build.'
+  throw 'Missing CLI build metadata. Run pnpm run build:cli after the Tauri build.'
 }
 $cliBuildMetadata = Read-JsonFile $cliBuildMetadataPath
 $cliHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $cliCandidate).Hash
@@ -96,7 +96,7 @@ if ($cliBuildMetadata.packageVersion -ne $tauriConfig.version) {
   throw "CLI build metadata version does not match Tauri version $($tauriConfig.version)."
 }
 if ($cliBuildMetadata.sha256 -ne $cliHash) {
-  throw 'CLI binary no longer matches its build metadata. Run npm run build:cli after the Tauri build.'
+  throw 'CLI binary no longer matches its build metadata. Run pnpm run build:cli after the Tauri build.'
 }
 if ([int64]$cliBuildMetadata.bytes -ne (Get-Item -LiteralPath $cliCandidate).Length) {
   throw 'CLI binary size no longer matches its build metadata.'

@@ -25,7 +25,7 @@
 2. 安装并配置 Tailwind CSS、shadcn/ui、lucide-react。
 3. 在 Rust 端引入 `tauri`, `tokio`, `serde`, `serde_json` 等核心依赖。
 4. 编写最基础的 Tauri Command `ping`，并在 React 中调用展示。
-5. 验证标准：启动 `npm run tauri dev` 后，出现带 Tailwind 样式的原生桌面窗口，前端能收到 `ping` 响应。
+5. 验证标准：启动 `pnpm run tauri dev` 后，出现带 Tailwind 样式的原生桌面窗口，前端能收到 `ping` 响应。
 
 ## Phase 2: 本地数据库与迁移基建 (Database)
 

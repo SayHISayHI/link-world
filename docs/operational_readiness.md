@@ -84,7 +84,7 @@ Windows Local Edition 提供独立 `node-tide-cli.exe`。桌面和 CLI 初始化
 
 CLI 首期没有 daemon，写命令在既有 service timeout 内运行至 durable terminal state。capture、AI、Evaluation 可接受 UUID request ID；重复 identity 复用，跨对象/操作复用 fail closed。默认 object show 仅输出 metadata，正文必须显式 `--include-content`。release 通过独立 artifact 和 `install-node-tide-cli.ps1` 分发，PATH 仅在用户显式 `-AddToPath` 时修改 User scope。
 
-自动化入口为 `npm run readiness:cli`，真实 Windows/签名/网络门禁见 `docs/cli_windows_release_matrix.md`。
+自动化入口为 `pnpm run readiness:cli`，真实 Windows/签名/网络门禁见 `docs/cli_windows_release_matrix.md`。
 
 ## 4. Backup and Recovery
 
@@ -204,13 +204,13 @@ Week 8 代码级验收已完成；真实模型 A/B、sandbox test execution、�
 
 发布前采样验证：
 
-- Sprint 2 数据安全自动化门禁：`npm run readiness:sprint2`，保存 JSON report。
+- Sprint 2 数据安全自动化门禁：`pnpm run readiness:sprint2`，保存 JSON report。
 - Sprint 2 Windows 安装包故障矩阵：按 `docs/sprint2_windows_fault_matrix.md` 执行 W2-01 至 W2-13。
-- Sprint 3 采集可靠性自动化门禁：`npm run readiness:sprint3`，保存 JSON report。
+- Sprint 3 采集可靠性自动化门禁：`pnpm run readiness:sprint3`，保存 JSON report。
 - Sprint 3 真实网络/进程矩阵：按 `docs/sprint3_capture_fault_matrix.md` 执行 W3-01 至 W3-16。
-- Sprint 5 本地可观测性自动化门禁：`npm run readiness:sprint5`，保存 JSON report。
+- Sprint 5 本地可观测性自动化门禁：`pnpm run readiness:sprint5`，保存 JSON report。
 - Sprint 5 真实 Windows/支持矩阵：按 `docs/sprint5_observability_readiness.md` 执行 W5-01 至 W5-14。
-- Week 9/10 Alpha 聚合自动化门禁：`npm run readiness:alpha`，保存 JSON report；发布候选使用 `scripts/alpha-readiness.ps1 -IncludeSprintGates -IncludeTauriBuild -IncludeNetworkAudits`。2026-07-13 Node Tide commit `c472b7a8` 的 22/22 steps、MSI/NSIS/CLI、npm/RustSec、manifest/checksum 已通过并记录在 `docs/release_evidence/alpha_0.1.0_c472b7a8.md`；工件仍为 unsigned Alpha，真实 Windows 安装/升级/卸载矩阵未完成。
+- Week 9/10 Alpha 聚合自动化门禁：`pnpm run readiness:alpha`，保存 JSON report；发布候选使用 `scripts/alpha-readiness.ps1 -IncludeSprintGates -IncludeTauriBuild -IncludeNetworkAudits`。2026-07-13 Node Tide commit `c472b7a8` 的 22/22 steps、MSI/NSIS/CLI、npm/RustSec、manifest/checksum 已通过并记录在 `docs/release_evidence/alpha_0.1.0_c472b7a8.md`；工件仍为 unsigned Alpha，真实 Windows 安装/升级/卸载矩阵未完成。
 - Week 9 Windows Alpha 发布矩阵：按 `docs/windows_alpha_release_matrix.md` 执行 W9-01 至 W9-14。
 - Week 10 邀请制 Alpha 反馈闭环：按 `docs/alpha_feedback_playbook.md` 留存邀请、核心漏斗、P0/P1 和下一阶段决策证据。
 - 1000 个对象列表和搜索。

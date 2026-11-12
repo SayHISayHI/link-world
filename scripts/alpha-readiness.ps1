@@ -132,32 +132,32 @@ $steps = @(
   @{
     Name = 'frontend lint'
     WorkingDirectory = $repo
-    Command = @('npm', 'run', 'lint')
+    Command = @('pnpm', 'run', 'lint')
   },
   @{
     Name = 'frontend typecheck'
     WorkingDirectory = $repo
-    Command = @('npm', 'run', 'typecheck')
+    Command = @('pnpm', 'run', 'typecheck')
   },
   @{
     Name = 'frontend tests'
     WorkingDirectory = $repo
-    Command = @('npm', 'run', 'test')
+    Command = @('pnpm', 'run', 'test')
   },
   @{
     Name = 'Alpha feedback evidence contract'
     WorkingDirectory = $repo
-    Command = @('npm', 'run', 'test:alpha-feedback-contract')
+    Command = @('pnpm', 'run', 'test:alpha-feedback-contract')
   },
   @{
     Name = 'frontend production build'
     WorkingDirectory = $repo
-    Command = @('npm', 'run', 'build')
+    Command = @('pnpm', 'run', 'build')
   },
   @{
     Name = 'browser E2E smoke'
     WorkingDirectory = $repo
-    Command = @('npm', 'run', 'test:e2e')
+    Command = @('pnpm', 'run', 'test:e2e')
   },
   @{
     Name = 'rustfmt check'
@@ -198,9 +198,9 @@ if (-not $SkipClippy) {
 }
 
 $steps += @{
-  Name = 'npm dependency inventory'
+  Name = 'pnpm dependency inventory'
   WorkingDirectory = $repo
-  Command = @('npm', 'ls', '--omit=dev', '--json')
+  Command = @('pnpm', 'list', '--prod', '--json')
   Optional = $true
 }
 
@@ -238,12 +238,12 @@ if ($IncludeTauriBuild) {
   $steps += @{
     Name = 'Tauri package build'
     WorkingDirectory = $repo
-    Command = @('npm', 'run', 'tauri:build')
+    Command = @('pnpm', 'run', 'tauri:build')
   }
   $steps += @{
     Name = 'CLI release build'
     WorkingDirectory = $repo
-    Command = @('npm', 'run', 'build:cli')
+    Command = @('pnpm', 'run', 'build:cli')
   }
 }
 
@@ -259,9 +259,9 @@ if ($IncludeNetworkAudits) {
     Command = @('pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'scripts/rustsec-waiver-check.ps1')
   }
   $steps += @{
-    Name = 'npm audit production dependencies'
+    Name = 'pnpm audit production dependencies'
     WorkingDirectory = $repo
-    Command = @('npm', 'audit', '--omit=dev', '--audit-level=high', '--registry=https://registry.npmjs.org')
+    Command = @('pnpm', 'audit', '--prod', '--audit-level=high', '--registry=https://registry.npmjs.org')
   }
   $steps += @{
     Name = 'cargo audit runtime dependencies'
@@ -315,7 +315,7 @@ $report = [pscustomobject]@{
   }
   toolchain = [pscustomobject]@{
     nodeVersion = ((& node --version 2>$null) -join '').Trim()
-    npmVersion = ((& npm --version 2>$null) -join '').Trim()
+    pnpmVersion = ((& pnpm --version 2>$null) -join '').Trim()
   }
   options = [pscustomobject]@{
     sprintGatesIncluded = [bool]$IncludeSprintGates

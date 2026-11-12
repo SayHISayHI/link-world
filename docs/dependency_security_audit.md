@@ -2,7 +2,7 @@
 
 状态: 2026-07-13 自动化处置完成，并已在干净 Node Tide commit `c472b7a8` 的完整 22/22 RC 门禁中复核；后续候选 commit 仍须重新审计。
 
-适用范围: Windows Local Alpha 的 npm 生产依赖、Rust `Cargo.lock`、当前 Windows 活跃依赖图与 Tauri 发布二进制。
+适用范围: Windows Local Alpha 的 pnpm 生产依赖、Rust `Cargo.lock`、当前 Windows 活跃依赖图与 Tauri 发布二进制。
 
 ## 1. 审计门禁
 
@@ -12,13 +12,13 @@
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/alpha-readiness.ps1 -IncludeSprintGates -IncludeTauriBuild -IncludeNetworkAudits
 ```
 
-门禁包含 npm high/critical audit、RustSec lockfile audit 和 `scripts/rustsec-waiver-check.ps1`。`scripts/update-rustsec-advisory-db.ps1` 先通过系统 Git 从固定官方 origin 获取并检出 `main` 的最新 commit，随后 `cargo audit --no-fetch` 读取该数据库，避免 cargo-audit 内置 libgit2 的代理/鉴权差异绕过审计。任何新增 high/critical 漏洞必须修复、形成有边界的 waiver 或阻断发布。
+门禁包含 pnpm audit high/critical、RustSec lockfile audit 和 `scripts/rustsec-waiver-check.ps1`。`scripts/update-rustsec-advisory-db.ps1` 先通过系统 Git 从固定官方 origin 获取并检出 `main` 的最新 commit，随后 `cargo audit --no-fetch` 读取该数据库，避免 cargo-audit 内置 libgit2 的代理/鉴权差异绕过审计。任何新增 high/critical 漏洞必须修复、形成有边界的 waiver 或阻断发布。
 
 ## 2. 2026-07-02 处置记录
 
 | 项目 | 处置 | 发布判断 |
 | --- | --- | --- |
-| npm production dependencies | 官方 npm registry 审计返回 0 vulnerabilities | 通过 |
+| pnpm production dependencies | 官方 npm registry 审计返回 0 vulnerabilities | 通过 |
 | `RUSTSEC-2026-0185` / `quinn-proto` | 从 0.11.14 升级到已修复的 0.11.15 及以上锁定版本 | 已修复 |
 | `RUSTSEC-2026-0190` / `anyhow` | 从 1.0.102 升级到已修复的 1.0.103 及以上锁定版本 | 已修复 |
 | `RUSTSEC-2026-0194`、`RUSTSEC-2026-0195` / `quick-xml` | 经 `plist 1.10.0` 将 `quick-xml` 从 0.39.4 升级到修复版本 0.41.0；两项 CVSS 7.5 CPU/内存 DoS 均由 RustSec 要求 `>=0.41.0` | 已修复 |
