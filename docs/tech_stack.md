@@ -87,7 +87,7 @@ node-tide/
 │   ├── lib/                   # 工具类 (例如 tailwind `cn` 合并)
 │   └── styles/                # 全局 CSS 与 Tailwind 变量
 ├── docs/                      # AI 基础架构文档库
-├── .cursorrules               # AI 全局行为规范
+├── AGENTS.md                  # 唯一规范入口（CLAUDE.md / .cursorrules 只是指针）
 └── package.json
 ```
 
@@ -96,7 +96,7 @@ node-tide/
 - 绝不要用前端去直连数据库。
 - CLI adapter 同样不得直接依赖 repository/sqlx、Tauri window 或 provider；必须调用共享 service。
 - 后端使用 `sqlx` 时，所有业务数据库迁移脚本放在 `src-tauri/migrations` 目录下，交由 Rust 在启动时自动校验与合并。
-- FTS5 与 sqlite-vec 都是派生索引。解析后正文的唯一可信来源是 `parsed_documents`，不要从 FTS 表反读正文作为业务数据。
+- FTS5 是派生索引（`sqlite-vec` 仅存在于 deferred 设计，未实现）。解析后正文的唯一可信来源是 `parsed_documents`，不要从 FTS 表反读正文作为业务数据。
 
 ## 5. 测试策略 (Testing Strategy)
 
