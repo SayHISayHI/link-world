@@ -163,13 +163,13 @@ export interface SubmitCaptureResponse {
   deduplicated: boolean;
 }
 
+// Pipeline state only. "Triaged" is expressed by triage_status and archiving is a
+// Collection-level action, per ADR-0009.
 export type ObjectLifecycle =
   | "captured"
   | "parsed"
   | "enriched"
   | "evaluated"
-  | "triaged"
-  | "archived"
   | "deleted"
   | "failed";
 

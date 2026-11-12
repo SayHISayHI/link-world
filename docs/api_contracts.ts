@@ -12,13 +12,12 @@
 
 export type PrivacyLevel = 'public' | 'personal' | 'sensitive' | 'secret';
 
+// 生命周期只描述处理管道：分拣由 triage_status 表达，归档是 Collection 级动作（ADR-0009）。
 export type ObjectLifecycle =
   | 'captured'
   | 'parsed'
   | 'enriched'
   | 'evaluated'
-  | 'triaged'
-  | 'archived'
   | 'deleted'
   | 'failed';
 

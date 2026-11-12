@@ -250,7 +250,7 @@ Rules:
 - `deleted` / tombstone wins over active states。
 - `failed` does not overwrite `enriched` or `evaluated` from another device unless it refers to same job attempt。
 - `evaluated` implies `enriched` if analysis exists。
-- `archived` is user intent and can override `triaged`。
+- `triaged` / `archived` are not lifecycle values. User intent (`triage_status`) and Collection archiving merge on their own fields and never rewrite `lifecycle_status`。
 
 ### 7.3 Privacy merge
 

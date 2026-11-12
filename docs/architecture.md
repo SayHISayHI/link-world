@@ -500,8 +500,6 @@ erDiagram
 - `parsed`: 已解析。
 - `enriched`: 已完成 AI 分析。
 - `evaluated`: 已完成至少一次评估。
-- `triaged`: 用户或 agent 已处理。
-- `archived`: 已归档。
 - `deleted`: 已删除或等待清理。
 - `failed`: pipeline 失败，需要重试或人工处理。
 

@@ -344,8 +344,6 @@ const zhCN = new Map<string, string>([
   ["parsed", "已解析"],
   ["enriched", "已增强"],
   ["evaluated", "已评估"],
-  ["triaged", "已分拣"],
-  ["archived", "已归档"],
   ["deleted", "已删除"],
   ["failed", "失败"],
   ["queued", "排队中"],

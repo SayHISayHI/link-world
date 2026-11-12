@@ -18,21 +18,16 @@ stateDiagram-v2
   parsed --> failed: AI policy or parse retry failed
   enriched --> evaluated: evaluation completed
   enriched --> failed: evaluation failed terminally
-  evaluated --> triaged: user/agent triaged
-  triaged --> archived: user archived
-  parsed --> archived: user archived
-  enriched --> archived: user archived
-  evaluated --> archived: user archived
   captured --> deleted: user delete
   parsed --> deleted: user delete
   enriched --> deleted: user delete
   evaluated --> deleted: user delete
-  triaged --> deleted: user delete
-  archived --> deleted: user delete
   failed --> captured: retry capture
   failed --> parsed: retry parse succeeded
   failed --> deleted: user delete
 ```
+
+`lifecycle_status` 只管处理管道。用户分拣由独立的 `triage_status`（`inbox` / `filed`）表达，归档是 Collection 级动作；两者都不得写回生命周期（ADR-0009）。
 
 ### 2.1 Allowed transitions
 
@@ -49,7 +44,7 @@ stateDiagram-v2
 ### 2.2 Forbidden transitions
 
 - `deleted` -> any active state, except explicit restore flow defined in a future document.
-- `archived` -> `captured`, because archive is user intent, not pipeline state.
+- Any transition into `triaged` or `archived`. Those values remain in the historical `0001` CHECK constraint but are never produced: user intent belongs to `triage_status` and Collection archiving, not to the pipeline.
 - `evaluated` -> `parsed` by background worker. New analysis/evaluation should append versions, not regress status.
 - Any transition that updates status without writing a corresponding event when event is required.
 
@@ -73,6 +68,7 @@ stateDiagram-v2
 ```
 
 `triage_status` is independent from `lifecycle_status`. Every new capture starts in Inbox and remains there after parse/enrich/evaluate. Adding a manual Collection membership, adding a user Topic, accepting an AI Topic suggestion, or choosing File marks it filed. Migration 0007 files already-enriched/evaluated/failed historical objects only to preserve the previous visible Inbox set.
+
 ## 3. Background Job Lifecycle
 
 ```mermaid

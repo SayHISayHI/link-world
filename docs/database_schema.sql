@@ -20,6 +20,9 @@ CREATE TABLE IF NOT EXISTS knowledge_objects (
         privacy_level IN ('public', 'personal', 'sensitive', 'secret')
     ),
     lifecycle_status TEXT NOT NULL CHECK (
+        -- This list mirrors the immutable 0001 migration so the blueprint matches
+        -- shipped databases. 'triaged' and 'archived' are legacy values that no code
+        -- produces any more: see ADR-0009 and state_machines.md.
         lifecycle_status IN (
             'captured', 'parsed', 'enriched', 'evaluated',
             'triaged', 'archived', 'deleted', 'failed'

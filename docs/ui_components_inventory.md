@@ -39,7 +39,7 @@
 | --- | --- | --- |
 | `ObjectListContainer` | fetch and own list state | loading, empty, failed |
 | `ObjectList` | render paged/filterable object rows and search maintenance actions | empty, search empty, search failed, rebuild progress, rebuild cancellation boundary, loading more, end of page |
-| `ObjectListItem` | object summary row | selected, failed, archived |
+| `ObjectListItem` | object summary row | selected, failed, filed, deleted |
 | `ObjectDetailContainer` | fetch detail | loading, failed, deleted |
 | `ObjectDetail` | render selected object content and failure/recovery state | empty, parsed, failed, deleted |
 | `ObjectDetailHeader` | title/source/actions | stale, failed |
