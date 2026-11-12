@@ -1,5 +1,7 @@
 # Node Tide MVP 开发执行计划
 
+状态: Historical（MVP 执行计划，仅供回溯，不约束当前实现）
+
 这是写给 AI 代理 (Agent) 的原子级任务清单。实现时必须按照 Phase 推进，避免在基础 contract 未稳定前提前接入复杂 AI 或平台自动化。开始写代码前必须阅读 `docs/README.md` 中定义的文档顺序，尤其是 `backend_architecture.md` 和 `frontend_architecture.md`。
 
 ## Phase 0: 文档对齐与工程边界确认 (Architecture Alignment)

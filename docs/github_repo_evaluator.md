@@ -1,5 +1,7 @@
 # GitHub Repo Evaluator
 
+状态: Current
+
 本文档定义 Week 7 GitHub Repo Evaluator 的数据来源、执行边界、评分、降级和隐私约束。实现入口为 `services/github.rs`（外部 adapter）和 `services/github_evaluator.rs`（纯评分）。
 
 ## 1. 当前交付

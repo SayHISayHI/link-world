@@ -50,13 +50,13 @@
 1. 在编写任意模块前，务必查阅 `docs/` 与 `tests/docs/` 目录下的相关规范（Architecture、PRD、Backend Architecture、Frontend Architecture、DB Schema、API 契约、状态机、UI 组件、安全隐私、数据库迁移、外部 API 韧性、同步架构、测试策略、运营就绪、DevOps/CI、ADR）。
    - 写 Rust/Tauri 后端前，必须查阅 `docs/backend_architecture.md`。
    - 写 React 前端前，必须查阅 `docs/frontend_architecture.md`。
-   - 涉及同步、删除合并或多设备字段前，必须查阅 `docs/sync_architecture.md`。
+   - 涉及同步、删除合并或多设备字段前，必须查阅 `docs/deferred/sync_architecture.md`（未实现，仅设计意图）。
    - 涉及打包、CI、发布或迁移测试前，必须查阅 `docs/devops_and_ci.md`。
    - 涉及状态流转前，必须查阅 `docs/state_machines.md`。
    - 涉及 UI 组件职责或交互状态前，必须查阅 `docs/ui_components_inventory.md`。
    - 涉及第三方 API、模型供应商、重试和 fallback 前，必须查阅 `docs/external_api_resilience.md`。
    - 涉及数据库升级前，必须查阅 `docs/database_migrations.md`。
-   - 涉及测试、fixtures 或 evals 前，必须查阅 `tests/docs/testing_strategy.md`。
+   - 涉及测试、fixtures 或 evals 前，必须查阅 `docs/testing_strategy.md`。
    - 修改基础架构取舍前，必须新增或更新 `docs/adr/`。
 2. 在遇到文档未定义、且涉及基础架构修改的需求时，必须暂停执行并向 User 请示，绝不随意猜测。
 3. 如果修改代码后出现构建失败或验证不通过，必须自行完整读取报错日志（使用 `grep_search` 等），不允许在未解决的情况下虚假报告已完成。

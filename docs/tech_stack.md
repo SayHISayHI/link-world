@@ -1,5 +1,7 @@
 # Node Tide 技术选型与规范 (Tech Stack)
 
+状态: Current
+
 本文档定义了 Node Tide 的核心技术基石。任何 AI 工具在接手开发时，必须严格遵守本文档定义的库与框架。
 
 ## 1. 整体架构 (Architecture)

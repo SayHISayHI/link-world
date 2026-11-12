@@ -1,6 +1,6 @@
 # Node Tide 多端同步与数据合并架构
 
-状态: Draft  
+状态: Deferred（未实现，不得作为当前行为依据）  
 适用范围: Future Hybrid Edition / Cloud Edition  
 MVP 状态: 不实现云同步，但数据库和业务模型必须保留同步边界。
 

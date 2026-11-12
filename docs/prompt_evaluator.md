@@ -1,5 +1,7 @@
 # Prompt Evaluator
 
+状态: Current
+
 本文档定义 Week 8 Prompt Evaluator 的抽取、评分、改进、测试与安全边界。实现入口为 `src-tauri/src/services/prompt_evaluator.rs`；该模块是纯函数，不持有网络、模型、sandbox 或外部动作能力。
 
 ## 1. 当前交付

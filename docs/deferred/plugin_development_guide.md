@@ -1,5 +1,7 @@
 # Node Tide 插件开发规范 (MVP 阶段)
 
+状态: Deferred（未实现，不得作为当前行为依据）
+
 终态架构希望 Connector、Parser、Evaluator、ModelProvider 和 SyncProvider 都可以通过外部动态加载机制扩展。MVP 阶段为了避免过早引入跨进程通信复杂度，插件先实现为编译进 Rust 的内部 Trait 实现，但接口边界必须保持终态兼容。
 
 本指南用于指导 AI 如何为 Node Tide 增加新的内容采集、解析或评估能力。
