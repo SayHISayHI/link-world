@@ -271,7 +271,7 @@ Expected parser results must assert both normalized `textContent` and `markdownC
 
 ## 8. AI Evaluation Tests
 
-AI evals live under `evals/dataset`.
+AI evals 目前没有落地的数据集：`evals/dataset` 在 2026-11 清理中删除（只有空壳样本、无运行入口）。新增基准时，必须同时提供 schema、运行脚本和 `pnpm` 入口，并在本节登记。
 
 Evaluation dimensions:
 

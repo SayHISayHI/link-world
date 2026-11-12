@@ -13,9 +13,9 @@
 
 保留的契约残件：`AppError::PluginPermission` 与 `ERR_PLUGIN_PERMISSION` 仍定义在 `src-tauri/src/errors.rs`，但没有任何代码路径产生它——这是给未来插件运行时预留的稳定错误码，不要当成已实现能力。
 
-相关但仍在使用的参考资产（没有代码引用，属于离线资料）：
+已删除的离线资产（2026-11 清理）：
 
-- `evals/dataset/` — prompt / repo evaluator 的确定性基准样本
-- `prompts/system_prompts/evaluate_repo.md` — repo evaluator 的 prompt 草稿；线上 prompt 目前内嵌在 `src-tauri/src/services/ai.rs`
+- `evals/dataset/` — 曾是 prompt / repo evaluator 的基准样本，只有 5 行 JSONL 且无任何代码或脚本引用
+- `prompts/system_prompts/evaluate_repo.md` — repo evaluator 的 prompt 草稿，线上 prompt 一直内嵌在 `src-tauri/src/services/ai.rs`
 
-如果确认这些资产不再需要，删除时请同步移除 `docs/testing_strategy.md` 和相关指南里的引用。
+需要基准数据集时，先定义 schema 和对应的运行脚本，再按 `docs/testing_strategy.md` 的测试入口重建，不要先放空壳文件。

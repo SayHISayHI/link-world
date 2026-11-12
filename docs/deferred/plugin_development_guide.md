@@ -86,7 +86,7 @@ MVP 的 evaluator 可以先轻量实现：
 
 ## 5. Prompt 资源规范
 
-Prompt 文件存放在 `prompts/system_prompts/` 下，供 evaluator 或 AI enrichment pipeline 使用。
+Prompt 资源计划放在 `prompts/system_prompts/` 下，供 evaluator 或 AI enrichment pipeline 使用。该目录当前不存在（2026-11 清理删除了唯一的草稿文件），实现插件运行时或外置 prompt 时再建立。
 
 要求：
 
