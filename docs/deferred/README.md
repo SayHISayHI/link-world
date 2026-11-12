@@ -11,6 +11,8 @@
 | [sync_architecture.md](./sync_architecture.md) | 多端同步、冲突合并、tombstone、隐私同步边界 | 未实现。当前只有本地单设备；`plugin_manifests` 里的 `sync_provider` 是保留枚举值 |
 | [plugin_development_guide.md](./plugin_development_guide.md) | Connector / Parser / Evaluator / Prompt 资源与 Registry 插件规范 | 未实现。`0001` 迁移已建 `plugin_manifests` / `plugin_permissions` 空表，运行时缺失 |
 
+保留的契约残件：`AppError::PluginPermission` 与 `ERR_PLUGIN_PERMISSION` 仍定义在 `src-tauri/src/errors.rs`，但没有任何代码路径产生它——这是给未来插件运行时预留的稳定错误码，不要当成已实现能力。
+
 相关但仍在使用的参考资产（没有代码引用，属于离线资料）：
 
 - `evals/dataset/` — prompt / repo evaluator 的确定性基准样本

@@ -125,7 +125,7 @@ Embedding:
 | invalid model JSON | `ERR_MODEL_OUTPUT_SCHEMA` |
 | policy denial | `ERR_POLICY_DENIED` |
 | unsupported parser | `ERR_PARSE_FAILED` |
-| plugin permission | `ERR_PLUGIN_PERMISSION` |
+| plugin permission (reserved, no runtime yet) | `ERR_PLUGIN_PERMISSION` |
 
 ## 9. Idempotency
 

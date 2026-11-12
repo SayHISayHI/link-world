@@ -163,7 +163,7 @@ Component tests:
 - `OrganizationPanel` keeps triage, user topics, collection membership and AI topic suggestions as separate mutations; accepting or rejecting a suggestion is explicit and idempotent.
 - `ObjectList` and search resolve the same typed `LibraryViewRef` plus filters, and append cursor pages without duplicates or cross-scope leakage.
 - `ObjectList` renders actionable search empty/error states and displays rebuild progress, cancel action and non-cancellable finalizing boundary.
-- `PluginPermissionPanel` distinguishes required vs optional permissions.
+- `PluginPermissionPanel` distinguishes required vs optional permissions（预留：插件运行时未实现，当前无对应组件与测试）。
 
 Interaction tests:
 

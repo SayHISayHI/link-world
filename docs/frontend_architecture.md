@@ -201,7 +201,7 @@ Hook examples:
 - `usePortableExport`
   - owns explicit `export_library` state; it stores only the returned summary/path and never loads exported object bodies back into React state.
 - `restart_app` only schedules process restart and does not mutate storage.
-- `usePluginPermissions`
+- `usePluginPermissions`（预留：插件运行时未实现，见 `deferred/plugin_development_guide.md`）
 
 Rules:
 
@@ -368,7 +368,7 @@ Mapping examples:
 | `ERR_MODEL_AUTH` | open model settings |
 | `ERR_MODEL_RATE_LIMIT` | retry later |
 | `ERR_POLICY_DENIED` | request explicit authorization |
-| `ERR_PLUGIN_PERMISSION` | open plugin permissions |
+| `ERR_PLUGIN_PERMISSION` | open plugin permissions（预留码，当前不会出现） |
 | `ERR_SECRET_STORAGE` | open diagnostics |
 
 ## 10. Real-Time Updates

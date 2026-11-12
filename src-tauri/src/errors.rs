@@ -36,6 +36,8 @@ pub enum AppError {
     ModelOutputSchema(String),
     #[error("policy denied: {0}")]
     PolicyDenied(String),
+    // Reserved: the plugin runtime is deferred (docs/deferred/plugin_development_guide.md).
+    // No current code path constructs or maps this value.
     #[error("plugin permission denied: {0}")]
     PluginPermission(String),
     #[error("secret storage error")]
@@ -59,6 +61,7 @@ pub enum IpcErrorCode {
     ErrModelNotFound,
     ErrModelOutputSchema,
     ErrPolicyDenied,
+    /// Reserved for the deferred plugin runtime; never produced today.
     ErrPluginPermission,
     ErrJobNotFound,
     ErrObjectNotFound,

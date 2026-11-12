@@ -89,7 +89,7 @@ Plugin access must check:
 - requested capability.
 - runtime location: local/cloud.
 
-Denied access returns `ERR_PLUGIN_PERMISSION` and writes audit log.
+Denied access returns `ERR_PLUGIN_PERMISSION` and writes audit log. 该错误码为预留：插件运行时未实现，当前没有任何代码路径产生它（见 `deferred/plugin_development_guide.md`）。
 
 ## 6. Browser Capture Policy
 

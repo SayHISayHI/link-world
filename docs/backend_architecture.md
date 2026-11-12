@@ -297,7 +297,7 @@ Mapping to IPC:
 | model rate limit | `ERR_MODEL_RATE_LIMIT` |
 | `ModelOutputSchema` | `ERR_MODEL_OUTPUT_SCHEMA` |
 | `PolicyDenied` | `ERR_POLICY_DENIED` |
-| `PluginPermission` | `ERR_PLUGIN_PERMISSION` |
+| `PluginPermission` | `ERR_PLUGIN_PERMISSION`（预留，插件运行时未实现） |
 | `SecretStorage` | `ERR_SECRET_STORAGE` |
 
 Rules:
