@@ -1,4 +1,5 @@
-import { CheckCircle2, RefreshCw, XCircle, PanelRightOpen } from "lucide-react";
+import { useEffect, useState } from "react";
+import { RefreshCw, X, XCircle, PanelRightOpen } from "lucide-react";
 import { formatRelativeStatus } from "../../lib/formatting";
 import { cn } from "../../lib/cn";
 import { Button } from "../ui/button";
@@ -64,8 +65,25 @@ export function ObjectList({
   const rebuildRunning =
     searchRebuildStatus?.status === "queued" || searchRebuildStatus?.status === "running";
   const rebuildProgress = Math.round(searchRebuildStatus?.progressPercent ?? 0);
+  const maintenancePanelKey =
+    searchRebuildStatus?.jobId ?? searchMaintenanceMessage ?? searchMaintenanceError?.message ?? "";
+  const [dismissedMaintenanceKey, setDismissedMaintenanceKey] = useState<string>();
+  const maintenanceDismissed =
+    dismissedMaintenanceKey !== undefined && dismissedMaintenanceKey === maintenancePanelKey;
   const showMaintenancePanel =
-    Boolean(searchRebuildStatus) || Boolean(searchMaintenanceError) || Boolean(searchMaintenanceMessage);
+    !maintenanceDismissed &&
+    (Boolean(searchRebuildStatus) || Boolean(searchMaintenanceError) || Boolean(searchMaintenanceMessage));
+
+  useEffect(() => {
+    // A finished rebuild is an acknowledgement, not a persistent status: clear it so the
+    // list header and the object list keep the visual weight.
+    if (searchRebuildStatus?.status !== "succeeded") {
+      return undefined;
+    }
+
+    const timeout = window.setTimeout(() => setDismissedMaintenanceKey(maintenancePanelKey), 3000);
+    return () => window.clearTimeout(timeout);
+  }, [searchRebuildStatus?.status, maintenancePanelKey]);
 
   const handleSelectObject = (objectId: string) => {
     setDetailPaneCollapsed(false);
@@ -79,37 +97,6 @@ export function ObjectList({
           {activeSearch ? t("Search") : heading ? t(heading) : heading}
         </h1>
         <div className="flex shrink-0 items-center gap-1">
-          <Button
-            variant="ghost"
-            onClick={onCheckSearchIndex}
-            disabled={searchMaintenanceLoading}
-            title={t("Check search index")}
-            aria-label={t("Check search index")}
-            className="text-muted-foreground hover:text-foreground w-8 h-8 p-0"
-          >
-            <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={onRebuildSearchIndex}
-            disabled={searchMaintenanceLoading || rebuildRunning}
-            title={t("Rebuild search index")}
-            aria-label={t("Rebuild search index")}
-            className="text-muted-foreground hover:text-foreground w-8 h-8 p-0"
-          >
-            <RefreshCw className={cn("h-4 w-4", searchMaintenanceLoading && "animate-spin")} aria-hidden="true" />
-          </Button>
-          {rebuildRunning && searchRebuildStatus?.cancellable ? (
-            <Button
-              variant="ghost"
-              onClick={onCancelSearchIndexRebuild}
-              title={t("Cancel search index rebuild")}
-              aria-label={t("Cancel search index rebuild")}
-              className="text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-700 dark:hover:text-red-300 w-8 h-8 p-0"
-            >
-              <XCircle className="h-4 w-4" aria-hidden="true" />
-            </Button>
-          ) : null}
           {detailPaneCollapsed && (
             <Button
               variant="ghost"
@@ -124,7 +111,16 @@ export function ObjectList({
       </div>
 
       {showMaintenancePanel ? (
-        <div className="mx-4 my-2 rounded-md border border-border bg-surface p-3 text-xs leading-5">
+        <div className="relative mx-4 my-2 rounded-md border border-border bg-surface p-3 pr-9 text-xs leading-5">
+          <button
+            aria-label={t("Dismiss")}
+            className="absolute right-2 top-2 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+            onClick={() => setDismissedMaintenanceKey(maintenancePanelKey)}
+            title={t("Dismiss")}
+            type="button"
+          >
+            <X className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
           {searchRebuildStatus ? (
             <div>
               <div className="flex items-center justify-between gap-3">

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { AppUiError } from "../../lib/errors";
 import type { KnowledgeObject, RebuildSearchIndexResponse } from "../../types/api";
@@ -59,8 +59,7 @@ describe("ObjectList search states", () => {
     expect(onOpenModelSettings).toHaveBeenCalledOnce();
   });
 
-  it("renders an actionable empty search state", () => {
-    renderObjectList({
+  it("renders an actionable empty search state", () => {    renderObjectList({
       objects: [],
       searchValue: "durable workflow",
       searchResults: [],
@@ -92,6 +91,51 @@ describe("ObjectList search states", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Check index" }));
     expect(onCheckSearchIndex).toHaveBeenCalledOnce();
+  });
+
+  it("keeps search index maintenance out of the list header", () => {
+    renderObjectList({ objects: [object] });
+
+    expect(screen.queryByRole("button", { name: "Check search index" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rebuild search index" })).not.toBeInTheDocument();
+  });
+
+  it("dismisses a finished rebuild report instead of leaving it pinned", () => {
+    vi.useFakeTimers();
+    try {
+      renderObjectList({
+        searchRebuildStatus: rebuildStatus({
+          status: "succeeded",
+          stage: "finalizing",
+          indexedObjects: 20,
+          expectedObjects: 20,
+          progressPercent: 100,
+          cancellable: false,
+        }),
+      });
+
+      expect(screen.getByText(/Search index rebuilt/)).toBeInTheDocument();
+
+      act(() => {
+        vi.advanceTimersByTime(3000);
+      });
+
+      expect(screen.queryByText(/Search index rebuilt/)).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("lets the user close the maintenance report manually", () => {
+    renderObjectList({
+      searchMaintenanceMessage: "Search index healthy: 20/20 rows indexed.",
+    });
+
+    expect(screen.getByText(/Search index healthy/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+
+    expect(screen.queryByText(/Search index healthy/)).not.toBeInTheDocument();
   });
 
   it("renders rebuild progress and supports cancellation before finalizing", () => {

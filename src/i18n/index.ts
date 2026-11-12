@@ -86,6 +86,7 @@ const zhCN = new Map<string, string>([
   ["No parsed document available for indexing.", "没有可用于索引的已解析文档。"],
   ["Search index healthy: {actual}/{expected} rows indexed.", "搜索索引健康：已索引 {actual}/{expected} 行。"],
   ["Search index needs rebuild: {missing} missing, {stale} stale, {orphaned} orphaned, {duplicate} duplicate.", "搜索索引需要重建：缺失 {missing}、过期 {stale}、孤立 {orphaned}、重复 {duplicate}。"],
+  ["Dismiss", "关闭"],
   ["Delete object", "删除条目"],
   ["Ping backend", "检测后端"],
   ["Show sidebar", "显示侧栏"],
