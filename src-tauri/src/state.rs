@@ -118,10 +118,25 @@ struct MemorySecretBackend {
 #[derive(Debug, Default)]
 struct WindowsCredentialBackend;
 
+/// Development fallback for non-Windows targets.
+///
+/// Node Tide ships on Windows and stores model API keys in the OS Credential
+/// Manager. Other targets would otherwise fail startup with
+/// `AppError::SecretStorage`, so they fall back to a JSON file with `0600`
+/// permissions inside the app data directory. This is a local-development
+/// backend: it is not a credential manager, it is not encrypted at rest, and
+/// it is not a release gate, so it must never be enabled for Windows builds.
+#[cfg(not(target_os = "windows"))]
+#[derive(Debug)]
+struct FileSecretBackend {
+    path: PathBuf,
+}
+
 impl SecretStore {
-    pub fn system() -> AppResult<Self> {
+    pub fn system(data_dir: &Path) -> AppResult<Self> {
         #[cfg(target_os = "windows")]
         {
+            let _ = data_dir;
             Ok(Self {
                 backend: Arc::new(WindowsCredentialBackend),
             })
@@ -129,7 +144,9 @@ impl SecretStore {
 
         #[cfg(not(target_os = "windows"))]
         {
-            Err(AppError::SecretStorage)
+            Ok(Self {
+                backend: Arc::new(FileSecretBackend::new(data_dir)),
+            })
         }
     }
 
@@ -242,6 +259,93 @@ impl SecretBackend for WindowsCredentialBackend {
 
     fn backend_name(&self) -> &'static str {
         "windows_credential_manager"
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+impl FileSecretBackend {
+    const FILE_NAME: &'static str = "secrets.json";
+
+    fn new(data_dir: &Path) -> Self {
+        Self {
+            path: data_dir.join(Self::FILE_NAME),
+        }
+    }
+
+    fn load(&self) -> AppResult<HashMap<String, String>> {
+        match std::fs::read(&self.path) {
+            Ok(bytes) if bytes.is_empty() => Ok(HashMap::new()),
+            Ok(bytes) => serde_json::from_slice(&bytes).map_err(|_| AppError::SecretStorage),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(HashMap::new()),
+            Err(_) => Err(AppError::SecretStorage),
+        }
+    }
+
+    fn persist(&self, secrets: &HashMap<String, String>) -> AppResult<()> {
+        use std::io::Write;
+
+        let parent = self.path.parent().ok_or(AppError::SecretStorage)?;
+        std::fs::create_dir_all(parent).map_err(|_| AppError::SecretStorage)?;
+
+        let payload = serde_json::to_vec(secrets).map_err(|_| AppError::SecretStorage)?;
+        let temp_path = self.path.with_extension("json.tmp");
+
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+
+        {
+            let mut file = options
+                .open(&temp_path)
+                .map_err(|_| AppError::SecretStorage)?;
+            file.write_all(&payload)
+                .map_err(|_| AppError::SecretStorage)?;
+            file.sync_all().map_err(|_| AppError::SecretStorage)?;
+        }
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let permissions = std::fs::Permissions::from_mode(0o600);
+            std::fs::set_permissions(&temp_path, permissions)
+                .map_err(|_| AppError::SecretStorage)?;
+        }
+
+        std::fs::rename(&temp_path, &self.path).map_err(|_| AppError::SecretStorage)?;
+        Ok(())
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+impl SecretBackend for FileSecretBackend {
+    fn set(&self, secret_ref: &str, value: &str) -> AppResult<()> {
+        let mut secrets = self.load()?;
+        secrets.insert(secret_ref.to_string(), value.to_string());
+        self.persist(&secrets)
+    }
+
+    fn resolve(&self, secret_ref: &str) -> AppResult<Option<String>> {
+        Ok(self
+            .load()?
+            .get(secret_ref)
+            .filter(|value| !value.is_empty())
+            .cloned())
+    }
+
+    fn delete(&self, secret_ref: &str) -> AppResult<()> {
+        let mut secrets = self.load()?;
+        if secrets.remove(secret_ref).is_some() {
+            self.persist(&secrets)?;
+        }
+        Ok(())
+    }
+
+    fn backend_name(&self) -> &'static str {
+        "file_0600"
     }
 }
 
@@ -399,7 +503,7 @@ impl AppState {
             }
         }
         let model_registry = ModelProviderRegistry::new()?;
-        let secrets = SecretStore::system()?;
+        let secrets = SecretStore::system(&data_dir)?;
 
         Ok(Self {
             backend_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -511,6 +615,50 @@ mod tests {
                 .expect("missing secret should resolve"),
             None
         );
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn file_secret_store_persists_restricted_secret_file() {
+        let data_dir = std::env::temp_dir().join(format!("node-tide-secrets-{}", Uuid::new_v4()));
+        let secret_ref = "keyring:model-provider:file-backend-test";
+
+        let store = SecretStore::system(&data_dir).expect("file backend should initialize");
+        assert_eq!(store.backend_name(), "file_0600");
+
+        store
+            .set(secret_ref, "secret-value".to_string())
+            .expect("secret should be stored");
+
+        let reopened =
+            SecretStore::system(&data_dir).expect("file backend should reopen existing state");
+        assert_eq!(
+            reopened.resolve(secret_ref).expect("secret should resolve"),
+            Some("secret-value".to_string())
+        );
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(data_dir.join("secrets.json"))
+                .expect("secret file should exist")
+                .permissions()
+                .mode()
+                & 0o777;
+            assert_eq!(mode, 0o600, "secret file must stay owner-only");
+        }
+
+        reopened
+            .delete(secret_ref)
+            .expect("secret should be deleted");
+        assert_eq!(
+            reopened
+                .resolve(secret_ref)
+                .expect("missing secret should resolve"),
+            None
+        );
+
+        let _ = std::fs::remove_dir_all(&data_dir);
     }
 
     #[tokio::test]

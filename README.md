@@ -60,3 +60,16 @@ pnpm run readiness:alpha
 ```
 
 架构与开发入口见 [项目文档索引](docs/README.md)。
+
+### 非 Windows 目标（Linux/WSL 开发）
+
+前端、单元测试和浏览器 E2E 与 Windows 一致。桌面端可在 WSL + WSLg 下跑起来，需要额外安装系统库：
+
+```bash
+sudo apt-get install -y build-essential pkg-config libssl-dev \
+  libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
+  libjavascriptcoregtk-4.1-dev librsvg2-dev libayatana-appindicator3-dev patchelf
+pnpm tauri dev
+```
+
+差异：模型 API key 在非 Windows 目标下保存在 `<app_data>/secrets.json`（`0600`）的 `FileSecretBackend` 中，仅供本地开发；Windows 发布版仍使用 Credential Manager。`src-tauri/icons/icon.png` 是 Linux 构建所需的占位图标，正式发布前需替换为真实 1024×1024 资源。
