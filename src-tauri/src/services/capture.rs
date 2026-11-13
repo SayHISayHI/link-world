@@ -365,6 +365,16 @@ impl CaptureService {
             )));
         }
 
+        // Platform adapters read the payload the app itself renders (embedded JSON or a
+        // mobile body fragment), which keeps original text and media intact instead of
+        // scraping a client-rendered shell. A failure here falls back to the generic
+        // HTML pipeline below.
+        match crate::services::sources::capture_with_adapter(&self.http_client, &url).await {
+            Ok(Some(capture)) => return Ok(fetched_document_from_source(capture)),
+            Ok(None) => {}
+            Err(_) => {}
+        }
+
         let response = self
             .http_client
             .get(url)
@@ -544,6 +554,24 @@ pub fn spawn_fetch_job_runner(
             spawn_ai_enrichment_runner(app_handle, ai_service, object_id);
         }
     });
+}
+
+fn fetched_document_from_source(
+    capture: crate::services::sources::SourceCapture,
+) -> FetchedHtmlDocument {
+    let word_count = capture.text_content.split_whitespace().count() as i64;
+    let content_hash = sha256_hex(capture.text_content.as_bytes());
+
+    FetchedHtmlDocument {
+        raw_html: capture.raw_payload,
+        title: capture.title,
+        author: capture.author,
+        text_content: capture.text_content,
+        markdown_content: capture.markdown_content,
+        language: capture.language,
+        word_count,
+        content_hash,
+    }
 }
 
 #[derive(Debug)]

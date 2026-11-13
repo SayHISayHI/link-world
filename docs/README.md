@@ -43,6 +43,8 @@
   - UI 组件清单、组件职责、状态要求、设置页、搜索、AI/Evaluation 面板规范。
 - [external_api_resilience.md](./external_api_resilience.md)
   - 第三方调用 timeout、retry、fallback、rate limit、错误映射和韧性测试。
+- [source_adapters.md](./source_adapters.md)
+  - 平台源适配器（X / 小红书 / 抖音 / 知乎）的数据位置、回退语义、已知缺口和新增步骤。
 - [testing_strategy.md](./testing_strategy.md)
   - 测试分层、fixtures、AI evals、回归测试和发布测试清单。
 - [github_repo_evaluator.md](./github_repo_evaluator.md)

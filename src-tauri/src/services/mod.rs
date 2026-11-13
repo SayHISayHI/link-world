@@ -14,5 +14,6 @@ pub mod portable_export;
 pub mod prompt_evaluator;
 pub mod restore;
 pub mod search;
+pub mod sources;
 pub mod support_bundle;
 pub mod system;
