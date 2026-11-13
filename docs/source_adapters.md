@@ -64,6 +64,14 @@ cd src-tauri && cargo build --bin node-tide-cli
 
 ## 6. 需要登录态时怎么给 cookie
 
+两种入口：**Settings → Sources** 面板（推荐，可验证），或 CLI。
+
+面板位于设置页 `Settings → Sources`，每个平台一行：状态（`Public access` / `Cookie missing` / `已保存时间`）、粘贴 cookie、删除、以及"用一条链接验证"。验证走的正是下面的探针命令，把结果分成 `适配器可用` / `cookie 缺失或已过期` / `平台返回结构已变化` / `该链接没有适配器` 四种。
+
+cookie 现在存进应用 `SecretStore`：Windows 进 Credential Manager（与模型 API key 同一套），非 Windows 开发态落到 0600 的 `secrets.json`。保存后**不再回显**，旧版 CLI 写的 `source-cookies.json` 会在启动时自动迁移并删除。
+
+CLI 入口仍然可用：
+
 小红书与知乎匿名请求会被挡（302 到 `/login`、或 403）。cookie 只对匹配的域名发送，存于 `<app-data>/source-cookies.json`（`0600`），不写日志、不进支持包。
 
 ```bash
@@ -77,7 +85,7 @@ cd src-tauri && cargo build --bin node-tide-cli
 ./target/debug/node-tide-cli sources cookie remove xiaohongshu.com
 ```
 
-cookie 会过期；探针报 `payload missing` 时先换新 cookie 再判断是不是结构变化。
+cookie 会过期；探针报 `payload missing` 时先换新 cookie 再判断是不是结构变化。`sources cookie list` 会显示当前后端（`windows_credential_manager` 或 `file_0600`）。
 
 ## 7. 新增适配器
 

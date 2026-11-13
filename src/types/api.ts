@@ -548,6 +548,43 @@ export interface RebuildSearchIndexResponse {
   failureReason?: string;
 }
 
+export interface SourcePlatformCredential {
+  id: string;
+  label: string;
+  cookieDomain: string | null;
+  configured: boolean;
+  updatedAt: string | null;
+}
+
+export interface SourceCredentialListResponse {
+  backend: string;
+  platforms: SourcePlatformCredential[];
+}
+
+export interface SourceProbeAsset {
+  kind: string;
+  url: string;
+}
+
+export type SourceProbeStatus =
+  | "ok"
+  | "login_required"
+  | "structure_changed"
+  | "no_adapter"
+  | "failed";
+
+export interface SourceProbeResponse {
+  matchedAdapter: string | null;
+  resolved: boolean;
+  status: SourceProbeStatus;
+  title: string | null;
+  author: string | null;
+  textLength: number;
+  assets: SourceProbeAsset[];
+  excerpt: string | null;
+  message: string | null;
+}
+
 export interface SearchIndexHealthResponse {
   healthy: boolean;
   expectedIndexedObjects: number;

@@ -20,6 +20,8 @@ use uuid::Uuid;
 const LEGACY_KEYRING_SERVICE: &str = crate::legacy_abi::KEYRING_SERVICE;
 #[cfg(target_os = "windows")]
 const KEYRING_SECRET_PREFIX: &str = "keyring:model-provider:";
+#[cfg(target_os = "windows")]
+const SOURCE_COOKIE_SECRET_PREFIX: &str = "keyring:source-cookie:";
 
 #[derive(Debug)]
 pub struct AppState {
@@ -227,11 +229,21 @@ impl SecretBackend for MemorySecretBackend {
 #[cfg(target_os = "windows")]
 impl WindowsCredentialBackend {
     fn entry(secret_ref: &str) -> AppResult<keyring::Entry> {
-        let account = secret_ref
-            .strip_prefix(KEYRING_SECRET_PREFIX)
-            .filter(|value| !value.is_empty())
-            .ok_or(AppError::SecretStorage)?;
-        keyring::Entry::new(LEGACY_KEYRING_SERVICE, account).map_err(|_| AppError::SecretStorage)
+        // Legacy model-provider accounts keep their historical account name; source
+        // cookies use an explicit namespace so both can coexist in one keyring service.
+        let account = if let Some(account) = secret_ref.strip_prefix(KEYRING_SECRET_PREFIX) {
+            account.to_string()
+        } else if let Some(domain) = secret_ref.strip_prefix(SOURCE_COOKIE_SECRET_PREFIX) {
+            format!("source-cookie:{domain}")
+        } else {
+            return Err(AppError::SecretStorage);
+        };
+
+        if account.is_empty() {
+            return Err(AppError::SecretStorage);
+        }
+
+        keyring::Entry::new(LEGACY_KEYRING_SERVICE, &account).map_err(|_| AppError::SecretStorage)
     }
 }
 
@@ -506,6 +518,11 @@ impl AppState {
         }
         let model_registry = ModelProviderRegistry::new()?;
         let secrets = SecretStore::system(&data_dir)?;
+        // Cookies used to live in a CLI-managed JSON file; move them into the secret
+        // store once so there is a single place for credentials.
+        let _ =
+            crate::services::sources::cookies::SourceCookieStore::new(secrets.clone(), &data_dir)
+                .migrate_legacy_file();
 
         Ok(Self {
             backend_version: env!("CARGO_PKG_VERSION").to_string(),

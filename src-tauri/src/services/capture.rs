@@ -46,6 +46,7 @@ impl CaptureService {
             http_client: build_http_client()?,
             structured_logger: state.structured_logger().cloned(),
             source_cookies: crate::services::sources::cookies::SourceCookieStore::new(
+                state.secrets().clone(),
                 state.data_dir(),
             ),
         })
@@ -58,6 +59,7 @@ impl CaptureService {
             http_client: build_http_client().expect("test HTTP client should build"),
             structured_logger: None,
             source_cookies: crate::services::sources::cookies::SourceCookieStore::new(
+                crate::state::SecretStore::default(),
                 std::env::temp_dir().as_path(),
             ),
         }

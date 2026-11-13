@@ -73,6 +73,41 @@ pub trait SourceAdapter: Send + Sync {
     ) -> SourceFuture<'a>;
 }
 
+/// Platform metadata surfaced in Settings → Sources.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourcePlatform {
+    pub id: &'static str,
+    pub label: &'static str,
+    /// Domain the cookie is stored under; `None` means the adapter needs none.
+    pub cookie_domain: Option<&'static str>,
+}
+
+pub fn platforms() -> Vec<SourcePlatform> {
+    vec![
+        SourcePlatform {
+            id: x::XAdapter.id(),
+            label: "X / Twitter",
+            cookie_domain: None,
+        },
+        SourcePlatform {
+            id: xiaohongshu::XiaohongshuAdapter.id(),
+            label: "小红书",
+            cookie_domain: Some("xiaohongshu.com"),
+        },
+        SourcePlatform {
+            id: douyin::DouyinAdapter.id(),
+            label: "抖音",
+            cookie_domain: Some("douyin.com"),
+        },
+        SourcePlatform {
+            id: zhihu::ZhihuAdapter.id(),
+            label: "知乎",
+            cookie_domain: Some("zhihu.com"),
+        },
+    ]
+}
+
 /// All adapters in resolution order.
 pub fn adapters() -> Vec<Box<dyn SourceAdapter>> {
     vec![

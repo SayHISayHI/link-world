@@ -8,4 +8,5 @@ pub mod operations;
 pub mod organization;
 pub mod portable_export;
 pub mod search;
+pub mod sources;
 pub mod system;

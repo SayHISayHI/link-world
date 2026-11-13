@@ -31,6 +31,17 @@ pub(super) async fn execute_recovery_backup(
     }
 }
 
+/// Cookie store backed by the same secret store as model API keys.
+fn open_cookie_store(
+    data_dir: &Path,
+) -> Result<crate::services::sources::cookies::SourceCookieStore, CliError> {
+    let secrets = crate::state::SecretStore::system(data_dir).map_err(CliError::from_app)?;
+    let store = crate::services::sources::cookies::SourceCookieStore::new(secrets, data_dir);
+    // Move anything written by the earlier CLI-only implementation.
+    let _ = store.migrate_legacy_file();
+    Ok(store)
+}
+
 /// First http(s) URL inside a pasted share text, without surrounding punctuation.
 fn extract_url(input: &str) -> Option<String> {
     input
@@ -54,19 +65,21 @@ fn extract_url(input: &str) -> Option<String> {
 pub(super) async fn execute_sources_probe(args: &SourcesArgs) -> Result<CliSuccess, CliError> {
     if let SourcesCommands::Cookie { command } = &args.command {
         let data_dir = resolve_data_dir()?;
-        let store = crate::services::sources::cookies::SourceCookieStore::new(&data_dir);
+        let store = open_cookie_store(&data_dir)?;
 
         let data = match command {
             SourcesCookieCommands::Set { domain, cookie } => {
-                store.set(domain, cookie).map_err(CliError::from_app)?;
-                json!({ "domain": domain, "stored": true, "path": "<app-data>/source-cookies.json" })
+                store
+                    .set(domain, cookie, &chrono::Utc::now().to_rfc3339())
+                    .map_err(CliError::from_app)?;
+                json!({ "domain": domain, "stored": true, "backend": store.backend_name() })
             }
             SourcesCookieCommands::List => {
-                let cookies = store.load().map_err(CliError::from_app)?;
+                let cookies = store.list().map_err(CliError::from_app)?;
                 json!({
-                    "domains": cookies.keys().collect::<Vec<_>>(),
+                    "domains": cookies.iter().map(|entry| entry.domain.clone()).collect::<Vec<_>>(),
                     "count": cookies.len(),
-                    "path": "<app-data>/source-cookies.json",
+                    "backend": store.backend_name(),
                 })
             }
             SourcesCookieCommands::Remove { domain } => {
@@ -110,11 +123,9 @@ pub(super) async fn execute_sources_probe(args: &SourcesArgs) -> Result<CliSucce
         .find(|adapter| adapter.matches(&parsed))
         .map(|adapter| adapter.id());
 
-    let cookies = match resolve_data_dir() {
-        Ok(data_dir) => crate::services::sources::cookies::SourceCookieStore::new(&data_dir),
-        Err(_) => crate::services::sources::cookies::SourceCookieStore::new(
-            std::env::temp_dir().as_path(),
-        ),
+    let cookies = match resolve_data_dir().map(|data_dir| open_cookie_store(&data_dir)) {
+        Ok(Ok(store)) => store,
+        _ => open_cookie_store(&std::env::temp_dir())?,
     };
 
     let result =

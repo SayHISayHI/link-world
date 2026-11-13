@@ -12,6 +12,7 @@ import type {
 } from "../../types/api";
 import { Button } from "../ui/button";
 import { DiagnosticsSettings } from "./DiagnosticsSettings";
+import { SourcesSettings } from "./SourcesSettings";
 import { StorageSettings } from "./StorageSettings";
 import { useI18n } from "../../i18n";
 
@@ -19,6 +20,7 @@ export type SettingsPanelName =
   | "models"
   | "privacy"
   | "capture"
+  | "sources"
   | "plugins"
   | "storage"
   | "diagnostics"
@@ -34,6 +36,7 @@ const settingsSections: Array<{ id: SettingsPanelName; label: string }> = [
   { id: "models", label: "Models" },
   { id: "privacy", label: "Privacy" },
   { id: "capture", label: "Capture" },
+  { id: "sources", label: "Sources" },
   { id: "plugins", label: "Plugins" },
   { id: "storage", label: "Storage" },
   { id: "diagnostics", label: "Diagnostics" },
@@ -76,6 +79,8 @@ export function SettingsPanel({ panel, onPanelChange, onOpenObject }: SettingsPa
           <ModelSettings />
         ) : panel === "storage" ? (
           <StorageSettings />
+        ) : panel === "sources" ? (
+          <SourcesSettings />
         ) : panel === "diagnostics" ? (
           <DiagnosticsSettings onOpenObject={onOpenObject} />
         ) : (
@@ -376,11 +381,11 @@ function ModelSettings() {
 function SettingsBoundary({
   panel,
 }: {
-  panel: Exclude<SettingsPanelName, "models" | "storage" | "diagnostics">;
+  panel: Exclude<SettingsPanelName, "models" | "storage" | "sources" | "diagnostics">;
 }) {
   const { t } = useI18n();
   const copy: Record<
-    Exclude<SettingsPanelName, "models" | "storage" | "diagnostics">,
+    Exclude<SettingsPanelName, "models" | "storage" | "sources" | "diagnostics">,
     [string, string]
   > = {
     privacy: [

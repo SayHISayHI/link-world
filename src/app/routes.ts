@@ -9,6 +9,7 @@ export type AppRoute =
         | "models"
         | "privacy"
         | "capture"
+        | "sources"
         | "plugins"
         | "storage"
         | "diagnostics"
