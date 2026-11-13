@@ -8,9 +8,9 @@
 //! error so the caller can fall back to the generic pipeline or a browser capture.
 
 use super::{
-    browser_user_agent, extract_embedded_json, json_array, json_string, leading_url,
-    markdown_to_text, render_markdown, SourceAdapter, SourceAsset, SourceAssetKind, SourceCapture,
-    SourceFuture,
+    browser_user_agent, json_array, json_string, leading_url, markdown_to_text,
+    normalize_embedded_json, render_markdown, slice_json_array, slice_json_object, SourceAdapter,
+    SourceAsset, SourceAssetKind, SourceCapture, SourceFuture,
 };
 use crate::errors::{AppError, AppResult};
 
@@ -38,7 +38,7 @@ impl SourceAdapter for XiaohongshuAdapter {
         &'a self,
         client: &'a reqwest::Client,
         url: reqwest::Url,
-        cookie: Option<&'a str>,
+        cookies: &'a crate::services::sources::cookies::SourceCookieStore,
     ) -> SourceFuture<'a> {
         Box::pin(async move {
             // App share sheets hand out `xhslink.com` codes, which only carry the note
@@ -59,9 +59,14 @@ impl SourceAdapter for XiaohongshuAdapter {
                 .header(reqwest::header::ACCEPT, "text/html,application/xhtml+xml")
                 .header(reqwest::header::ACCEPT_LANGUAGE, "zh-CN,zh;q=0.9");
 
-            if let Some(cookie) = cookie {
-                request = request.header(reqwest::header::COOKIE, cookie);
-            }
+            let stored_cookie = cookies.cookie_for(&resolved).ok_or_else(|| {
+                AppError::ParseFailed(format!(
+                    "xiaohongshu needs a signed-in cookie for {}: run `sources cookie set {} <cookie>`",
+                    resolved.host_str().unwrap_or("xiaohongshu.com"),
+                    "xiaohongshu.com"
+                ))
+            })?;
+            request = request.header(reqwest::header::COOKIE, stored_cookie);
 
             let response = request
                 .send()
@@ -74,20 +79,56 @@ impl SourceAdapter for XiaohongshuAdapter {
                 ));
             }
 
-            let html = response
-                .text()
-                .await
-                .map_err(|_| AppError::ParseFailed("xiaohongshu page was not text".to_string()))?;
+            // These pages are UTF-8 but may not say so; decode explicitly instead of
+            // trusting the response charset, which produced mojibake.
+            let bytes = response.bytes().await.map_err(|_| {
+                AppError::ParseFailed("xiaohongshu page could not be read".to_string())
+            })?;
+            let html = String::from_utf8_lossy(&bytes).to_string();
 
-            let payload = extract_embedded_json(&html, INITIAL_STATE_MARKER).ok_or_else(|| {
+            let notes = extract_note_detail_map(&html).ok_or_else(|| {
                 AppError::ParseFailed(
                     "xiaohongshu payload missing: the note requires a signed-in cookie, or the page structure changed".to_string(),
                 )
             })?;
 
-            parse_payload(&payload, &note_id, canonical_url).map(Some)
+            parse_payload(&notes, &note_id, canonical_url).map(Some)
         })
     }
+}
+
+/// The whole `__INITIAL_STATE__` is a JavaScript literal (it can contain
+/// `new Map([])`), so only the `noteDetailMap` slice is parsed: that part is plain
+/// JSON and holds everything the reader needs.
+fn extract_note_detail_map(html: &str) -> Option<serde_json::Value> {
+    let state_start = html.find(INITIAL_STATE_MARKER)?;
+    let state = &html[state_start..];
+    let key_index = state.find("\"noteDetailMap\":")?;
+    let value = state[key_index + "\"noteDetailMap\":".len()..].trim_start();
+
+    if value.starts_with('{') {
+        let slice = slice_json_object(value)?;
+        return serde_json::from_str(&normalize_embedded_json(slice)).ok();
+    }
+
+    // Older builds serialize the map as `new Map([["id", {...}]])`.
+    if let Some(array_start) = value.find('[') {
+        let slice = slice_json_array(&value[array_start..])?;
+        let entries: serde_json::Value =
+            serde_json::from_str(&normalize_embedded_json(slice)).ok()?;
+        let mut map = serde_json::Map::new();
+
+        for entry in entries.as_array()? {
+            let pair = entry.as_array()?;
+            let key = pair.first()?.as_str()?.to_string();
+            let value = pair.get(1)?.clone();
+            map.insert(key, value);
+        }
+
+        return Some(serde_json::Value::Object(map));
+    }
+
+    None
 }
 
 fn parse_payload(
@@ -111,6 +152,7 @@ fn parse_payload(
 
     for image in json_array(note, &["imageList"]) {
         if let Some(url) = leading_url(image, &["urlDefault"])
+            .or_else(|| leading_url(image, &["urlPre"]))
             .or_else(|| leading_url(image, &["infoList", "0", "url"]))
             .or_else(|| leading_url(image, &["url"]))
         {
@@ -161,10 +203,8 @@ fn parse_payload(
     })
 }
 
-fn find_note<'a>(payload: &'a serde_json::Value, note_id: &str) -> Option<&'a serde_json::Value> {
-    let detail_map = payload.get("note")?.get("noteDetailMap")?;
-
-    if let Some(note) = detail_map
+fn find_note<'a>(notes: &'a serde_json::Value, note_id: &str) -> Option<&'a serde_json::Value> {
+    if let Some(note) = notes
         .get(note_id)
         .and_then(|entry| entry.get("note"))
         .filter(|note| note.is_object())
@@ -172,7 +212,7 @@ fn find_note<'a>(payload: &'a serde_json::Value, note_id: &str) -> Option<&'a se
         return Some(note);
     }
 
-    detail_map
+    notes
         .as_object()?
         .values()
         .filter_map(|entry| entry.get("note"))
@@ -312,34 +352,31 @@ fn is_note_id(value: &str) -> bool {
 mod tests {
     use super::*;
 
+    // Shape taken from a real note page: `noteDetailMap` is keyed by note id.
     const PAYLOAD: &str = r#"{
-        "note": {
-            "noteDetailMap": {
-                "66f0c1d2000000001e02abcd": {
-                    "note": {
-                        "noteId": "66f0c1d2000000001e02abcd",
-                        "title": "一周早餐备餐",
-                        "desc": "周日晚上做三份，工作日直接热。\n配比写在这里了。",
-                        "type": "normal",
-                        "user": { "nickname": "阿栗" },
-                        "imageList": [
-                            { "urlDefault": "https://sns-webpic-qc.xhscdn.com/one.jpg" },
-                            { "infoList": [{ "url": "https://sns-webpic-qc.xhscdn.com/two.jpg" }] }
-                        ]
-                    }
-                }
+        "66f0c1d2000000001e02abcd": {
+            "note": {
+                "noteId": "66f0c1d2000000001e02abcd",
+                "title": "一周早餐备餐",
+                "desc": "周日晚上做三份，工作日直接热。\n配比写在这里了。",
+                "type": "normal",
+                "user": { "nickname": "阿栗" },
+                "imageList": [
+                    { "urlDefault": "https://sns-webpic-qc.xhscdn.com/one.jpg" },
+                    { "url": "", "infoList": [{ "url": "https://sns-webpic-qc.xhscdn.com/two.jpg" }] }
+                ]
             }
         }
     }"#;
 
     const VIDEO_PAYLOAD: &str = r#"{
-        "note": { "noteDetailMap": { "x": { "note": {
+        "x": { "note": {
             "title": "厨房收纳",
             "desc": "视频版",
             "type": "video",
             "imageList": [{ "urlDefault": "https://sns-webpic-qc.xhscdn.com/cover.jpg" }],
             "video": { "media": { "stream": { "h264": [{ "masterUrl": "https://sns-video.xhscdn.com/v.mp4" }] } } }
-        } } } }
+        } }
     }"#;
 
     #[test]
@@ -401,9 +438,7 @@ mod tests {
 
     #[test]
     fn rejects_payload_without_media() {
-        let payload = serde_json::json!({
-            "note": { "noteDetailMap": { "x": { "note": { "title": "t", "desc": "d" } } } }
-        });
+        let payload = serde_json::json!({ "x": { "note": { "title": "t", "desc": "d" } } });
 
         assert!(parse_payload(&payload, "x", "https://x".to_string()).is_err());
     }

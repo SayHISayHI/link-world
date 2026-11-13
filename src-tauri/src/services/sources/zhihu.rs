@@ -32,7 +32,7 @@ impl SourceAdapter for ZhihuAdapter {
         &'a self,
         client: &'a reqwest::Client,
         url: reqwest::Url,
-        cookie: Option<&'a str>,
+        cookies: &'a crate::services::sources::cookies::SourceCookieStore,
     ) -> SourceFuture<'a> {
         Box::pin(async move {
             let mut request = client
@@ -43,7 +43,7 @@ impl SourceAdapter for ZhihuAdapter {
                     "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
                 );
 
-            if let Some(cookie) = cookie {
+            if let Some(cookie) = cookies.cookie_for(&url) {
                 request = request.header(reqwest::header::COOKIE, cookie);
             }
 
@@ -58,10 +58,13 @@ impl SourceAdapter for ZhihuAdapter {
                 ));
             }
 
-            let html = response
-                .text()
+            // These pages are UTF-8 but may not say so; decode explicitly instead of
+            // trusting the response charset, which produced mojibake.
+            let bytes = response
+                .bytes()
                 .await
-                .map_err(|_| AppError::ParseFailed("zhihu page was not text".to_string()))?;
+                .map_err(|_| AppError::ParseFailed("zhihu page could not be read".to_string()))?;
+            let html = String::from_utf8_lossy(&bytes).to_string();
 
             parse_page(&html, url.as_str())?.map(Some).ok_or_else(|| {
                 AppError::ParseFailed(

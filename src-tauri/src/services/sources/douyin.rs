@@ -29,7 +29,7 @@ impl SourceAdapter for DouyinAdapter {
         &'a self,
         client: &'a reqwest::Client,
         url: reqwest::Url,
-        _cookie: Option<&'a str>,
+        _cookies: &'a crate::services::sources::cookies::SourceCookieStore,
     ) -> SourceFuture<'a> {
         Box::pin(async move {
             // Share links redirect to the canonical work URL; follow it first.

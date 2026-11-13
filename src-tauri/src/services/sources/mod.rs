@@ -69,7 +69,7 @@ pub trait SourceAdapter: Send + Sync {
         &'a self,
         client: &'a reqwest::Client,
         url: reqwest::Url,
-        cookie: Option<&'a str>,
+        cookies: &'a cookies::SourceCookieStore,
     ) -> SourceFuture<'a>;
 }
 
@@ -92,16 +92,12 @@ pub async fn capture_with_adapter(
     url: &reqwest::Url,
     cookies: &cookies::SourceCookieStore,
 ) -> AppResult<Option<SourceCapture>> {
-    let cookie = cookies.cookie_for(url);
-
     for adapter in adapters() {
         if !adapter.matches(url) {
             continue;
         }
 
-        return adapter
-            .capture(client, url.clone(), cookie.as_deref())
-            .await;
+        return adapter.capture(client, url.clone(), cookies).await;
     }
 
     Ok(None)
@@ -124,12 +120,116 @@ pub(crate) fn extract_embedded_json(html: &str, marker: &str) -> Option<serde_js
     let rest = html[start..].trim_start();
     let rest = rest.strip_prefix('=').unwrap_or(rest).trim_start();
     let end = json_object_end(rest)?;
-    let payload = rest[..end]
-        .replace("\\u002F", "/")
-        .replace(":undefined", ":null")
-        .replace(",undefined", ",null");
+    let payload = normalize_embedded_json(&rest[..end]);
 
     serde_json::from_str(&payload).ok()
+}
+
+/// Platform payloads are JavaScript literals: `undefined` may appear as a value.
+/// Only rewrite the bare token outside strings, and keep the surrounding
+/// punctuation intact (`"key":undefined` must become `"key":null`).
+pub(crate) fn normalize_embedded_json(payload: &str) -> String {
+    let bytes = payload.as_bytes();
+    let mut out = String::with_capacity(payload.len());
+    let mut index = 0;
+    let mut in_string = false;
+    let mut escaped = false;
+
+    while index < bytes.len() {
+        // `index` only ever advances on char boundaries, so slicing is safe.
+        let rest = &payload[index..];
+        let character = rest.chars().next().expect("index is inside the string");
+
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if character == '\\' {
+                escaped = true;
+            } else if character == '"' {
+                in_string = false;
+            }
+            out.push(character);
+            index += character.len_utf8();
+            continue;
+        }
+
+        if character == '"' {
+            in_string = true;
+            out.push(character);
+            index += 1;
+            continue;
+        }
+
+        if rest.starts_with("undefined") {
+            let before_ok = index == 0 || !is_identifier_byte(bytes[index - 1]);
+            let after = index + "undefined".len();
+            let after_ok = after >= bytes.len() || !is_identifier_byte(bytes[after]);
+
+            if before_ok && after_ok {
+                out.push_str("null");
+                index = after;
+                continue;
+            }
+        }
+
+        out.push(character);
+        index += character.len_utf8();
+    }
+
+    out.replace("\\u002F", "/")
+}
+
+fn is_identifier_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'$'
+}
+
+/// Slice of a JSON object that starts at `text[0]`, or `None` when unbalanced.
+pub(crate) fn slice_json_object(text: &str) -> Option<&str> {
+    json_object_end(text).map(|end| &text[..end])
+}
+
+/// Slice of a JSON array that starts at `text[0]`, or `None` when unbalanced.
+pub(crate) fn slice_json_array(text: &str) -> Option<&str> {
+    json_array_end(text).map(|end| &text[..end])
+}
+
+/// Find the end offset of the JSON array starting at `text[0]`, honoring strings.
+fn json_array_end(text: &str) -> Option<usize> {
+    let bytes = text.as_bytes();
+    if bytes.first() != Some(&b'[') {
+        return None;
+    }
+
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+
+    for (index, byte) in bytes.iter().enumerate() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if *byte == b'\\' {
+                escaped = true;
+            } else if *byte == b'"' {
+                in_string = false;
+            }
+            continue;
+        }
+
+        match byte {
+            b'"' => in_string = true,
+            b'[' => depth += 1,
+            b']' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(index + 1);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    None
 }
 
 /// Find the end offset of the JSON object starting at `text[0]`, honoring strings.
@@ -283,6 +383,27 @@ mod tests {
 
         assert!(value["a"].is_null());
         assert_eq!(value["b"], "https://example.com/x.png");
+    }
+
+    #[test]
+    fn keeps_multibyte_text_intact() {
+        let html = r#"<script>window.__INITIAL_STATE__={"title":"人，刷到请打开你的 GPT。","x":undefined}</script>"#;
+
+        let value = extract_embedded_json(html, "window.__INITIAL_STATE__").expect("payload");
+
+        assert_eq!(value["title"], "人，刷到请打开你的 GPT。");
+        assert!(value["x"].is_null());
+    }
+
+    #[test]
+    fn keeps_punctuation_when_replacing_bare_undefined() {
+        let html = r#"<script>window.__INITIAL_STATE__={"a":undefined,"b":1,"c":"undefined text"}</script>"#;
+
+        let value = extract_embedded_json(html, "window.__INITIAL_STATE__").expect("payload");
+
+        assert!(value["a"].is_null());
+        assert_eq!(value["b"], 1);
+        assert_eq!(value["c"], "undefined text");
     }
 
     #[test]

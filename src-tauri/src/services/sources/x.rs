@@ -33,7 +33,7 @@ impl SourceAdapter for XAdapter {
         &'a self,
         client: &'a reqwest::Client,
         url: reqwest::Url,
-        _cookie: Option<&'a str>,
+        _cookies: &'a crate::services::sources::cookies::SourceCookieStore,
     ) -> SourceFuture<'a> {
         Box::pin(async move {
             let (user, tweet_id) = tweet_path(&url).ok_or_else(|| {
