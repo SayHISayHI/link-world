@@ -138,6 +138,16 @@ pub async fn capture_with_adapter(
     Ok(None)
 }
 
+/// Distinguish "the network is unreachable" from "the payload changed": a proxy,
+/// a blocked host or a dead connection must not look like a broken parser.
+pub(crate) fn map_source_request_error(error: reqwest::Error) -> crate::errors::AppError {
+    if error.is_timeout() || error.is_connect() {
+        return crate::errors::AppError::NetworkTimeout;
+    }
+
+    crate::errors::AppError::ParseFailed("source request failed".to_string())
+}
+
 pub(crate) fn browser_user_agent() -> &'static str {
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 }

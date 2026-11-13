@@ -208,12 +208,16 @@ pub async fn probe_source_url(
                 message: Some("No source adapter handles this URL.".to_string()),
             }),
             Err(error) => {
-                let message = error.to_string();
-                let status = if message.contains("cookie") || message.contains("login") {
-                    "login_required"
-                } else {
-                    "structure_changed"
+                let status = match &error {
+                    AppError::NetworkTimeout => "network_unreachable",
+                    AppError::ParseFailed(message)
+                        if message.contains("cookie") || message.contains("login") =>
+                    {
+                        "login_required"
+                    }
+                    _ => "structure_changed",
                 };
+                let message = error.to_string();
 
                 Ok(SourceProbeResponse {
                     matched_adapter: Some(matched_adapter),

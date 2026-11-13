@@ -5,9 +5,9 @@
 //! `window._ROUTER_DATA`. Public works need no login.
 
 use super::{
-    extract_embedded_json, json_array, json_string, leading_url, markdown_to_text,
-    mobile_user_agent, render_markdown, SourceAdapter, SourceAsset, SourceAssetKind, SourceCapture,
-    SourceFuture,
+    extract_embedded_json, json_array, json_string, leading_url, map_source_request_error,
+    markdown_to_text, mobile_user_agent, render_markdown, SourceAdapter, SourceAsset,
+    SourceAssetKind, SourceCapture, SourceFuture,
 };
 use crate::errors::{AppError, AppResult};
 
@@ -44,7 +44,7 @@ impl SourceAdapter for DouyinAdapter {
                 .header(reqwest::header::USER_AGENT, mobile_user_agent())
                 .send()
                 .await
-                .map_err(|_| AppError::ParseFailed("douyin request failed".to_string()))?;
+                .map_err(map_source_request_error)?;
 
             if !response.status().is_success() {
                 return Err(AppError::ParseFailed("douyin work unavailable".to_string()));
@@ -77,7 +77,7 @@ async fn resolve_work_url(
         .header(reqwest::header::USER_AGENT, mobile_user_agent())
         .send()
         .await
-        .map_err(|_| AppError::ParseFailed("douyin share link request failed".to_string()))?;
+        .map_err(map_source_request_error)?;
 
     url = response.url().clone();
     let _ = response.bytes().await;

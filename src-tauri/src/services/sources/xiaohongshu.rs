@@ -8,9 +8,9 @@
 //! error so the caller can fall back to the generic pipeline or a browser capture.
 
 use super::{
-    browser_user_agent, json_array, json_string, leading_url, markdown_to_text,
-    normalize_embedded_json, render_markdown, slice_json_array, slice_json_object, SourceAdapter,
-    SourceAsset, SourceAssetKind, SourceCapture, SourceFuture,
+    browser_user_agent, json_array, json_string, leading_url, map_source_request_error,
+    markdown_to_text, normalize_embedded_json, render_markdown, slice_json_array,
+    slice_json_object, SourceAdapter, SourceAsset, SourceAssetKind, SourceCapture, SourceFuture,
 };
 use crate::errors::{AppError, AppResult};
 
@@ -247,9 +247,7 @@ async fn resolve_share_link(url: reqwest::Url) -> AppResult<reqwest::Url> {
             .header(reqwest::header::USER_AGENT, browser_user_agent())
             .send()
             .await
-            .map_err(|_| {
-                AppError::ParseFailed("xiaohongshu share link request failed".to_string())
-            })?;
+            .map_err(map_source_request_error)?;
 
         let location = response
             .headers()

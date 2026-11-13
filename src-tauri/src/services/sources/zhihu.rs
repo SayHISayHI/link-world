@@ -8,8 +8,8 @@
 //! A signed-in cookie is required: anonymous requests receive a 403 anti-bot page.
 
 use super::{
-    browser_user_agent, markdown_to_text, render_markdown, SourceAdapter, SourceAsset,
-    SourceAssetKind, SourceCapture, SourceFuture,
+    browser_user_agent, map_source_request_error, markdown_to_text, render_markdown, SourceAdapter,
+    SourceAsset, SourceAssetKind, SourceCapture, SourceFuture,
 };
 use crate::errors::{AppError, AppResult};
 use crate::services::document_parser::{parse_html_document, DocumentHints};
@@ -55,7 +55,7 @@ impl SourceAdapter for ZhihuAdapter {
                 .header(reqwest::header::COOKIE, cookie)
                 .send()
                 .await
-                .map_err(|_| AppError::ParseFailed("zhihu request failed".to_string()))?;
+                .map_err(map_source_request_error)?;
 
             if !response.status().is_success() {
                 // Zhihu answers anonymous readers with a 403 anti-bot page, so a

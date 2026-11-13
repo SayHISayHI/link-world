@@ -276,6 +276,8 @@ function probeLabel(probe: SourceProbeResponse, t: Translator) {
       return t("Cookie is missing or expired");
     case "structure_changed":
       return t("The platform changed its payload");
+    case "network_unreachable":
+      return t("This machine cannot reach the platform");
     case "no_adapter":
       return t("No adapter for this link");
     default:

@@ -113,6 +113,35 @@ describe("SourcesSettings", () => {
     ).toBeInTheDocument();
   });
 
+  it("separates an unreachable network from a changed platform", () => {
+    useSourceCredentialsMock.mockReturnValue(
+      hookState({
+        probe: {
+          matchedAdapter: "source.douyin",
+          resolved: false,
+          status: "network_unreachable",
+          title: null,
+          author: null,
+          textLength: 0,
+          assets: [],
+          excerpt: null,
+          message: "network timeout",
+        },
+      }),
+    );
+
+    render(<SourcesSettings />);
+
+    fireEvent.change(screen.getByLabelText("Sample link for X / Twitter"), {
+      target: { value: "https://v.douyin.com/abc/" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Check link for X / Twitter" }));
+
+    expect(
+      screen.getByText("This machine cannot reach the platform"),
+    ).toBeInTheDocument();
+  });
+
   it("tells the user when the cookie is missing or expired", () => {
     useSourceCredentialsMock.mockReturnValue(
       hookState({

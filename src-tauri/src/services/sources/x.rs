@@ -6,8 +6,8 @@
 //! used by embedded tweets (fallback). Both work without credentials.
 
 use super::{
-    browser_user_agent, json_string, leading_url, markdown_to_text, render_markdown, SourceAdapter,
-    SourceAsset, SourceAssetKind, SourceCapture, SourceFuture,
+    browser_user_agent, json_string, leading_url, map_source_request_error, markdown_to_text,
+    render_markdown, SourceAdapter, SourceAsset, SourceAssetKind, SourceCapture, SourceFuture,
 };
 use crate::errors::{AppError, AppResult};
 
@@ -64,7 +64,7 @@ async fn fetch_fx_twitter(
         .header(reqwest::header::ACCEPT, "application/json")
         .send()
         .await
-        .map_err(|_| AppError::ParseFailed("x source request failed".to_string()))?;
+        .map_err(map_source_request_error)?;
 
     if !response.status().is_success() {
         return Err(AppError::ParseFailed("x source unavailable".to_string()));

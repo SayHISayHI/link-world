@@ -570,6 +570,7 @@ export type SourceProbeStatus =
   | "ok"
   | "login_required"
   | "structure_changed"
+  | "network_unreachable"
   | "no_adapter"
   | "failed";
 

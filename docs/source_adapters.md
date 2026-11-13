@@ -32,6 +32,7 @@
 | 平台结构改版 | 适配器返回 `Err(ParseFailed)`，回退通用抓取；用户看到的是通用失败原因，不是编造内容 |
 | 登录墙 / 私有内容 | 同上，绝不返回空壳或占位内容 |
 | 无媒体但有正文 | 小红书/抖音要求至少一个媒体资源，否则视为解析失败 |
+| 网络/代理不可达 | `AppError::NetworkTimeout`，面板显示「本机无法访问该平台」，不会被误判成平台改版 |
 
 原则：**宁可失败，不要产出错误的"原文"**。
 
@@ -59,7 +60,7 @@ cd src-tauri && cargo build --bin node-tide-cli
 | --- | --- | --- |
 | X | 已实测通过 | `api.fxtwitter.com` 与 syndication 均返回 200，文字路径确认；媒体路径由单元测试覆盖 |
 | 小红书 | 差一个 cookie | 短链 `xhslink.cn` 已支持；带 `xsec_token` 的笔记页对匿名请求仍 302 到 `/login`，必须有登录态 cookie |
-| 抖音 | 本机无法验证 | 开发环境到 `douyin.com` / `iesdouyin.com` 全部连接失败，需在能访问的网络里跑探针 |
+| 抖音 | 网络不可达，未验证 | 开发环境 DNS 把 `douyin.com` / `iesdouyin.com` 解析到 `198.18.x.x`（代理 fake-IP），连接全部失败；需在能直连的网络里跑探针 |
 | 知乎 | **已实测通过** | 带 `z_c0` cookie 后返回 200；正文取自 `js-initialData`，标题/作者/图片均正确 |
 
 ## 6. 需要登录态时怎么给 cookie

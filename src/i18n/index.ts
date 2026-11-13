@@ -65,6 +65,7 @@ const zhCN = new Map<string, string>([
   ["Adapter works", "适配器可用"],
   ["Cookie is missing or expired", "cookie 缺失或已过期"],
   ["The platform changed its payload", "平台返回结构已变化"],
+  ["This machine cannot reach the platform", "本机无法访问该平台（检查网络或代理）"],
   ["No adapter for this link", "该链接没有适配器"],
   ["Check failed", "验证失败"],
   ["{title} · {count} media · {chars} characters", "{title} · {count} 个媒体 · {chars} 字"],
