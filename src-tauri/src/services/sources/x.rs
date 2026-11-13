@@ -29,7 +29,12 @@ impl SourceAdapter for XAdapter {
         ) && tweet_path(url).is_some()
     }
 
-    fn capture<'a>(&'a self, client: &'a reqwest::Client, url: reqwest::Url) -> SourceFuture<'a> {
+    fn capture<'a>(
+        &'a self,
+        client: &'a reqwest::Client,
+        url: reqwest::Url,
+        _cookie: Option<&'a str>,
+    ) -> SourceFuture<'a> {
         Box::pin(async move {
             let (user, tweet_id) = tweet_path(&url).ok_or_else(|| {
                 AppError::ParseFailed("x status url could not be parsed".to_string())

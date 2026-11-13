@@ -14,6 +14,7 @@ use crate::errors::AppResult;
 use std::future::Future;
 use std::pin::Pin;
 
+pub mod cookies;
 pub mod douyin;
 pub mod x;
 pub mod xiaohongshu;
@@ -64,7 +65,12 @@ pub type SourceFuture<'a> =
 pub trait SourceAdapter: Send + Sync {
     fn id(&self) -> &'static str;
     fn matches(&self, url: &reqwest::Url) -> bool;
-    fn capture<'a>(&'a self, client: &'a reqwest::Client, url: reqwest::Url) -> SourceFuture<'a>;
+    fn capture<'a>(
+        &'a self,
+        client: &'a reqwest::Client,
+        url: reqwest::Url,
+        cookie: Option<&'a str>,
+    ) -> SourceFuture<'a>;
 }
 
 /// All adapters in resolution order.
@@ -84,13 +90,18 @@ pub fn adapters() -> Vec<Box<dyn SourceAdapter>> {
 pub async fn capture_with_adapter(
     client: &reqwest::Client,
     url: &reqwest::Url,
+    cookies: &cookies::SourceCookieStore,
 ) -> AppResult<Option<SourceCapture>> {
+    let cookie = cookies.cookie_for(url);
+
     for adapter in adapters() {
         if !adapter.matches(url) {
             continue;
         }
 
-        return adapter.capture(client, url.clone()).await;
+        return adapter
+            .capture(client, url.clone(), cookie.as_deref())
+            .await;
     }
 
     Ok(None)

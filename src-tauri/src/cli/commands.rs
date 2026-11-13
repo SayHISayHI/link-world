@@ -31,13 +31,64 @@ pub(super) async fn execute_recovery_backup(
     }
 }
 
+/// First http(s) URL inside a pasted share text, without surrounding punctuation.
+fn extract_url(input: &str) -> Option<String> {
+    input
+        .split_whitespace()
+        .find(|token| token.starts_with("http://") || token.starts_with("https://"))
+        .map(|token| {
+            token
+                .trim_end_matches(|character: char| {
+                    matches!(
+                        character,
+                        '。' | '，' | '.' | ',' | ')' | '）' | '」' | '』' | '!' | '！'
+                    )
+                })
+                .to_string()
+        })
+}
+
 /// Probe a URL through the platform source adapters without touching the local
 /// database, so a user can verify a platform adapter against a real link from
 /// their own account before capturing it.
 pub(super) async fn execute_sources_probe(args: &SourcesArgs) -> Result<CliSuccess, CliError> {
-    let SourcesCommands::Probe { url } = &args.command;
+    if let SourcesCommands::Cookie { command } = &args.command {
+        let data_dir = resolve_data_dir()?;
+        let store = crate::services::sources::cookies::SourceCookieStore::new(&data_dir);
 
-    let parsed = reqwest::Url::parse(url)
+        let data = match command {
+            SourcesCookieCommands::Set { domain, cookie } => {
+                store.set(domain, cookie).map_err(CliError::from_app)?;
+                json!({ "domain": domain, "stored": true, "path": "<app-data>/source-cookies.json" })
+            }
+            SourcesCookieCommands::List => {
+                let cookies = store.load().map_err(CliError::from_app)?;
+                json!({
+                    "domains": cookies.keys().collect::<Vec<_>>(),
+                    "count": cookies.len(),
+                    "path": "<app-data>/source-cookies.json",
+                })
+            }
+            SourcesCookieCommands::Remove { domain } => {
+                let removed = store.remove(domain).map_err(CliError::from_app)?;
+                json!({ "domain": domain, "removed": removed })
+            }
+        };
+
+        return Ok(CliSuccess {
+            command: "sources.cookie",
+            data,
+        });
+    }
+
+    let SourcesCommands::Probe { url } = &args.command else {
+        unreachable!("cookie subcommands are handled above")
+    };
+
+    // Share sheets hand over a whole sentence with the link inside it.
+    let url = extract_url(url)
+        .ok_or_else(|| CliError::invalid("no http(s) URL found in the input text"))?;
+    let parsed = reqwest::Url::parse(&url)
         .map_err(|_| CliError::invalid("URL is invalid; pass an http(s) URL"))?;
 
     if !matches!(parsed.scheme(), "http" | "https") {
@@ -59,41 +110,58 @@ pub(super) async fn execute_sources_probe(args: &SourcesArgs) -> Result<CliSucce
         .find(|adapter| adapter.matches(&parsed))
         .map(|adapter| adapter.id());
 
-    let result = match crate::services::sources::capture_with_adapter(&client, &parsed).await {
-        Ok(Some(capture)) => json!({
-            "matchedAdapter": capture.parser_id,
-            "resolved": true,
-            "canonicalUrl": capture.canonical_url,
-            "title": capture.title,
-            "author": capture.author,
-            "textLength": capture.text_content.chars().count(),
-            "assetCount": capture.assets.len(),
-            "assets": capture
-                .assets
-                .iter()
-                .take(10)
-                .map(|asset| json!({ "kind": asset.kind.as_str(), "url": asset.url }))
-                .collect::<Vec<_>>(),
-            "excerpt": capture
-                .text_content
-                .chars()
-                .take(200)
-                .collect::<String>(),
-            "markdownPreview": capture
-                .markdown_content
-                .chars()
-                .take(400)
-                .collect::<String>(),
-        }),
-        Ok(None) => json!({
-            "matchedAdapter": matched,
-            "resolved": false,
-            "reason": "no adapter matched this URL",
-        }),
-        Err(error) => {
-            return Err(CliError::from_app(error));
-        }
+    let cookies = match resolve_data_dir() {
+        Ok(data_dir) => crate::services::sources::cookies::SourceCookieStore::new(&data_dir),
+        Err(_) => crate::services::sources::cookies::SourceCookieStore::new(
+            std::env::temp_dir().as_path(),
+        ),
     };
+
+    let result =
+        match crate::services::sources::capture_with_adapter(&client, &parsed, &cookies).await {
+            Ok(Some(capture)) => json!({
+                "matchedAdapter": capture.parser_id,
+                "resolved": true,
+                "canonicalUrl": capture.canonical_url,
+                "title": capture.title,
+                "author": capture.author,
+                "textLength": capture.text_content.chars().count(),
+                "assetCount": capture.assets.len(),
+                "assets": capture
+                    .assets
+                    .iter()
+                    .take(10)
+                    .map(|asset| json!({ "kind": asset.kind.as_str(), "url": asset.url }))
+                    .collect::<Vec<_>>(),
+                "excerpt": capture
+                    .text_content
+                    .chars()
+                    .take(200)
+                    .collect::<String>(),
+                "markdownPreview": capture
+                    .markdown_content
+                    .chars()
+                    .take(400)
+                    .collect::<String>(),
+            }),
+            Ok(None) => json!({
+                "matchedAdapter": matched,
+                "resolved": false,
+                "reason": "no adapter matched this URL",
+            }),
+            Err(error) => {
+                // The probe exists for debugging adapters, so surface the concrete
+                // reason instead of the generic user-facing parse message.
+                return Err(CliError {
+                    code: "ERR_PARSE_FAILED".to_string(),
+                    message: format!("source adapter failed: {error}"),
+                    retryable: false,
+                    exit_code: 2,
+                    correlation_id: None,
+                    operation: None,
+                });
+            }
+        };
 
     Ok(CliSuccess {
         command: "sources.probe",

@@ -28,15 +28,26 @@ impl SourceAdapter for ZhihuAdapter {
         (host == "zhihu.com" || host.ends_with(".zhihu.com")) && is_content_path(url)
     }
 
-    fn capture<'a>(&'a self, client: &'a reqwest::Client, url: reqwest::Url) -> SourceFuture<'a> {
+    fn capture<'a>(
+        &'a self,
+        client: &'a reqwest::Client,
+        url: reqwest::Url,
+        cookie: Option<&'a str>,
+    ) -> SourceFuture<'a> {
         Box::pin(async move {
-            let response = client
+            let mut request = client
                 .get(url.as_str())
                 .header(reqwest::header::USER_AGENT, mobile_user_agent())
                 .header(
                     reqwest::header::ACCEPT,
                     "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
-                )
+                );
+
+            if let Some(cookie) = cookie {
+                request = request.header(reqwest::header::COOKIE, cookie);
+            }
+
+            let response = request
                 .send()
                 .await
                 .map_err(|_| AppError::ParseFailed("zhihu request failed".to_string()))?;

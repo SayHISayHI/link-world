@@ -24,6 +24,7 @@ const KEYRING_SECRET_PREFIX: &str = "keyring:model-provider:";
 #[derive(Debug)]
 pub struct AppState {
     backend_version: String,
+    data_dir: PathBuf,
     database: Option<Database>,
     object_store: Option<ObjectStore>,
     structured_logger: Option<StructuredLogger>,
@@ -423,6 +424,7 @@ impl AppState {
     pub fn new() -> AppResult<Self> {
         Ok(Self {
             backend_version: env!("CARGO_PKG_VERSION").to_string(),
+            data_dir: std::env::temp_dir(),
             database: None,
             object_store: None,
             structured_logger: None,
@@ -507,6 +509,7 @@ impl AppState {
 
         Ok(Self {
             backend_version: env!("CARGO_PKG_VERSION").to_string(),
+            data_dir,
             database: Some(database),
             object_store: Some(object_store),
             structured_logger: Some(structured_logger),
@@ -567,6 +570,10 @@ impl AppState {
 
     pub fn runtime_lock(&self) -> Option<&RuntimeLock> {
         self.runtime_lock.as_ref()
+    }
+
+    pub fn data_dir(&self) -> &Path {
+        &self.data_dir
     }
 
     pub fn secrets(&self) -> &SecretStore {

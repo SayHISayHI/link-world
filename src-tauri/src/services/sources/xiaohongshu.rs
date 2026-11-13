@@ -26,18 +26,24 @@ impl SourceAdapter for XiaohongshuAdapter {
     fn matches(&self, url: &reqwest::Url) -> bool {
         let host = url.host_str().unwrap_or_default();
 
-        if host.ends_with("xhslink.com") {
+        // Share short links live on xhslink.com and xhslink.cn.
+        if host.starts_with("xhslink.") {
             return true;
         }
 
         host.ends_with("xiaohongshu.com") && note_id(url).is_some()
     }
 
-    fn capture<'a>(&'a self, client: &'a reqwest::Client, url: reqwest::Url) -> SourceFuture<'a> {
+    fn capture<'a>(
+        &'a self,
+        client: &'a reqwest::Client,
+        url: reqwest::Url,
+        cookie: Option<&'a str>,
+    ) -> SourceFuture<'a> {
         Box::pin(async move {
             // App share sheets hand out `xhslink.com` codes, which only carry the note
             // id and the `xsec_token` after the redirect settles.
-            let resolved = resolve_share_link(client, url).await?;
+            let resolved = resolve_share_link(url).await?;
             let note_id = note_id(&resolved)
                 .or_else(|| note_id_from_share_code(&resolved))
                 .ok_or_else(|| {
@@ -47,10 +53,17 @@ impl SourceAdapter for XiaohongshuAdapter {
             // when the share link's `xsec_token` comes along.
             let canonical_url = canonical_note_url(&resolved, &note_id);
 
-            let response = client
+            let mut request = client
                 .get(resolved.as_str())
                 .header(reqwest::header::USER_AGENT, browser_user_agent())
                 .header(reqwest::header::ACCEPT, "text/html,application/xhtml+xml")
+                .header(reqwest::header::ACCEPT_LANGUAGE, "zh-CN,zh;q=0.9");
+
+            if let Some(cookie) = cookie {
+                request = request.header(reqwest::header::COOKIE, cookie);
+            }
+
+            let response = request
                 .send()
                 .await
                 .map_err(|_| AppError::ParseFailed("xiaohongshu request failed".to_string()))?;
@@ -68,7 +81,7 @@ impl SourceAdapter for XiaohongshuAdapter {
 
             let payload = extract_embedded_json(&html, INITIAL_STATE_MARKER).ok_or_else(|| {
                 AppError::ParseFailed(
-                    "xiaohongshu payload missing (login wall or structure change)".to_string(),
+                    "xiaohongshu payload missing: the note requires a signed-in cookie, or the page structure changed".to_string(),
                 )
             })?;
 
@@ -83,7 +96,12 @@ fn parse_payload(
     canonical_url: String,
 ) -> AppResult<SourceCapture> {
     let note = find_note(payload, note_id)
-        .ok_or_else(|| AppError::ParseFailed("xiaohongshu note payload missing".to_string()))?;
+        .ok_or_else(|| {
+            AppError::ParseFailed(
+                "xiaohongshu note payload missing: the note requires a signed-in cookie, or the page structure changed"
+                    .to_string(),
+            )
+        })?;
 
     let title = json_string(note, &["title"]).map(str::to_string);
     let desc = json_string(note, &["desc"]).map(str::to_string);
@@ -161,36 +179,66 @@ fn find_note<'a>(payload: &'a serde_json::Value, note_id: &str) -> Option<&'a se
         .find(|note| note.get("imageList").is_some() || note.get("desc").is_some())
 }
 
-async fn resolve_share_link(
-    client: &reqwest::Client,
-    url: reqwest::Url,
-) -> AppResult<reqwest::Url> {
+async fn resolve_share_link(url: reqwest::Url) -> AppResult<reqwest::Url> {
     let is_share_link = url
         .host_str()
-        .map(|host| host.ends_with("xhslink.com"))
+        .map(|host| host.starts_with("xhslink."))
         .unwrap_or(false);
 
     if !is_share_link {
         return Ok(url);
     }
 
-    let response = client
-        .get(url.as_str())
-        .header(reqwest::header::USER_AGENT, browser_user_agent())
-        .send()
-        .await
-        .map_err(|_| AppError::ParseFailed("xiaohongshu share link request failed".to_string()))?;
+    // The note URL carries the `xsec_token`, but requesting it anonymously answers
+    // with another redirect to `/login`. Read the Location header hop by hop so the
+    // token survives instead of following the chain into the login page.
+    let resolver = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(20))
+        .redirect(reqwest::redirect::Policy::none())
+        .user_agent(browser_user_agent())
+        .build()
+        .map_err(|_| AppError::ParseFailed("xiaohongshu resolver could not start".to_string()))?;
 
-    let resolved = response.url().clone();
-    let _ = response.bytes().await;
+    let mut current = url;
 
-    if resolved.host_str() == url.host_str() {
-        return Err(AppError::ParseFailed(
-            "xiaohongshu share link did not resolve to a note".to_string(),
-        ));
+    for _ in 0..4 {
+        let response = resolver
+            .get(current.as_str())
+            .header(reqwest::header::USER_AGENT, browser_user_agent())
+            .send()
+            .await
+            .map_err(|_| {
+                AppError::ParseFailed("xiaohongshu share link request failed".to_string())
+            })?;
+
+        let location = response
+            .headers()
+            .get(reqwest::header::LOCATION)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string);
+
+        let next = location
+            .and_then(|location| current.join(&location).ok())
+            .ok_or_else(|| {
+                AppError::ParseFailed(
+                    "xiaohongshu share link did not resolve to a note".to_string(),
+                )
+            })?;
+
+        if next
+            .host_str()
+            .map(|host| host.ends_with("xiaohongshu.com"))
+            .unwrap_or(false)
+        {
+            return Ok(next);
+        }
+
+        current = next;
     }
 
-    Ok(resolved)
+    Err(AppError::ParseFailed(
+        "xiaohongshu share link exceeded the redirect limit".to_string(),
+    ))
 }
 
 /// Some share redirects land on `/discovery/item/<id>` without a token-bearing
@@ -304,9 +352,11 @@ mod tests {
         let profile = reqwest::Url::parse("https://www.xiaohongshu.com/user/profile/abc").unwrap();
 
         let share = reqwest::Url::parse("http://xhslink.com/a/AbCdEf123").unwrap();
+        let share_cn = reqwest::Url::parse("https://xhslink.cn/o/1BJ9SUBuuP1").unwrap();
 
         assert!(adapter.matches(&note));
         assert!(adapter.matches(&share), "app share short links must match");
+        assert!(adapter.matches(&share_cn), "xhslink.cn must match");
         assert!(!adapter.matches(&profile));
 
         let canonical = canonical_note_url(&note, "66f0c1d2000000001e02abcd");

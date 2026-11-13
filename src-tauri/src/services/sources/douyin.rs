@@ -25,7 +25,12 @@ impl SourceAdapter for DouyinAdapter {
         host.ends_with("douyin.com")
     }
 
-    fn capture<'a>(&'a self, client: &'a reqwest::Client, url: reqwest::Url) -> SourceFuture<'a> {
+    fn capture<'a>(
+        &'a self,
+        client: &'a reqwest::Client,
+        url: reqwest::Url,
+        _cookie: Option<&'a str>,
+    ) -> SourceFuture<'a> {
         Box::pin(async move {
             // Share links redirect to the canonical work URL; follow it first.
             let resolved = resolve_work_url(client, url).await?;

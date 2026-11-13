@@ -74,6 +74,29 @@ pub(super) enum SourcesCommands {
         /// URL to probe, for example a shared X or Xiaohongshu link.
         url: String,
     },
+    /// Manage the per-domain cookies used by adapters that need a signed-in session.
+    Cookie {
+        #[command(subcommand)]
+        command: SourcesCookieCommands,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum SourcesCookieCommands {
+    /// Store a cookie header value for a domain, for example `www.xiaohongshu.com`.
+    Set {
+        /// Plain host name, for example `xiaohongshu.com`.
+        domain: String,
+        /// Cookie header value copied from the signed-in browser.
+        cookie: String,
+    },
+    /// List domains that have a stored cookie.
+    List,
+    /// Remove a stored cookie.
+    Remove {
+        /// Plain host name, for example `xiaohongshu.com`.
+        domain: String,
+    },
 }
 
 #[derive(Debug, Args)]

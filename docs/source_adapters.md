@@ -58,11 +58,28 @@ cd src-tauri && cargo build --bin node-tide-cli
 | 平台 | 状态 | 说明 |
 | --- | --- | --- |
 | X | 已实测通过 | `api.fxtwitter.com` 与 syndication 均返回 200，文字路径确认；媒体路径由单元测试覆盖 |
-| 小红书 | 待真实链接验证 | 已修正：必须带分享链接里的 `xsec_token`，裸 `/explore/<id>` 会 404 |
+| 小红书 | 差一个 cookie | 短链 `xhslink.cn` 已支持；带 `xsec_token` 的笔记页对匿名请求仍 302 到 `/login`，必须有登录态 cookie |
 | 抖音 | 本机无法验证 | 开发环境到 `douyin.com` / `iesdouyin.com` 全部连接失败，需在能访问的网络里跑探针 |
 | 知乎 | 需 cookie | 匿名请求返回 403 |
 
-## 6. 新增适配器
+## 6. 需要登录态时怎么给 cookie
+
+小红书与知乎匿名请求会被挡（302 到 `/login`、或 403）。cookie 只对匹配的域名发送，存于 `<app-data>/source-cookies.json`（`0600`），不写日志、不进支持包。
+
+```bash
+# 1) 桌面浏览器登录后，DevTools → Network → 任意请求的 Cookie 请求头，整段复制
+./target/debug/node-tide-cli sources cookie set xiaohongshu.com "a1=...; web_session=..."
+./target/debug/node-tide-cli sources cookie set zhihu.com "z_c0=..."
+
+# 2) 验证
+./target/debug/node-tide-cli sources probe "https://xhslink.cn/o/xxxx"
+./target/debug/node-tide-cli sources cookie list
+./target/debug/node-tide-cli sources cookie remove xiaohongshu.com
+```
+
+cookie 会过期；探针报 `payload missing` 时先换新 cookie 再判断是不是结构变化。
+
+## 7. 新增适配器
 
 1. 在 `services/sources/` 新建模块，实现 `SourceAdapter`（`id` / `matches` / `capture`）。
 2. 解析函数保持纯函数（输入载荷字符串 → `SourceCapture`），便于用 fixture 写单测。

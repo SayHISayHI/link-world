@@ -35,6 +35,7 @@ pub struct CaptureService {
     object_store: ObjectStore,
     http_client: reqwest::Client,
     structured_logger: Option<StructuredLogger>,
+    source_cookies: crate::services::sources::cookies::SourceCookieStore,
 }
 
 impl CaptureService {
@@ -44,6 +45,9 @@ impl CaptureService {
             object_store: state.object_store()?.clone(),
             http_client: build_http_client()?,
             structured_logger: state.structured_logger().cloned(),
+            source_cookies: crate::services::sources::cookies::SourceCookieStore::new(
+                state.data_dir(),
+            ),
         })
     }
 
@@ -53,6 +57,9 @@ impl CaptureService {
             object_store,
             http_client: build_http_client().expect("test HTTP client should build"),
             structured_logger: None,
+            source_cookies: crate::services::sources::cookies::SourceCookieStore::new(
+                std::env::temp_dir().as_path(),
+            ),
         }
     }
 
@@ -369,7 +376,13 @@ impl CaptureService {
         // mobile body fragment), which keeps original text and media intact instead of
         // scraping a client-rendered shell. A failure here falls back to the generic
         // HTML pipeline below.
-        match crate::services::sources::capture_with_adapter(&self.http_client, &url).await {
+        match crate::services::sources::capture_with_adapter(
+            &self.http_client,
+            &url,
+            &self.source_cookies,
+        )
+        .await
+        {
             Ok(Some(capture)) => return Ok(fetched_document_from_source(capture)),
             Ok(None) => {}
             Err(_) => {}
