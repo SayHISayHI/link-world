@@ -104,6 +104,13 @@ pub async fn run() -> i32 {
         return write_success(&cli, result);
     }
 
+    if let Commands::Sources(args) = &cli.command {
+        return match execute_sources_probe(args).await {
+            Ok(result) => write_success(&cli, result),
+            Err(error) => write_error(&cli, error),
+        };
+    }
+
     let data_dir = match resolve_data_dir() {
         Ok(path) => path,
         Err(error) => return write_error(&cli, error),

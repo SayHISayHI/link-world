@@ -41,7 +41,28 @@
 - 图片/视频仅保存**原始 URL**，尚未下载到本地对象存储。原始 URL 会过期或被防盗链拒绝，长期保存需要落盘（`CaptureAsset` 结构与 `write_capture_artifact` 已就绪）。
 - 适配器无速率限制与缓存；同一 URL 重复采集会重复请求。
 
-## 5. 新增适配器
+## 5. 怎么验证适配器
+
+不要用真实采集来试错——有一个不写库、不上锁、不需要关闭 App 的探针命令：
+
+```bash
+cd src-tauri && cargo build --bin node-tide-cli
+./target/debug/node-tide-cli sources probe "<链接>"
+./target/debug/node-tide-cli --output json sources probe "<链接>"   # 看完整字段
+```
+
+输出包含：匹配到的适配器、标题、作者、正文长度、媒体数量与前 10 条媒体 URL、正文摘要、Markdown 预览。失败时返回 `ERR_PARSE_FAILED`，此时通用抓取管线会接手。
+
+当前实测状态：
+
+| 平台 | 状态 | 说明 |
+| --- | --- | --- |
+| X | 已实测通过 | `api.fxtwitter.com` 与 syndication 均返回 200，文字路径确认；媒体路径由单元测试覆盖 |
+| 小红书 | 待真实链接验证 | 已修正：必须带分享链接里的 `xsec_token`，裸 `/explore/<id>` 会 404 |
+| 抖音 | 本机无法验证 | 开发环境到 `douyin.com` / `iesdouyin.com` 全部连接失败，需在能访问的网络里跑探针 |
+| 知乎 | 需 cookie | 匿名请求返回 403 |
+
+## 6. 新增适配器
 
 1. 在 `services/sources/` 新建模块，实现 `SourceAdapter`（`id` / `matches` / `capture`）。
 2. 解析函数保持纯函数（输入载荷字符串 → `SourceCapture`），便于用 fixture 写单测。

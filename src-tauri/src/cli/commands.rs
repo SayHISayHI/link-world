@@ -31,6 +31,76 @@ pub(super) async fn execute_recovery_backup(
     }
 }
 
+/// Probe a URL through the platform source adapters without touching the local
+/// database, so a user can verify a platform adapter against a real link from
+/// their own account before capturing it.
+pub(super) async fn execute_sources_probe(args: &SourcesArgs) -> Result<CliSuccess, CliError> {
+    let SourcesCommands::Probe { url } = &args.command;
+
+    let parsed = reqwest::Url::parse(url)
+        .map_err(|_| CliError::invalid("URL is invalid; pass an http(s) URL"))?;
+
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(CliError::invalid("URL must use http or https"));
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(20))
+        .redirect(reqwest::redirect::Policy::limited(5))
+        .user_agent(format!(
+            "NodeTide/{} source probe",
+            env!("CARGO_PKG_VERSION")
+        ))
+        .build()
+        .map_err(|error| CliError::from_app(crate::errors::AppError::Unknown(error.to_string())))?;
+
+    let matched = crate::services::sources::adapters()
+        .iter()
+        .find(|adapter| adapter.matches(&parsed))
+        .map(|adapter| adapter.id());
+
+    let result = match crate::services::sources::capture_with_adapter(&client, &parsed).await {
+        Ok(Some(capture)) => json!({
+            "matchedAdapter": capture.parser_id,
+            "resolved": true,
+            "canonicalUrl": capture.canonical_url,
+            "title": capture.title,
+            "author": capture.author,
+            "textLength": capture.text_content.chars().count(),
+            "assetCount": capture.assets.len(),
+            "assets": capture
+                .assets
+                .iter()
+                .take(10)
+                .map(|asset| json!({ "kind": asset.kind.as_str(), "url": asset.url }))
+                .collect::<Vec<_>>(),
+            "excerpt": capture
+                .text_content
+                .chars()
+                .take(200)
+                .collect::<String>(),
+            "markdownPreview": capture
+                .markdown_content
+                .chars()
+                .take(400)
+                .collect::<String>(),
+        }),
+        Ok(None) => json!({
+            "matchedAdapter": matched,
+            "resolved": false,
+            "reason": "no adapter matched this URL",
+        }),
+        Err(error) => {
+            return Err(CliError::from_app(error));
+        }
+    };
+
+    Ok(CliSuccess {
+        command: "sources.probe",
+        data: result,
+    })
+}
+
 pub(super) async fn execute(
     cli: &Cli,
     state: &AppState,
@@ -48,6 +118,9 @@ pub(super) async fn execute(
                 }),
             ))
         }
+        Commands::Sources(_) => Err(CliError::invalid(
+            "sources runs without opening local data and is handled before startup",
+        )),
         Commands::Diagnostics(args) => execute_diagnostics(args, state, data_dir).await,
         Commands::Object(args) => execute_object(args, state, cli, data_dir).await,
         Commands::Search(args) => {

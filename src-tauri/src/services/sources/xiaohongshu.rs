@@ -33,10 +33,12 @@ impl SourceAdapter for XiaohongshuAdapter {
             let note_id = note_id(&url).ok_or_else(|| {
                 AppError::ParseFailed("xiaohongshu note url could not be parsed".to_string())
             })?;
-            let canonical_url = format!("https://www.xiaohongshu.com/explore/{note_id}");
+            // `/explore/<id>` alone returns a 404 page: the note body is only served
+            // when the share link's `xsec_token` comes along.
+            let canonical_url = canonical_note_url(&url, &note_id);
 
             let response = client
-                .get(&canonical_url)
+                .get(url.as_str())
                 .header(reqwest::header::USER_AGENT, browser_user_agent())
                 .header(reqwest::header::ACCEPT, "text/html,application/xhtml+xml")
                 .send()
@@ -149,6 +151,34 @@ fn find_note<'a>(payload: &'a serde_json::Value, note_id: &str) -> Option<&'a se
         .find(|note| note.get("imageList").is_some() || note.get("desc").is_some())
 }
 
+/// Keep the note id and the share token, drop the tracking params.
+fn canonical_note_url(url: &reqwest::Url, note_id: &str) -> String {
+    let token = url
+        .query_pairs()
+        .find(|(key, _)| key == "xsec_token")
+        .map(|(_, value)| value.to_string());
+    let source = url
+        .query_pairs()
+        .find(|(key, _)| key == "xsec_source")
+        .map(|(_, value)| value.to_string());
+
+    let mut params: Vec<String> = Vec::new();
+    if let Some(token) = token {
+        params.push(format!("xsec_token={token}"));
+    }
+    if let Some(source) = source {
+        params.push(format!("xsec_source={source}"));
+    }
+
+    let mut canonical = format!("https://www.xiaohongshu.com/explore/{note_id}");
+    if !params.is_empty() {
+        canonical.push('?');
+        canonical.push_str(&params.join("&"));
+    }
+
+    canonical
+}
+
 /// Note id from `/explore/<id>`, `/discovery/item/<id>`, or `?noteId=` style URLs.
 fn note_id(url: &reqwest::Url) -> Option<String> {
     let segments: Vec<&str> = url
@@ -224,6 +254,10 @@ mod tests {
 
         assert!(adapter.matches(&note));
         assert!(!adapter.matches(&profile));
+
+        let canonical = canonical_note_url(&note, "66f0c1d2000000001e02abcd");
+        assert!(canonical.contains("xsec_token=abc"));
+        assert!(!canonical.contains("xhsshare"));
     }
 
     #[test]

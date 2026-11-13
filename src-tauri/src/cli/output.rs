@@ -139,6 +139,7 @@ pub(super) fn command_name(command: &Commands) -> &'static str {
         Commands::Backup(BackupArgs {
             command: BackupCommands::Verify { .. },
         }) => "backup.verify",
+        Commands::Sources(_) => "sources",
         Commands::Completion { .. } => "completion",
     }
 }

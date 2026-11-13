@@ -55,8 +55,25 @@ pub(super) enum Commands {
     Export(ExportArgs),
     /// Create and verify local backups.
     Backup(BackupArgs),
+    /// Inspect platform source adapters without opening local data.
+    Sources(SourcesArgs),
     /// Generate a shell completion script without opening local data.
     Completion { shell: Shell },
+}
+
+#[derive(Debug, Args)]
+pub(super) struct SourcesArgs {
+    #[command(subcommand)]
+    pub(super) command: SourcesCommands,
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum SourcesCommands {
+    /// Resolve a URL through the platform adapters and print what they extract.
+    Probe {
+        /// URL to probe, for example a shared X or Xiaohongshu link.
+        url: String,
+    },
 }
 
 #[derive(Debug, Args)]
