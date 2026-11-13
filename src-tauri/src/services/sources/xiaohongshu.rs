@@ -25,20 +25,30 @@ impl SourceAdapter for XiaohongshuAdapter {
 
     fn matches(&self, url: &reqwest::Url) -> bool {
         let host = url.host_str().unwrap_or_default();
+
+        if host.ends_with("xhslink.com") {
+            return true;
+        }
+
         host.ends_with("xiaohongshu.com") && note_id(url).is_some()
     }
 
     fn capture<'a>(&'a self, client: &'a reqwest::Client, url: reqwest::Url) -> SourceFuture<'a> {
         Box::pin(async move {
-            let note_id = note_id(&url).ok_or_else(|| {
-                AppError::ParseFailed("xiaohongshu note url could not be parsed".to_string())
-            })?;
+            // App share sheets hand out `xhslink.com` codes, which only carry the note
+            // id and the `xsec_token` after the redirect settles.
+            let resolved = resolve_share_link(client, url).await?;
+            let note_id = note_id(&resolved)
+                .or_else(|| note_id_from_share_code(&resolved))
+                .ok_or_else(|| {
+                    AppError::ParseFailed("xiaohongshu note url could not be parsed".to_string())
+                })?;
             // `/explore/<id>` alone returns a 404 page: the note body is only served
             // when the share link's `xsec_token` comes along.
-            let canonical_url = canonical_note_url(&url, &note_id);
+            let canonical_url = canonical_note_url(&resolved, &note_id);
 
             let response = client
-                .get(url.as_str())
+                .get(resolved.as_str())
                 .header(reqwest::header::USER_AGENT, browser_user_agent())
                 .header(reqwest::header::ACCEPT, "text/html,application/xhtml+xml")
                 .send()
@@ -151,6 +161,47 @@ fn find_note<'a>(payload: &'a serde_json::Value, note_id: &str) -> Option<&'a se
         .find(|note| note.get("imageList").is_some() || note.get("desc").is_some())
 }
 
+async fn resolve_share_link(
+    client: &reqwest::Client,
+    url: reqwest::Url,
+) -> AppResult<reqwest::Url> {
+    let is_share_link = url
+        .host_str()
+        .map(|host| host.ends_with("xhslink.com"))
+        .unwrap_or(false);
+
+    if !is_share_link {
+        return Ok(url);
+    }
+
+    let response = client
+        .get(url.as_str())
+        .header(reqwest::header::USER_AGENT, browser_user_agent())
+        .send()
+        .await
+        .map_err(|_| AppError::ParseFailed("xiaohongshu share link request failed".to_string()))?;
+
+    let resolved = response.url().clone();
+    let _ = response.bytes().await;
+
+    if resolved.host_str() == url.host_str() {
+        return Err(AppError::ParseFailed(
+            "xiaohongshu share link did not resolve to a note".to_string(),
+        ));
+    }
+
+    Ok(resolved)
+}
+
+/// Some share redirects land on `/discovery/item/<id>` without a token-bearing
+/// path segment; fall back to the last hex segment we can see.
+fn note_id_from_share_code(url: &reqwest::Url) -> Option<String> {
+    url.path_segments()?
+        .rev()
+        .find(|segment| is_note_id(segment))
+        .map(str::to_string)
+}
+
 /// Keep the note id and the share token, drop the tracking params.
 fn canonical_note_url(url: &reqwest::Url, note_id: &str) -> String {
     let token = url
@@ -252,7 +303,10 @@ mod tests {
         .unwrap();
         let profile = reqwest::Url::parse("https://www.xiaohongshu.com/user/profile/abc").unwrap();
 
+        let share = reqwest::Url::parse("http://xhslink.com/a/AbCdEf123").unwrap();
+
         assert!(adapter.matches(&note));
+        assert!(adapter.matches(&share), "app share short links must match");
         assert!(!adapter.matches(&profile));
 
         let canonical = canonical_note_url(&note, "66f0c1d2000000001e02abcd");
