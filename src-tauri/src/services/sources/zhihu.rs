@@ -53,9 +53,12 @@ impl SourceAdapter for ZhihuAdapter {
                 .map_err(|_| AppError::ParseFailed("zhihu request failed".to_string()))?;
 
             if !response.status().is_success() {
-                return Err(AppError::ParseFailed(
-                    "zhihu content unavailable".to_string(),
-                ));
+                // Zhihu answers anonymous readers with a 403 anti-bot page, so a
+                // failure here almost always means a missing or expired cookie.
+                return Err(AppError::ParseFailed(format!(
+                    "zhihu needs a signed-in cookie: request returned HTTP {}",
+                    response.status().as_u16()
+                )));
             }
 
             // These pages are UTF-8 but may not say so; decode explicitly instead of
