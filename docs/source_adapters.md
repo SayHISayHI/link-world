@@ -13,7 +13,7 @@
 | X / Twitter | `api.fxtwitter.com/<user>/status/<id>`，失败回退 `cdn.syndication.twimg.com/tweet-result` | 完整推文、作者、全部图片与视频原址 | 纯转推/引用推文本以接口返回为准；受保护账号不可见 |
 | 小红书 | 笔记页内嵌 `window.__INITIAL_STATE__` → `note.noteDetailMap[id].note` | 标题、正文、`imageList` 原图、视频流 | 登录墙或风控页会返回校验壳，此时适配器报错并回退 |
 | 抖音 | 分享短链跳转后的 `iesdouyin.com/share/video/<id>` 内嵌 `window._ROUTER_DATA` | `desc`、图文帖原图、视频播放地址 | 同上；私密作品不可见 |
-| 知乎 | 移动端页面 `div.RichText` | 标题、作者、正文、正文内图片原址 | 盐选/登录墙返回空正文 → 适配器返回 `None`，交给通用抓取报错 |
+| 知乎 | 页面内嵌 `script#js-initialData` 的 `initialState.entities.answers/articles`（回退到 `div.RichText`） | 标题（问题标题）、作者、完整正文 HTML、正文内图片原址 | 匿名请求返回 403 风控页，必须有 `z_c0` cookie；盐选/无权限内容返回空正文 |
 
 ## 2. 处理顺序
 
@@ -60,7 +60,7 @@ cd src-tauri && cargo build --bin node-tide-cli
 | X | 已实测通过 | `api.fxtwitter.com` 与 syndication 均返回 200，文字路径确认；媒体路径由单元测试覆盖 |
 | 小红书 | 差一个 cookie | 短链 `xhslink.cn` 已支持；带 `xsec_token` 的笔记页对匿名请求仍 302 到 `/login`，必须有登录态 cookie |
 | 抖音 | 本机无法验证 | 开发环境到 `douyin.com` / `iesdouyin.com` 全部连接失败，需在能访问的网络里跑探针 |
-| 知乎 | 需 cookie | 匿名请求返回 403 |
+| 知乎 | **已实测通过** | 带 `z_c0` cookie 后返回 200；正文取自 `js-initialData`，标题/作者/图片均正确 |
 
 ## 6. 需要登录态时怎么给 cookie
 
